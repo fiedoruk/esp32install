@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createInstaller } from '../app/engine.js';
+import { runPreserve } from '../app/preserve.js';
 import { normalizeManifest } from '../app/manifest.js';
 import { makeFakeEsptool } from './helpers/fakeEsptool.js';
 import { sha256Hex } from '../app/verify.js';
@@ -34,8 +35,18 @@ function deviceImage({ mode = 'first', dirtySettings = false, bootloader = BOOT 
   return img;
 }
 
-async function manifestFor(img) {
+async function manifestFor(img, { minimal = false } = {}) {
   const page = (off, size) => sha256Hex(img.slice(off, off + size));
+  if (minimal) {
+    // Only the bootloader region and the table offset: the table page alone must stretch the header.
+    return normalizeManifest({
+      schema: 2, name: 'Home', version: '0.4.4', profile: 'preserve',
+      builds: [{ boardKey: 'note4c', chipFamily: 'ESP32-S3', flashSizeMB: 16,
+        compatibility: { regions: [{ offset: 0, size: 0x8000, sha256: await page(0, 0x8000) }], update: { tableOffset: 0x8000 } },
+        parts: [{ path: 'app.bin', offset: 0x20000, size: APP.length, sha256: await sha256Hex(APP) },
+                { path: 'table.bin', offset: 0x8000, size: TABLE.length, sha256: await sha256Hex(TABLE) }] }],
+    }, 'https://h/install/manifests/home.json');
+  }
   return normalizeManifest({
     schema: 2, name: 'Home', version: '0.4.4', profile: 'preserve',
     builds: [{
@@ -55,6 +66,16 @@ async function manifestFor(img) {
 
 const fakes = [];
 const called = (fake, name) => fake.calls.some((c) => c[0] === name);
+const firstDiff = (a, b) => { if (a.length !== b.length) return -2; for (let i = 0; i < a.length; i++) if (a[i] !== b[i]) return i; return -1; };
+/** What the chip holds after writing `parts` into `img`: each touched 4 KiB sector erased, then the part programmed. */
+function afterWrite(img, parts) {
+  const out = img.slice();
+  for (const [data, offset] of parts) {
+    out.fill(0xff, Math.floor(offset / 0x1000) * 0x1000, Math.ceil((offset + data.length) / 0x1000) * 0x1000);
+    out.set(data, offset);
+  }
+  return out;
+}
 const fileOf = (bytes) => ({ size: bytes.length, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) });
 
 /** Wires the installer with a device image; the saved backup is what `requestBackupFile` hands back unless overridden. */
@@ -102,9 +123,8 @@ test('first install on a matching device: security ok, header ok, backup require
   assert.ok(!called(fake, 'eraseFlash'));
   // The backup handed to the user is the whole original flash; the device ends up as original + parts.
   assert.equal(saved.length, 1);
-  assert.deepEqual(saved[0], img);
-  const expected = img.slice(); expected.set(APP, 0x20000); expected.set(TABLE, 0x8000);
-  assert.deepEqual(fake.flash, expected);
+  assert.equal(firstDiff(saved[0], img), -1, 'the saved backup is the original flash');
+  assert.equal(firstDiff(fake.flash, afterWrite(img, [[APP, 0x20000], [TABLE, 0x8000]])), -1, 'device = original with the touched sectors erased and the parts programmed');
   assert.ok(events.some((e) => e.type === 'stage' && e.stage === 'checkingDevice'));
   assert.ok(events.some((e) => e.type === 'stage' && e.stage === 'backup'));
   assert.equal(events.at(-1).type, 'done');
@@ -217,6 +237,56 @@ test('bytes outside written parts are unchanged after write (positive control: a
   assert.ok(called(fake, 'disconnect'));
 });
 
+test('sector padding: bytes the write erases beside the table (0x8C00-0x9000) read back 0xff and the install verifies', async () => {
+  const img = deviceImage();
+  assert.ok(img.subarray(0x8c00, 0x9000).some((b) => b !== 0xff), 'the factory table page is not blank there before the write');
+  const { inst, manifest, fake } = await setup({ img });
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
+  assert.ok(fake.flash.subarray(0x8c00, 0x9000).every((b) => b === 0xff), 'the write erased the rest of the sector');
+  assert.equal(firstDiff(fake.flash.subarray(0x9000, 0x20000), img.subarray(0x9000, 0x20000)), -1, 'nothing else in the header moved');
+});
+
+test('positive control: a non-0xff byte left in the sector padding after the write → flash.verify', async () => {
+  // 0x8F00 lies in the table's sector but outside the 3072-byte part; the chip must have erased it.
+  const { inst, manifest, fake } = await setup({ fakeOptions: { corruptAt: 0x8f00 } });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'flash.verify' && e.params.offset === '0x8f00');
+  assert.equal(fake.calls.filter((c) => c[0] === 'writeFlash').length, 2);
+  assert.ok(!called(fake, 'after'));
+});
+
+test('first mode: the header read covers the table page (0x9000) even when no other range reaches it', async () => {
+  const img = deviceImage();
+  const { inst, manifest, fake } = await setup({ img, manifest: await manifestFor(img, { minimal: true }) });
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
+  const headerReads = fake.calls.filter((c) => c[0] === 'readFlash' && c[1] === 0 && c[2] !== 256 * 1024);
+  assert.ok(headerReads.length >= 2);
+  assert.ok(headerReads.every((c) => c[2] === 0x9000), `header reads are 0x9000 bytes: ${headerReads.map((c) => c[2].toString(16))}`);
+});
+
+test('runPreserve rejects before any write when ctx has no setWriting', async () => {
+  const img = deviceImage();
+  const fake = makeFakeEsptool({ chipName: 'ESP32-S3', flashImage: img });
+  fakes.push(fake);
+  const manifest = await manifestFor(img);
+  const loader = new fake.ESPLoader({});
+  await loader.main();
+  const build = manifest.builds[0];
+  const parts = [{ offset: 0x20000, data: APP, path: 'app.bin', sha256: build.parts[0].sha256 }, { offset: 0x8000, data: TABLE, path: 'table.bin', sha256: build.parts[1].sha256 }];
+  let saved;
+  const ctx = {
+    job: { manifest, mode: 'first', options: {} },
+    connect: async () => ({ chipFamily: 'ESP32-S3', chipDescription: 'x', features: [], flashSizeMB: 16 }),
+    pick: async () => build, download: async () => parts, loader: () => loader,
+    stage() {}, log() {}, emit() {}, check() {},
+    deps: { saveBackup: async (b) => { saved = b; }, requestBackupFile: async () => fileOf(saved) },
+  };
+  await assert.rejects(runPreserve(ctx));
+  assert.ok(saved, 'the flow got as far as the backup');
+  assert.ok(!called(fake, 'writeFlash'));
+});
+
 test('a part whose flash MD5 differs from the image → flash.verify right after that part', async () => {
   // The fake flips 0x8000 after every writeFlash: the table part (written second) reads back wrong.
   const { inst, manifest, fake } = await setup({ fakeOptions: { corruptAt: 0x8000 } });
@@ -262,6 +332,6 @@ test('reset failure after a verified preserve write still resolves with verified
 });
 
 test('eraseFlash is never called in preserve', () => {
-  assert.ok(fakes.length >= 12, `expected the preserve scenarios above to have run (${fakes.length})`);
+  assert.ok(fakes.length >= 20, `expected the preserve scenarios above to have run (${fakes.length})`);
   for (const fake of fakes) assert.ok(!called(fake, 'eraseFlash'));
 });

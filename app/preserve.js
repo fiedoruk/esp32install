@@ -37,7 +37,10 @@ async function assertUnlocked(loader, log) {
   if (flags !== 0 || info[4] !== 0) fail('device.secured', { flags: hex(flags), cryptCount: info[4] });
 }
 
-/** In update mode the page at `update.tableOffset` must hold this release's table, padded with 0xff. */
+const sectorDown = (n) => Math.floor(n / PAGE) * PAGE;
+const sectorUp = (n) => Math.ceil(n / PAGE) * PAGE;
+
+/** The page at `update.tableOffset`: in update mode it must hold this release's table, padded with 0xff. */
 function tablePageOf(build) {
   const offset = build.compatibility.update.tableOffset;
   if (offset === undefined) return null;
@@ -46,10 +49,10 @@ function tablePageOf(build) {
   return { offset, size: Math.max(PAGE, part.size), part };
 }
 
-/** The header spans every range the manifest makes a claim about, in either mode. */
+/** The header spans every range the manifest makes a claim about, table page included, in either mode. */
 function headerSizeOf(compat, tablePage) {
   const ranges = [...compat.regions, ...compat.firstInstall.regions, ...compat.firstInstall.empty];
-  if (tablePage) ranges.push(tablePage);
+  if (tablePage) ranges.push({ offset: tablePage.offset, size: sectorUp(tablePage.offset + tablePage.size) - tablePage.offset });
   return ranges.reduce((n, r) => Math.max(n, r.offset + r.size), 0);
 }
 
@@ -99,14 +102,22 @@ async function writeParts(loader, parts, stage) {
   }
 }
 
-/** Every byte of the header outside the written ranges must read back exactly as before. */
+/**
+ * The chip erases every whole 4 KiB sector a write touches. So inside each written part's
+ * sector-aligned span the bytes outside the part must read back 0xff, and every byte
+ * outside all spans must read back exactly as before the write.
+ */
 function checkUntouched(before, after, parts) {
-  const ranges = parts.map((p) => [p.offset, p.offset + p.data.length]).sort((a, b) => a[0] - b[0]);
+  const spans = parts.map((p) => ({ start: sectorDown(p.offset), end: sectorUp(p.offset + p.data.length), from: p.offset, to: p.offset + p.data.length }))
+    .sort((a, b) => a.start - b.start);
   let pos = 0;
-  for (const [start, end] of [...ranges, [before.length, before.length]]) {
-    const i = differs(before, after, pos, Math.min(start, before.length));
+  for (const span of [...spans, { start: before.length, end: before.length, from: before.length, to: before.length }]) {
+    const i = differs(before, after, pos, Math.min(span.start, before.length));
     if (i >= 0) fail('flash.verify', { offset: hex(i) });
-    pos = Math.max(pos, end);
+    for (const [a, b] of [[span.start, span.from], [span.to, span.end]]) {
+      for (let j = Math.max(a, pos); j < Math.min(b, before.length); j++) if (after[j] !== 0xff) fail('flash.verify', { offset: hex(j) });
+    }
+    pos = Math.max(pos, span.end);
   }
 }
 
@@ -126,7 +137,7 @@ export async function runPreserve(ctx) {
     if (now !== mac) fail('device.changed', { expected: mac, actual: now });
   };
   check();
-  const tablePage = mode === 'update' ? tablePageOf(build) : null;
+  const tablePage = tablePageOf(build);
   const headerSize = headerSizeOf(build.compatibility, tablePage);
   if (headerSize > flashBytes) fail('device.layout', { offset: hex(headerSize), flashBytes });
   const header = await readRange(loader(), 0, headerSize);
@@ -158,7 +169,7 @@ export async function runPreserve(ctx) {
   const again = await readRange(loader(), 0, headerSize);
   if (differs(again, header) >= 0) fail('device.changed', { reason: 'header' });
   check();
-  ctx.setWriting?.();
+  ctx.setWriting();
   await writeParts(loader(), parts, stage);
   stage('md5', 92);
   checkUntouched(header, await readRange(loader(), 0, headerSize), parts);
