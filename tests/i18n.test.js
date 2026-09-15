@@ -122,3 +122,40 @@ test('every error string says what happened and what to do', () => {
 test('catalog.unknownVersion interpolates no version', () => {
   assert.ok(!/\{v\}/.test(en.error['catalog.unknownVersion']));
 });
+
+/* --- Polish translation ------------------------------------------------- */
+
+/** Read a locale on demand, so a missing translation fails these tests alone. */
+const readLocale = (name) => JSON.parse(readFileSync(new URL(`../locales/${name}.json`, import.meta.url), 'utf8'));
+const keysOf = (dict) => flat(dict).map(([k]) => k).sort();
+const placeholders = (s) => new Set(String(s).match(/\{\w+\}/g) ?? []);
+
+/** Same gate as the English one, on the words a Polish translation is tempted to reach for. */
+const JARGON_PL = /firmware|flash|offset|bootloader|md5|sha|serial|baud|esptool|manifest|chip|partycj|binar|\.bin|flashow/i;
+
+test('pl.json carries exactly the keys of en.json', () => {
+  assert.deepEqual(keysOf(readLocale('pl')), keysOf(en));
+});
+
+test('every Polish string keeps the placeholders of its English original', () => {
+  const pl = new Map(flat(readLocale('pl')));
+  const bad = flat(en)
+    .map(([k, v]) => [k, [...placeholders(v)].sort().join(''), [...placeholders(pl.get(k) ?? '')].sort().join('')])
+    .filter(([, want, got]) => want !== got);
+  assert.deepEqual(bad, []);
+});
+
+test('Polish simple-layer strings carry no jargon', () => {
+  const bad = flat(readLocale('pl')).filter(([k, v]) => SIMPLE.includes(k.split('.')[0]) && JARGON_PL.test(v));
+  assert.deepEqual(bad, []);
+});
+
+test('positive control: Polish jargon in a simple key is caught', () => {
+  assert.ok(JARGON_PL.test('Flashuję firmware przez port serial'));
+  assert.ok(JARGON_PL.test('Sprawdzam sumę md5 partycji'));
+});
+
+test('every Polish error string says what happened and what to do', () => {
+  const thin = Object.entries(readLocale('pl').error).filter(([, v]) => (v.match(/[.!?]/g) ?? []).length < 2);
+  assert.deepEqual(thin, []);
+});

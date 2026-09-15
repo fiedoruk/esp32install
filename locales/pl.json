@@ -1,0 +1,178 @@
+{
+  "app": {
+    "title": "Zainstaluj {system}",
+    "subtitle": "Z przeglądarki, przez kabel USB.",
+    "notDetected": "Jeszcze nie widzę urządzenia",
+    "stage": "Krok",
+    "copyLog": "Skopiuj zapis",
+    "showLog": "Pokaż zapis techniczny",
+    "hideLog": "Ukryj zapis techniczny",
+    "language": "Język",
+    "progress": "Postęp"
+  },
+  "door": {
+    "title": "Co chcesz zrobić?",
+    "first": "Pierwsza instalacja",
+    "firstHint": "Na urządzeniu jest coś innego albo jeszcze nic.",
+    "update": "Aktualizacja",
+    "updateHint": "{system} jest już na tym urządzeniu."
+  },
+  "gate": {
+    "insecure": "Żeby połączyć się z urządzeniem, ta strona musi być otwarta pod bezpiecznym adresem (https).",
+    "noSerial": "Ta przeglądarka nie potrafi połączyć się z urządzeniem przez kabel. Użyj Chrome albo Edge na komputerze. Telefon nie wystarczy.",
+    "altFirst": "Możesz też zainstalować z okna terminala:"
+  },
+  "action": {
+    "connect": "Podłącz i zainstaluj",
+    "connecting": "Łączę…",
+    "installing": "Instaluję…",
+    "retry": "Spróbuj jeszcze raz",
+    "cancel": "Przerwij",
+    "backup": "Najpierw zapisz kopię tego, co jest na urządzeniu (około {minutes} min)",
+    "chooseBackup": "Wybierz zapisaną przed chwilą kopię",
+    "erase": "Wyczyść całe urządzenie przed instalacją"
+  },
+  "stage": {
+    "idle": "Czekam na start",
+    "connecting": "Łączę się z urządzeniem",
+    "detecting": "Czytam urządzenie",
+    "matching": "Dobieram wersję do tego urządzenia",
+    "downloading": "Pobieram system",
+    "verifying": "Sprawdzam pobrane pliki",
+    "checkingDevice": "Sprawdzam urządzenie",
+    "backup": "Zapisuję kopię urządzenia",
+    "erasing": "Czyszczę urządzenie",
+    "writing": "Zapisuję na urządzeniu, część {n} z {total}",
+    "md5": "Sprawdzam, czy wszystko zapisało się poprawnie",
+    "done": "Gotowe",
+    "error": "Przerwane"
+  },
+  "eta": {
+    "left": "zostało około {seconds} s",
+    "leftMin": "zostało około {minutes} min"
+  },
+  "result": {
+    "ok": "{system} {version} jest już na twoim urządzeniu.",
+    "stopped": "Nic nie zostało zapisane."
+  },
+  "simple": {
+    "prepare": {
+      "title": "Podłącz urządzenie do tego komputera kablem USB.",
+      "hintCable": "Weź kabel od telefonu albo od aparatu. Niektóre cienkie kable tylko ładują i nie przesyłają danych.",
+      "hintDoor": "Jeśli nie masz pewności, wybierz „Pierwsza instalacja”. To zawsze jest bezpieczne.",
+      "hintBackup": "Kopia pozwoli przywrócić urządzenie dokładnie takie, jakie było. Zajmie kilka minut i nie jest konieczna.",
+      "picker": "Po kliknięciu przeglądarka otworzy małe okienko z pytaniem, którego urządzenia użyć. Wybierz to, które pojawiło się po podłączeniu kabla."
+    },
+    "install": {
+      "keepCable": "Nie odłączaj kabla, dopóki instalacja się nie skończy."
+    },
+    "done": {
+      "title": "Gotowe.",
+      "next": "Co dalej",
+      "again": "Zainstaluj na kolejnym urządzeniu",
+      "unplug": "Możesz już odłączyć kabel."
+    },
+    "stopped": {
+      "title": "Przerwane, zanim cokolwiek się zmieniło."
+    }
+  },
+  "pick": {
+    "title": "Wybierz system",
+    "hint": "Wskaż, co chcesz wgrać na urządzenie."
+  },
+  "erase": {
+    "title": "Wyczyścić całe urządzenie?",
+    "textFirst": "Z urządzenia {board} zniknie wszystko, razem z zapisanym Wi-Fi i ustawieniami, a system zostanie zainstalowany od nowa.",
+    "textUpdate": "Jeśli wyczyścisz urządzenie, znikną też zapisane ustawienia. Możesz je zachować.",
+    "yes": "Wyczyść i zainstaluj",
+    "no": "Zachowaj ustawienia",
+    "hint": "Czyszczenie usuwa z urządzenia zapisane Wi-Fi i ustawienia. System instaluje się wtedy od zera. Kopia z poprzedniego kroku, jeśli ją masz, zostaje nietknięta."
+  },
+  "hint": {
+    "open": "Więcej o tym",
+    "close": "Zamknij"
+  },
+  "tech": {
+    "title": "Szczegóły",
+    "chip": "Układ",
+    "flash": "Pamięć",
+    "board": "Płytka",
+    "release": "Wydanie",
+    "checksum": "Suma kontrolna",
+    "log": "Zapis techniczny"
+  },
+  "board": {
+    "pick": "Która to płytka?",
+    "pickHint": "W urządzeniu jest {chip} i {flash} pamięci. Pasujące wersje: {count}. Wskaż swoją."
+  },
+  "alt": {
+    "title": "Inne sposoby instalacji",
+    "cmd": "Przez esptool z terminala:",
+    "files": "Pliki i sumy kontrolne",
+    "drivers": "Sterowniki USB",
+    "guide": "Jak zainstalować {system}"
+  },
+  "error": {
+    "manifest.url": "Adres pliku wydania jest nieprawidłowy. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.notObject": "Plik wydania jest nieprawidłowy. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.schema": "Plik wydania jest w formacie, którego ten instalator nie zna ({schema}). To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.name": "Plik wydania nie mówi, jaki system instaluje. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.version": "Plik wydania nie mówi, która to wersja. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.noBuilds": "Plik wydania nie ma nic do zainstalowania. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.build": "Wpis {index} w pliku wydania jest nieprawidłowy. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.boardKey": "Wpis {index} w pliku wydania ma nieprawidłową nazwę. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.chipFamily": "Wersja {boardKey} wskazuje urządzenie, którego ten instalator nie zna ({chipFamily}). To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.profile": "Wersja {boardKey} prosi o sposób instalacji, którego ten instalator nie zna. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.preserveNoErase": "Wersja {boardKey} chce wyczyścić całe urządzenie, a przy zachowaniu ustawień nie wolno tego zrobić. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.flashSizeMB": "Wersja {boardKey} podaje nieprawidłowy rozmiar pamięci. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.usb": "Wersja {boardKey} podaje nieprawidłowe oznaczenia USB. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.filters": "Wersja {boardKey} ma nieprawidłowe reguły dopasowania. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.compatibility": "Wersja {boardKey} ma nieprawidłowe dane o zgodności. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.noParts": "Wersja {boardKey} nie ma żadnych plików do zainstalowania. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.part": "Wersja {boardKey}, plik {index} jest nieprawidłowy. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.path": "Jeden z plików wydania nie ma adresu, spod którego można go pobrać. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.origin": "Wydanie wskazuje inną stronę ({origin}), a pliki muszą pochodzić z tej strony. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.offset": "Wersja {boardKey}, plik {index} ma nieprawidłowy adres. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.size": "Wersja {boardKey}, plik {index} ma nieprawidłowy rozmiar. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.sha256": "Wersja {boardKey}, plik {index} ma nieprawidłową sumę kontrolną. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.preserveNeedsSize": "Wersja {boardKey}, plik {index} potrzebuje i rozmiaru, i sumy kontrolnej. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.duplicateBoardKey": "Dwie wersje w pliku wydania mają tę samą nazwę {boardKey}. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.fetch": "Nie udało się pobrać pliku wydania ({status}). Sprawdź połączenie i spróbuj jeszcze raz. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.tooBig": "Plik wydania jest o wiele większy, niż powinien, więc nie został użyty. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "catalog.fetch": "Nie udało się wczytać listy systemów. Sprawdź połączenie i spróbuj jeszcze raz. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "catalog.unknownSystem": "Nie ma tu systemu o nazwie {fw}. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "catalog.unknownVersion": "Tej wersji {fw} tutaj nie ma. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "verify.empty": "Jeden z plików wydania jest pusty. Nic nie zostało zapisane, więc urządzenie jest nienaruszone. Spróbuj jeszcze raz, a jeśli powtórzy się to samo, powiedz o tym osobie, która opublikowała wydanie.",
+    "verify.part": "Jednego z plików wydania nie da się użyć. Nic nie zostało zapisane, więc urządzenie jest nienaruszone. Spróbuj jeszcze raz, a jeśli powtórzy się to samo, powiedz o tym osobie, która opublikowała wydanie.",
+    "verify.tooLarge": "Plik {path} jest większy, niż pozwala ten instalator. Nic nie zostało zapisane. Powiedz o tym osobie, która opublikowała wydanie.",
+    "verify.size": "Plik {path} ma {bytes} bajtów zamiast {expected}. Pobieranie zostało przerwane i nic nie zostało zapisane. Sprawdź połączenie i spróbuj jeszcze raz.",
+    "verify.sha256": "Plik {path} nie zgadza się z wydaniem i mógł uszkodzić się po drodze. Nic nie zostało zapisane. Sprawdź połączenie i spróbuj jeszcze raz.",
+    "verify.overlap": "Dwa pliki z tego wydania chcą zająć to samo miejsce w urządzeniu. Nic nie zostało zapisane. Powiedz o tym osobie, która opublikowała wydanie.",
+    "verify.beyondFlash": "To wydanie potrzebuje więcej pamięci, niż ma to urządzenie. Nic nie zostało zapisane. Sprawdź, czy wybrany system pasuje do twojego urządzenia.",
+    "verify.totalTooLarge": "To wydanie jest większe, niż pozwala ten instalator. Nic nie zostało zapisane. Powiedz o tym osobie, która je opublikowała.",
+    "verify.notAnImage": "Plik spod adresu 0x{offset} nie jest programem, który to urządzenie potrafi uruchomić. Nic nie zostało zapisane. Powiedz o tym osobie, która opublikowała wydanie.",
+    "verify.wrongChip": "Te pliki są przeznaczone do innego urządzenia ({found}), nie do {expected}. Nic nie zostało zapisane. Sprawdź, czy wybrany system pasuje do twojego urządzenia.",
+    "verify.flashSize": "Nie udało się ustalić, ile pamięci ma urządzenie. Nic nie zostało zapisane. Odłącz kabel, podłącz go z powrotem i spróbuj jeszcze raz.",
+    "verify.chipUnknown": "Ten instalator nie zna układu, który jest w tym urządzeniu. Nic nie zostało zapisane. Sprawdź, czy wybrany system pasuje do twojego urządzenia.",
+    "serial.cancelled": "Nie wybrano żadnego urządzenia. Zacznij jeszcze raz i wskaż swoje urządzenie na liście, którą pokaże przeglądarka.",
+    "serial.busy": "Port jest zajęty przez inny program. Zamknij Arduino IDE, monitory portu i inne narzędzia do wgrywania, potem spróbuj jeszcze raz.",
+    "serial.lost": "Urządzenie zostało odłączone. Podłącz je z powrotem i spróbuj jeszcze raz.",
+    "serial.connect": "Urządzenie nie odpowiedziało. Spróbuj jeszcze raz, a w niektórych płytkach przytrzymaj przycisk BOOT podczas łączenia.",
+    "serial.blocked": "Przeglądarka nie dała dostępu do urządzenia. Odśwież stronę i wybierz „Zezwól”, kiedy zapyta.",
+    "device.chipUnknown": "Urządzenie nie powiedziało, czym jest. Odłącz je, podłącz z powrotem i spróbuj jeszcze raz.",
+    "device.flashUnknown": "Nie udało się pewnie odczytać, ile pamięci ma urządzenie (id 0x{id}). Nic nie zostało zapisane. Spróbuj innego kabla albo innego gniazda USB.",
+    "device.noMatch": "To wydanie nie jest przeznaczone do tego urządzenia. W twoim jest układ {chip} i {flash} pamięci. Sprawdź, czy wybrany system pasuje do twojego urządzenia.",
+    "device.changed": "Teraz podłączone jest inne urządzenie. Zacznij jeszcze raz z tym, na którym chcesz instalować.",
+    "device.secured": "To urządzenie jest zablokowane przez producenta (bezpieczny rozruch albo zaszyfrowana pamięć), więc nic nie zostało zapisane. Użyj narzędzi producenta tego urządzenia.",
+    "device.layout": "Pamięć tego urządzenia jest ułożona inaczej niż w tym, na którym wydanie było sprawdzane. Nic nie zostało zapisane. Powiedz o tym osobie, która je opublikowała.",
+    "device.notEmpty": "Miejsce, którego potrzebuje to wydanie, jest już zajęte. Nic nie zostało zapisane. Wybierz „Pierwsza instalacja”, żeby wyczyścić urządzenie i zacząć od nowa.",
+    "backup.mismatch": "Kopię odczytano dwa razy i odczyty się różnią. Nic nie zostało zapisane. Spróbuj jeszcze raz, najlepiej z krótszym kablem.",
+    "backup.file": "Wskazany plik nie jest kopią tego urządzenia. Wskaż kopię zapisaną z tego urządzenia albo zacznij jeszcze raz bez kopii.",
+    "flash.erase": "Nie udało się wyczyścić urządzenia. Nic nie zostało zapisane. Podłącz urządzenie jeszcze raz i spróbuj ponownie.",
+    "flash.write": "Zapis przerwał się w połowie. Podłącz urządzenie jeszcze raz i spróbuj ponownie. Nie czyść urządzenia samodzielnie.",
+    "flash.verify": "To, co jest na urządzeniu, nie zgadza się z wydaniem. Zachowaj swoją kopię i spróbuj jeszcze raz.",
+    "engine.load": "Nie udało się wczytać tej części strony, która rozmawia z urządzeniami. Odśwież stronę i spróbuj jeszcze raz.",
+    "engine.busy": "Coś jeszcze się dzieje. Poczekaj, aż się skończy, i spróbuj jeszcze raz.",
+    "engine.unexpected": "Coś niespodziewanego zatrzymało instalator, zanim cokolwiek zostało zapisane. Odśwież stronę i spróbuj jeszcze raz."
+  }
+}
