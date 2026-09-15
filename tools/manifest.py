@@ -215,15 +215,39 @@ def as_options(opts: Any) -> Options:
 # Building
 # --------------------------------------------------------------------------- #
 
+MAX_CLIMB = 2
+
+
 def part_path(file: Path, out: Optional[Path], prefix: Optional[str]) -> str:
-    """How the manifest names this binary, as the browser will resolve it."""
+    """How the manifest names this binary, as the browser will resolve it.
+
+    A path worked out from where the binary happens to sit on this machine only holds up while
+    the site mirrors that layout. Past a couple of levels up it almost never does, so rather than
+    write a path that will 404 on the server we stop and ask for --path-prefix.
+    """
     if prefix is not None:
         cleaned = prefix.replace('\\', '/')
         if cleaned and not cleaned.endswith('/'):
             cleaned += '/'
         return cleaned + file.name
     base = out.parent if out is not None else Path('.')
-    relative = Path(os.path.relpath(file.parent.resolve(), base.resolve())).as_posix()
+    try:
+        relative = Path(os.path.relpath(file.parent.resolve(), base.resolve())).as_posix()
+    except ValueError as exc:  # different drives on Windows: no relative path exists
+        raise UsageError('%s is not on the same volume as the manifest (%s); '
+                         'pass --path-prefix to say how the site serves it' % (file.name, exc))
+    if Path(relative).is_absolute() or relative.startswith('//'):
+        raise UsageError('%s cannot be named relative to the manifest; '
+                         'pass --path-prefix to say how the site serves it' % file.name)
+    climb = 0
+    for segment in relative.split('/'):
+        if segment != '..':
+            break
+        climb += 1
+    if climb > MAX_CLIMB:
+        raise UsageError('%s sits %d directories above the manifest (%s); a site rarely mirrors '
+                         'that, so pass --path-prefix to say how it serves the file'
+                         % (file.name, climb, relative))
     return file.name if relative == '.' else '%s/%s' % (relative, file.name)
 
 

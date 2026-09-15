@@ -14,7 +14,7 @@ import unittest
 from pathlib import Path
 
 from tools import check, manifest
-from tools.tests.test_manifest import esp_image
+from tools.tests.test_manifest import esp_image, merged_image
 
 REPO = Path(__file__).resolve().parents[2]
 
@@ -27,7 +27,7 @@ INDEX = """<!doctype html>
 VENDOR_BUNDLE = b'export{ESPLoader,Transport};\n'
 
 
-class SiteTest(unittest.TestCase):
+class SiteFixture(unittest.TestCase):
     def setUp(self):
         tmp = tempfile.TemporaryDirectory()
         self.addCleanup(tmp.cleanup)
@@ -49,13 +49,30 @@ class SiteTest(unittest.TestCase):
 
     # --- fixture helpers -------------------------------------------------
 
-    def write_manifest(self, **over):
+    def write_manifest(self, offset=0x1000, **over):
         data = manifest.build_manifest(
-            [manifest.Part(self.bin, 0x1000)],
+            [manifest.Part(self.bin, offset)],
             {'chip': 'ESP32', 'name': 'Demo firmware', 'version': '1.0.0', 'out': self.manifest_path})
         data.update(over)
         self.manifest_path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
         return data
+
+    def write_one_part_manifest(self, offset, family='ESP32', **over):
+        """A manifest the generator would refuse to write, so the checker can be asked about it."""
+        blob = self.bin.read_bytes()
+        data = {'schema': 2, 'name': 'Demo firmware', 'version': '1.0.0', 'profile': 'factory',
+                'new_install_prompt_erase': False,
+                'builds': [{'chipFamily': family, 'parts': [
+                    {'path': self.bin.name, 'offset': offset, 'size': len(blob),
+                     'sha256': hashlib.sha256(blob).hexdigest()}]}]}
+        data.update(over)
+        self.write_raw_manifest(data)
+        return data
+
+    def write_index(self, policy):
+        (self.site / 'index.html').write_text(
+            '<!doctype html><html><head><meta http-equiv="Content-Security-Policy" content="%s">'
+            '</head><body></body></html>' % policy, encoding='utf-8')
 
     def write_raw_manifest(self, data):
         self.manifest_path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
@@ -83,6 +100,8 @@ class SiteTest(unittest.TestCase):
                 code = exc.code if isinstance(exc.code, int) else 1
         return code, out.getvalue() + err.getvalue()
 
+
+class SiteTest(SiteFixture):
     # --- happy path ------------------------------------------------------
 
     def test_a_generated_site_passes(self):
@@ -234,6 +253,153 @@ class SiteTest(unittest.TestCase):
     def test_a_manifest_without_builds_fails(self):
         self.write_raw_manifest({'name': 'D', 'version': '1', 'builds': []})
         self.assertIn(check.FAIL, self.levels(self.findings(), 'manifest'))
+
+
+
+class ShapeTest(SiteFixture):
+    """Fixes asked for in review: merged images, a parsed CSP, and shapes the page refuses."""
+
+    # --- merged images ---------------------------------------------------
+
+    def test_a_merged_image_is_read_deep_enough_to_find_its_header(self):
+        self.bin.write_bytes(merged_image(0))  # 68 KB at offset 0, ESP32 header at 0x1000
+        self.write_manifest(offset=0)
+        found = self.findings()
+        self.assertEqual(self.fails(found), [])
+        self.assertIn(check.OK, self.levels(found, 'chip'))
+
+    def test_a_merged_image_for_another_chip_fails(self):
+        self.bin.write_bytes(merged_image(9))  # 9 is ESP32-S3
+        self.write_one_part_manifest(0, family='ESP32')
+        found = self.findings()
+        self.assertIn(check.FAIL, self.levels(found, 'chip'))
+        self.assertTrue(any('ESP32-S3' in detail for what, detail in self.fails(found) if what == 'chip'))
+
+    def test_a_merged_image_on_a_chip_that_boots_at_0x2000_is_checked_there(self):
+        self.bin.write_bytes(merged_image(18, header_at=0x2000))  # 18 is ESP32-P4
+        self.write_one_part_manifest(0, family='ESP32-P4')
+        self.assertEqual(self.fails(self.findings()), [])
+
+    # --- the policy is parsed, not searched -------------------------------
+
+    def test_a_widened_default_src_fails(self):
+        self.write_index("default-src 'self' https://evil.example *; script-src 'self'")
+        found = self.findings()
+        self.assertIn(check.FAIL, self.levels(found, 'csp'))
+        self.assertTrue(any('evil.example' in detail for what, detail in self.fails(found) if what == 'csp'))
+
+    def test_a_default_src_that_only_looks_right_fails(self):
+        self.write_index("default-src 'self-hosted'; script-src 'self'")
+        self.assertIn(check.FAIL, self.levels(self.findings(), 'csp'))
+
+    def test_the_download_counter_is_the_only_extra_script_source(self):
+        self.write_index("default-src 'self'; script-src 'self' https://skad.click")
+        self.assertEqual(self.fails(self.findings()), [])
+        self.write_index("default-src 'self'; script-src 'self' https://cdn.example")
+        self.assertIn(check.FAIL, self.levels(self.findings(), 'csp'))
+
+    def test_a_policy_without_default_src_fails(self):
+        self.write_index("script-src 'self'")
+        self.assertIn(check.FAIL, self.levels(self.findings(), 'csp'))
+
+    # --- shapes the page refuses ------------------------------------------
+
+    def test_a_malformed_board_key_fails(self):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['builds'][0]['boardKey'] = 'no spaces'
+        self.write_raw_manifest(data)
+        found = self.findings()
+        self.assertIn(check.FAIL, self.levels(found, 'manifest'))
+        self.assertTrue(any('boardKey' in detail for what, detail in self.fails(found)))
+
+    def test_two_builds_with_the_same_board_key_fail(self):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        build = dict(data['builds'][0], boardKey='core2')
+        data['builds'] = [build, dict(build)]
+        self.write_raw_manifest(data)
+        found = self.findings()
+        self.assertIn(check.FAIL, self.levels(found, 'manifest'))
+        self.assertTrue(any('core2' in detail for what, detail in self.fails(found)))
+
+    def test_two_builds_with_different_keys_are_fine(self):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['builds'] = [dict(data['builds'][0], boardKey='core2'),
+                          dict(data['builds'][0], boardKey='tab5')]
+        self.write_raw_manifest(data)
+        self.assertEqual(self.fails(self.findings()), [])
+
+    def test_preserve_without_a_compatibility_region_fails(self):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['profile'] = 'preserve'
+        self.write_raw_manifest(data)
+        found = self.findings()
+        self.assertIn(check.FAIL, self.levels(found, 'manifest'))
+        self.assertTrue(any('region' in detail for what, detail in self.fails(found)))
+
+    def test_preserve_with_an_empty_region_list_fails(self):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['profile'] = 'preserve'
+        data['builds'][0]['compatibility'] = {'regions': [], 'firstInstall': {'regions': []}}
+        self.write_raw_manifest(data)
+        self.assertIn(check.FAIL, self.levels(self.findings(), 'manifest'))
+
+    def test_preserve_with_a_first_install_region_is_enough(self):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['profile'] = 'preserve'
+        data['builds'][0]['compatibility'] = {
+            'firstInstall': {'regions': [{'offset': 0x8000, 'size': 0x1000}]}}
+        self.write_raw_manifest(data)
+        self.assertEqual(self.fails(self.findings()), [])
+
+    def test_preserve_with_a_part_that_has_no_checksum_fails(self):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['profile'] = 'preserve'
+        data['builds'][0]['compatibility'] = {'regions': [{'offset': 0x8000, 'size': 0x1000}]}
+        del data['builds'][0]['parts'][0]['sha256']
+        self.write_raw_manifest(data)
+        found = self.findings()
+        self.assertIn(check.FAIL, self.levels(found, 'manifest'))
+        self.assertTrue(any('preserve' in detail for what, detail in self.fails(found)))
+
+    def test_a_build_level_profile_overrides_the_manifest(self):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['builds'][0]['profile'] = 'preserve'
+        self.write_raw_manifest(data)
+        self.assertIn(check.FAIL, self.levels(self.findings(), 'manifest'))
+
+    def test_an_unknown_profile_fails(self):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['profile'] = 'whatever'
+        self.write_raw_manifest(data)
+        self.assertIn(check.FAIL, self.levels(self.findings(), 'manifest'))
+
+    # --- keep going with what could be read --------------------------------
+
+    def test_an_overlap_is_still_reported_when_another_part_is_missing(self):
+        gone = self.firmware / 'gone.bin'
+        present = self.firmware / 'app.bin'
+        present.write_bytes(b'\x00' * 4096)
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['builds'][0]['parts'].extend([
+            {'path': 'app.bin', 'offset': 0x1800, 'size': 4096,
+             'sha256': hashlib.sha256(present.read_bytes()).hexdigest()},
+            {'path': gone.name, 'offset': 0x40000, 'size': 16, 'sha256': 'f' * 64}])
+        self.write_raw_manifest(data)
+        found = self.findings()
+        self.assertIn(check.FAIL, self.levels(found, 'missing'))
+        self.assertIn(check.FAIL, self.levels(found, 'overlap'))
+
+    # --- a base we cannot check at all --------------------------------------
+
+    def test_a_directory_that_is_not_there_is_one_usage_error(self):
+        code, text = self.cli(self.site / 'nowhere')
+        self.assertEqual(code, 2)
+        self.assertEqual(len(text.strip().splitlines()), 1, text)
+        self.assertNotIn('FAIL', text)
+
+    def test_check_site_raises_for_a_directory_that_is_not_there(self):
+        with self.assertRaises(check.UsageError):
+            check.check_site(str(self.site / 'nowhere'))
 
 
 class HelperTest(unittest.TestCase):

@@ -8,6 +8,7 @@ import contextlib
 import hashlib
 import io
 import json
+import re
 import tempfile
 import unittest
 from pathlib import Path
@@ -15,13 +16,18 @@ from pathlib import Path
 from tools import manifest
 
 
-def esp_image(chip_id=0, length=4096, magic=0xE9):
+def esp_image(chip_id=0, length=4096, magic=0xE9, header_at=0):
     """A synthetic ESP image: magic byte, then the chip id at bytes 12-13 (little endian)."""
     blob = bytearray(b'\xff' * length)
-    blob[0] = magic
-    blob[12] = chip_id & 0xFF
-    blob[13] = (chip_id >> 8) & 0xFF
+    blob[header_at] = magic
+    blob[header_at + 12] = chip_id & 0xFF
+    blob[header_at + 13] = (chip_id >> 8) & 0xFF
     return bytes(blob)
+
+
+def merged_image(chip_id=0, length=68 * 1024, header_at=0x1000):
+    """One blob written at offset 0 whose bootloader header sits deep inside it."""
+    return esp_image(chip_id, length=length, header_at=header_at)
 
 
 class GeneratorTest(unittest.TestCase):
@@ -182,6 +188,45 @@ class GeneratorTest(unittest.TestCase):
             f'{app}@0x10000', '--chip', 'ESP32', '--name', 'D', '--version', '1', '--out', self.out)
         self.assertEqual(code, 0, text)
 
+    def test_a_merged_image_is_checked_at_the_bootloader_offset(self):
+        merged = self.firmware / 'merged.bin'
+        merged.write_bytes(merged_image(0))  # header at 0x1000, blob larger than the head sample
+        code, text = self.cli(merged, '--chip', 'ESP32', '--name', 'D', '--version', '1', '--out', self.out)
+        self.assertEqual(code, 0, text)
+
+    def test_a_merged_image_for_another_chip_exits_1(self):
+        merged = self.firmware / 'merged.bin'
+        merged.write_bytes(merged_image(9))
+        code, text = self.cli(merged, '--chip', 'ESP32', '--name', 'D', '--version', '1', '--out', self.out)
+        self.assertEqual(code, 1, text)
+        self.assertIn('ESP32-S3', text)
+
+    def test_a_deep_climb_asks_for_a_path_prefix(self):
+        deep = self.root / 'a' / 'b' / 'c' / 'd'
+        deep.mkdir(parents=True)
+        code, text = self.cli(f'{self.bin}@0x1000', '--chip', 'ESP32', '--name', 'D', '--version', '1',
+                              '--out', deep / 'demo.json')
+        self.assertEqual(code, 2, text)
+        self.assertIn('--path-prefix', text)
+        self.assertFalse((deep / 'demo.json').exists())
+
+    def test_two_levels_up_is_still_written_without_a_prefix(self):
+        deep = self.root / 'a' / 'b'
+        deep.mkdir(parents=True)
+        out = deep / 'demo.json'
+        code, text = self.cli(f'{self.bin}@0x1000', '--chip', 'ESP32', '--name', 'D', '--version', '1',
+                              '--out', out)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(json.loads(out.read_text('utf-8'))['builds'][0]['parts'][0]['path'],
+                         '../../firmware/demo.bin')
+
+    def test_a_deep_climb_is_fine_once_a_prefix_says_how_the_site_serves_it(self):
+        deep = self.root / 'a' / 'b' / 'c' / 'd'
+        deep.mkdir(parents=True)
+        code, text = self.cli(f'{self.bin}@0x1000', '--chip', 'ESP32', '--name', 'D', '--version', '1',
+                              '--path-prefix', '../../os/', '--out', deep / 'demo.json')
+        self.assertEqual(code, 0, text)
+
     # --- usage errors ---------------------------------------------------
 
     def test_unknown_chip_family_is_a_usage_error(self):
@@ -246,16 +291,28 @@ class GeneratorTest(unittest.TestCase):
 class ChipTableTest(unittest.TestCase):
     """The table mirrors app/verify.js; drift between them breaks verification silently."""
 
+    ROW = re.compile(r"'([A-Za-z0-9-]+)':\s*row\(([^)]*)\)")
+
+    @staticmethod
+    def value(token):
+        token = token.strip()
+        if token == 'null':
+            return None
+        if token.startswith("'"):
+            return token.strip("'")
+        return int(token, 0)
+
     def test_table_matches_verify_js(self):
         source = (Path(__file__).resolve().parents[2] / 'app' / 'verify.js').read_text('utf-8')
-        for family, chip in manifest.CHIPS.items():
-            needle = "'%s':" % family
-            self.assertIn(needle, source, family)
-        self.assertEqual(manifest.CHIPS['ESP32'].bootloader_offset, 0x1000)
-        self.assertEqual(manifest.CHIPS['ESP32'].image_chip_id, 0)
-        self.assertEqual(manifest.CHIPS['ESP32-S3'].image_chip_id, 9)
-        self.assertIsNone(manifest.CHIPS['ESP32-C61'].bootloader_offset)
-        self.assertIsNone(manifest.CHIPS['ESP8266'].image_chip_id)
+        rows = {name: [self.value(f) for f in fields.split(',')]
+                for name, fields in self.ROW.findall(source)}
+        self.assertTrue(rows, 'no chip rows found in app/verify.js')
+        self.assertEqual(set(rows), set(manifest.CHIPS), 'the two chip tables list different families')
+        for family, (offset, image_id, esptool_chip) in rows.items():
+            chip = manifest.CHIPS[family]
+            self.assertEqual(chip.bootloader_offset, offset, family)
+            self.assertEqual(chip.image_chip_id, image_id, family)
+            self.assertEqual(chip.esptool_chip, esptool_chip, family)
 
 
 if __name__ == '__main__':

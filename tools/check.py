@@ -45,11 +45,17 @@ EXIT_USAGE = 2
 USER_AGENT = 'esp32install-check/1.0'
 TIMEOUT = 30
 HEX64 = re.compile(r'^[0-9a-f]{64}$')
+BOARD_KEY = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$')
 META_TAG = re.compile(r'<meta\b[^>]*>', re.IGNORECASE)
 META_ATTR = re.compile(r'([A-Za-z-]+)\s*=\s*("[^"]*"|\'[^\']*\'|[^\s">]+)')
 VERSION = re.compile(r'^[vV]?(\d+(?:\.\d+)*)(.*)$')
 SUMS_LINE = re.compile(r'^([0-9a-fA-F]{64})\s+\*?(\S.*)$')
-REQUIRED_CSP = "default-src 'self'"
+# A merged image is one part at offset 0 whose bootloader header sits further in, so keep
+# enough of every part to reach the deepest bootloader offset any chip declares.
+HEAD_SAMPLE = 64 * 1024
+SELF = "'self'"
+# What each directive may name. Everything else in them is a finding.
+CSP_ALLOWED = {'default-src': (SELF,), 'script-src': (SELF, 'https://skad.click')}
 CATALOG = 'catalog.json'
 INDEX = 'index.html'
 VENDOR_SUMS = 'vendor/esptool-js/SHA256SUMS'
@@ -70,6 +76,10 @@ class Finding:
 # --------------------------------------------------------------------------- #
 # Reading a site, whether it is a URL or a directory
 # --------------------------------------------------------------------------- #
+
+class UsageError(Exception):
+    """The thing we were pointed at cannot be checked at all. Exit 2."""
+
 
 class SourceError(Exception):
     """Something could not be read. `what` becomes the token of the finding."""
@@ -165,6 +175,8 @@ class DirSource:
 
     def __init__(self, base: Path) -> None:
         self.base = Path(base).resolve()
+        if not self.base.is_dir():
+            raise UsageError('%s is not a directory' % base)
 
     def root(self) -> Path:
         return self.base
@@ -256,6 +268,38 @@ def meta_attributes(tag: str) -> Dict[str, str]:
     return found
 
 
+def csp_directives(policy: str) -> Dict[str, List[str]]:
+    """The policy as {directive: sources}. The browser keeps the first of a repeated directive."""
+    found: Dict[str, List[str]] = {}
+    for clause in policy.split(';'):
+        tokens = clause.split()
+        if tokens:
+            found.setdefault(tokens[0].lower(), tokens[1:])
+    return found
+
+
+def csp_problem(policy: str) -> Optional[str]:
+    """Why this policy does not lock the page down, or None if it does.
+
+    default-src must be exactly 'self'. script-src, if present, may name only 'self' and the
+    download counter at https://skad.click. Anything else is a way for another origin's code
+    to reach a page that is about to write to a device over USB.
+    """
+    directives = csp_directives(policy)
+    if 'default-src' not in directives:
+        return 'no default-src'
+    for directive, allowed in CSP_ALLOWED.items():
+        if directive not in directives:
+            continue
+        sources = directives[directive]
+        extra = [s for s in sources if s not in allowed]
+        if extra:
+            return '%s also allows %s' % (directive, ' '.join(extra))
+        if SELF not in sources:
+            return '%s does not allow %s' % (directive, SELF)
+    return None
+
+
 def check_index(source: Source) -> List[Finding]:
     ref = source.join(source.root(), INDEX)
     fetched, problems = read_or_report(source, ref, INDEX)
@@ -266,9 +310,11 @@ def check_index(source: Source) -> List[Finding]:
                 if meta_attributes(tag).get('http-equiv', '').lower() == 'content-security-policy']
     if not policies:
         return [Finding(FAIL, 'csp', '%s has no Content-Security-Policy meta tag' % INDEX)]
-    if not any(REQUIRED_CSP in policy for policy in policies):
-        return [Finding(FAIL, 'csp', "%s does not set %s" % (INDEX, REQUIRED_CSP))]
-    return [Finding(OK, 'csp', '%s pins %s' % (INDEX, REQUIRED_CSP))]
+    for policy in policies:
+        problem = csp_problem(policy)
+        if problem is not None:
+            return [Finding(FAIL, 'csp', '%s: %s' % (INDEX, problem))]
+    return [Finding(OK, 'csp', "%s pins default-src to %s" % (INDEX, SELF))]
 
 
 def check_vendor(source: Source) -> List[Finding]:
@@ -347,13 +393,37 @@ def check_part(source: Source, manifest_ref: Any, part: Any,
     else:
         findings.append(Finding(FAIL, 'sha256', '%s: %s declares a malformed checksum' % (board, path)))
 
-    return findings, {'offset': offset, 'size': size, 'head': fetched.data[:64], 'path': path}
+    return findings, {'offset': offset, 'size': size, 'head': fetched.data[:HEAD_SAMPLE], 'path': path}
 
 
-def check_build(source: Source, manifest_ref: Any, build: Any, index: int) -> List[Finding]:
-    if not isinstance(build, dict):
-        return [Finding(FAIL, 'manifest', 'build %d is not an object' % (index + 1))]
-    board = str(build.get('boardKey') or build.get('board') or 'build-%d' % (index + 1))
+def preserve_problems(build: Dict[str, Any], parts: Sequence[Any], board: str) -> List[Finding]:
+    """What the page refuses about a preserve build: it has to know what it is keeping.
+
+    Without a region to compare, the page cannot tell whether the flash it is about to preserve is
+    ours at all; without a size and a checksum per part it cannot tell what it just wrote.
+    """
+    findings: List[Finding] = []
+    compat = build.get('compatibility')
+    compat = compat if isinstance(compat, dict) else {}
+    first = compat.get('firstInstall')
+    first = first if isinstance(first, dict) else {}
+    regions = [r for key in (compat.get('regions'), first.get('regions'))
+               if isinstance(key, list) for r in key]
+    if not regions:
+        findings.append(Finding(FAIL, 'manifest', '%s: the preserve profile needs compatibility with at '
+                                'least one region, in regions or firstInstall.regions' % board))
+    for part in parts:
+        if not isinstance(part, dict):
+            continue
+        absent = [key for key in ('size', 'sha256') if part.get(key) is None]
+        if absent:
+            findings.append(Finding(FAIL, 'manifest', '%s: %s declares no %s; the preserve profile needs both'
+                                    % (board, part.get('path', 'a part'), ' or '.join(absent))))
+    return findings
+
+
+def check_build(source: Source, manifest_ref: Any, build: Dict[str, Any], board: str,
+                profile: str) -> List[Finding]:
     family = build.get('chipFamily')
     findings: List[Finding] = []
     if family not in CHIPS:
@@ -364,13 +434,16 @@ def check_build(source: Source, manifest_ref: Any, build: Any, index: int) -> Li
     if not isinstance(parts, list) or not parts:
         return findings + [Finding(FAIL, 'manifest', '%s: no parts' % board)]
 
+    if profile == 'preserve':
+        findings.extend(preserve_problems(build, parts, board))
+
     measured: List[Dict[str, Any]] = []
     for part in parts:
         part_findings, info = check_part(source, manifest_ref, part, board)
         findings.extend(part_findings)
         if info['offset'] is not None:
             measured.append(info)
-    if len(measured) != len(parts):
+    if not measured:
         return findings
 
     spans = [(m['offset'], m['size']) for m in measured]
@@ -384,7 +457,7 @@ def check_build(source: Source, manifest_ref: Any, build: Any, index: int) -> Li
         findings.append(Finding(OK, 'layout', '%s: %d part%s, no overlap'
                                 % (board, len(spans), '' if len(spans) == 1 else 's')))
 
-    if family is not None:
+    if family is not None and len(measured) == len(parts):
         boot = CHIPS[family].bootloader_offset
         if boot is None:
             findings.append(Finding(OK, 'chip', '%s: %s declares no bootloader offset, header not checked'
@@ -424,12 +497,40 @@ def check_manifest(source: Source, ref: Any, subject: str) -> List[Finding]:
         value = data.get(key)
         if not (isinstance(value, (str, int, float)) and str(value).strip()):
             findings.append(Finding(FAIL, 'manifest', '%s has no %s' % (subject, key)))
+    profile = data.get('profile', 'factory')
+    if profile not in ('factory', 'preserve'):
+        findings.append(Finding(FAIL, 'manifest', '%s declares profile %r; the page accepts '
+                                'factory and preserve' % (subject, profile)))
     builds = data.get('builds')
     if not isinstance(builds, list) or not builds:
         return findings + [Finding(FAIL, 'manifest', '%s has no builds' % subject)]
+
+    seen = set()
     for index, build in enumerate(builds):
-        findings.extend(check_build(source, ref, build, index))
+        if not isinstance(build, dict):
+            findings.append(Finding(FAIL, 'manifest', '%s: build %d is not an object' % (subject, index + 1)))
+            continue
+        board, problem = board_key(build, index)
+        if problem is not None:
+            findings.append(Finding(FAIL, 'manifest', '%s: %s' % (subject, problem)))
+        if board in seen:
+            findings.append(Finding(FAIL, 'manifest', '%s: two builds share the boardKey %r; the page '
+                                    'keeps only one of them' % (subject, board)))
+        seen.add(board)
+        findings.extend(check_build(source, ref, build, board, build.get('profile', profile)))
     return findings
+
+
+def board_key(build: Dict[str, Any], index: int) -> Tuple[str, Optional[str]]:
+    """The key the page will use for this build, and why it would refuse it."""
+    raw = build.get('boardKey')
+    if raw is None:
+        return 'build-%d' % (index + 1), None
+    key = str(raw)
+    if not BOARD_KEY.match(key):
+        return key, ('boardKey %r must start with a letter or digit and hold only letters, '
+                     'digits, dot, dash or underscore' % key)
+    return key, None
 
 
 def check_release_order(system_id: str, releases: Sequence[Any]) -> List[Finding]:
@@ -486,7 +587,11 @@ def check_catalog(source: Source) -> List[Finding]:
 
 
 def check_site(base: str) -> List[Finding]:
-    """Every check, in the order a reader wants to see them."""
+    """Every check, in the order a reader wants to see them.
+
+    Raises UsageError when the base itself cannot be checked, for example a directory that is
+    not there: that is a mistake in the command, not a finding about a site.
+    """
     source = make_source(base)
     findings: List[Finding] = []
     findings.extend(check_index(source))
@@ -511,7 +616,11 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument('base', metavar='URL-OR-DIRECTORY',
                         help='https://example.com/install/ or a path to the site directory')
     args = parser.parse_args(argv)
-    findings = check_site(args.base)
+    try:
+        findings = check_site(args.base)
+    except UsageError as exc:
+        print('check.py: %s' % exc, file=sys.stderr)
+        return EXIT_USAGE
     for finding in findings:
         print(finding)
     print(summarise(findings))
