@@ -7,35 +7,51 @@ const KEY = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 
 const isInt = (v) => Number.isSafeInteger(v);
 const fail = (code, params) => { throw new InstallError(code, params); };
+const isPlainObject = (v) => typeof v === 'object' && v !== null && !Array.isArray(v);
 
-function resolveUrl(path, manifestUrl, allowOrigins) {
+function resolveUrl(path, base, allowOrigins) {
   if (typeof path !== 'string' || !path.trim()) fail('manifest.path', {});
-  const base = new URL(manifestUrl);
-  const url = new URL(path, base);
+  let url;
+  try {
+    url = new URL(path, base);
+  } catch {
+    fail('manifest.path', {});
+  }
   if (url.protocol !== 'https:' && url.protocol !== 'http:') fail('manifest.origin', { origin: url.origin });
   if (url.origin !== base.origin && !allowOrigins.includes(url.origin)) fail('manifest.origin', { origin: url.origin });
+  url.username = '';
+  url.password = '';
   return url.href;
 }
 
-function normalizeCompatibility(raw, boardKey) {
-  if (raw == null) return undefined;
-  if (typeof raw !== 'object') fail('manifest.compatibility', { boardKey });
+function normalizeCompatibility(raw, boardKey, profile) {
+  if (raw == null) {
+    if (profile === 'preserve') fail('manifest.compatibility', { boardKey });
+    return undefined;
+  }
+  if (!isPlainObject(raw)) fail('manifest.compatibility', { boardKey });
   const region = (r) => {
-    if (!r || !isInt(r.offset) || r.offset < 0 || !isInt(r.size) || r.size <= 0) fail('manifest.compatibility', { boardKey });
+    if (!isPlainObject(r) || !isInt(r.offset) || r.offset < 0 || !isInt(r.size) || r.size <= 0) fail('manifest.compatibility', { boardKey });
     if (r.sha256 !== undefined && !HEX64.test(String(r.sha256).toLowerCase())) fail('manifest.compatibility', { boardKey });
     return { offset: r.offset, size: r.size, ...(r.sha256 ? { sha256: String(r.sha256).toLowerCase() } : {}) };
   };
   const list = (v) => (Array.isArray(v) ? v.map(region) : []);
-  return {
+  const tableOffset = raw.update?.tableOffset;
+  if (tableOffset !== undefined && (!isInt(tableOffset) || tableOffset < 0)) fail('manifest.compatibility', { boardKey });
+  const out = {
     regions: list(raw.regions),
     firstInstall: { regions: list(raw.firstInstall?.regions), empty: list(raw.firstInstall?.empty) },
-    update: { tableOffset: isInt(raw.update?.tableOffset) ? raw.update.tableOffset : undefined },
+    update: { tableOffset },
   };
+  if (profile === 'preserve' && out.regions.length + out.firstInstall.regions.length === 0) {
+    fail('manifest.compatibility', { boardKey });
+  }
+  return out;
 }
 
-function normalizePart(p, i, boardKey, manifestUrl, allowOrigins, profile) {
+function normalizePart(p, i, boardKey, base, allowOrigins, profile) {
   if (!p || typeof p !== 'object') fail('manifest.part', { boardKey, index: i + 1 });
-  const url = resolveUrl(p.path, manifestUrl, allowOrigins);
+  const url = resolveUrl(p.path, base, allowOrigins);
   if (!isInt(p.offset) || p.offset < 0) fail('manifest.offset', { boardKey, index: i + 1 });
   const part = { path: p.path, url, offset: p.offset };
   if (p.size !== undefined) {
@@ -53,7 +69,7 @@ function normalizePart(p, i, boardKey, manifestUrl, allowOrigins, profile) {
   return part;
 }
 
-function normalizeBuild(b, i, manifest, manifestUrl, allowOrigins) {
+function normalizeBuild(b, i, manifest, base, allowOrigins) {
   if (!b || typeof b !== 'object') fail('manifest.build', { index: i + 1 });
   const boardKey = b.boardKey === undefined ? `build-${i + 1}` : String(b.boardKey);
   if (!KEY.test(boardKey)) fail('manifest.boardKey', { index: i + 1 });
@@ -70,7 +86,7 @@ function normalizeBuild(b, i, manifest, manifestUrl, allowOrigins) {
   const strList = (v, code) => {
     if (v === undefined || v === null) return [];
     if (!Array.isArray(v) || !v.every((s) => typeof s === 'string')) fail(code, { boardKey });
-    return v;
+    return [...v];
   };
   if (!Array.isArray(b.parts) || b.parts.length === 0) fail('manifest.noParts', { boardKey });
   return {
@@ -84,8 +100,8 @@ function normalizeBuild(b, i, manifest, manifestUrl, allowOrigins) {
     featuresAll: strList(b.featuresAll, 'manifest.filters'),
     profile,
     eraseAll,
-    compatibility: normalizeCompatibility(b.compatibility, boardKey),
-    parts: b.parts.map((p, j) => normalizePart(p, j, boardKey, manifestUrl, allowOrigins, profile)),
+    compatibility: normalizeCompatibility(b.compatibility, boardKey, profile),
+    parts: b.parts.map((p, j) => normalizePart(p, j, boardKey, base, allowOrigins, profile)),
   };
 }
 
@@ -94,15 +110,22 @@ function normalizeBuild(b, i, manifest, manifestUrl, allowOrigins) {
  * and returns one normalized shape. Throws InstallError with code `manifest.*`.
  */
 export function normalizeManifest(raw, manifestUrl, policy = {}) {
-  const allowOrigins = policy.allowOrigins ?? [];
+  const allowOrigins = Array.isArray(policy.allowOrigins) ? policy.allowOrigins.filter((o) => typeof o === 'string') : [];
+  let base;
+  try {
+    base = new URL(manifestUrl);
+  } catch {
+    fail('manifest.url', { url: String(manifestUrl) });
+  }
   if (!raw || typeof raw !== 'object' || Array.isArray(raw)) fail('manifest.notObject', {});
   const schema = raw.schema === undefined ? 1 : raw.schema;
   if (schema !== 1 && schema !== 2) fail('manifest.schema', { schema: String(schema) });
   if (typeof raw.name !== 'string' || !raw.name.trim()) fail('manifest.name', {});
-  if (typeof raw.version !== 'string' || !raw.version.trim()) fail('manifest.version', {});
+  const version = typeof raw.version === 'number' && Number.isFinite(raw.version) ? String(raw.version) : raw.version;
+  if (typeof version !== 'string' || !version.trim()) fail('manifest.version', {});
   if (!Array.isArray(raw.builds) || raw.builds.length === 0) fail('manifest.noBuilds', {});
   const manifest = {
-    name: raw.name, version: raw.version, schema,
+    name: raw.name, version, schema,
     profile: raw.profile ?? 'factory',
     promptErase: Boolean(raw.new_install_prompt_erase),
     eraseAll: Boolean(raw.eraseAll),
@@ -111,7 +134,7 @@ export function normalizeManifest(raw, manifestUrl, policy = {}) {
   if (manifest.profile !== 'factory' && manifest.profile !== 'preserve') fail('manifest.profile', { boardKey: '*' });
   const seen = new Set();
   manifest.builds = raw.builds.map((b, i) => {
-    const nb = normalizeBuild(b, i, manifest, manifestUrl, allowOrigins);
+    const nb = normalizeBuild(b, i, manifest, base, allowOrigins);
     if (seen.has(nb.boardKey)) fail('manifest.duplicateBoardKey', { boardKey: nb.boardKey });
     seen.add(nb.boardKey);
     return nb;
