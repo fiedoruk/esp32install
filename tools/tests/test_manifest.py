@@ -241,6 +241,9 @@ class GeneratorTest(unittest.TestCase):
     def test_a_bad_board_key_is_a_usage_error(self):
         self.assertEqual(self.generate('--board-key', 'no spaces')[0], 2)
 
+    def test_a_board_key_with_a_trailing_newline_is_a_usage_error(self):
+        self.assertEqual(self.generate('--board-key', 'core2\n')[0], 2)
+
     def test_a_malformed_usb_id_is_a_usage_error(self):
         self.assertEqual(self.generate('--usb', '1a86')[0], 2)
 
@@ -313,6 +316,16 @@ class ChipTableTest(unittest.TestCase):
             self.assertEqual(chip.bootloader_offset, offset, family)
             self.assertEqual(chip.image_chip_id, image_id, family)
             self.assertEqual(chip.esptool_chip, esptool_chip, family)
+
+    def test_the_head_sample_reaches_every_bootloader_header(self):
+        """Both tools keep this much of a part; it has to clear the deepest header in the table."""
+        offsets = [chip.bootloader_offset for chip in manifest.CHIPS.values()
+                   if chip.bootloader_offset is not None]
+        self.assertGreater(manifest.HEAD_SAMPLE, max(offsets) + manifest.ESP_IMAGE_HEADER_BYTES)
+        for family, chip in manifest.CHIPS.items():
+            if chip.bootloader_offset is not None:
+                self.assertGreaterEqual(manifest.HEAD_SAMPLE,
+                                        chip.bootloader_offset + manifest.ESP_IMAGE_HEADER_BYTES, family)
 
 
 if __name__ == '__main__':

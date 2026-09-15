@@ -36,8 +36,12 @@ EXIT_USAGE = 2
 
 ESP_IMAGE_MAGIC = 0xE9
 ESP_IMAGE_HEADER_BYTES = 24
-HEX64 = re.compile(r'^[0-9a-fA-F]{64}$')
-BOARD_KEY = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$')
+# How much of each part both tools keep in order to find an image header. A merged image is one
+# part at offset 0 whose header sits at the chip's bootloader offset, so this has to clear the
+# deepest offset in CHIPS plus a header; a test asserts that it does.
+HEAD_SAMPLE = 64 * 1024
+HEX64 = re.compile(r'[0-9a-fA-F]{64}')
+BOARD_KEY = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}')
 MAX_FLASH_MB = 1024
 READ_CHUNK = 1 << 20
 
@@ -260,7 +264,7 @@ def validate_options(opts: Options) -> None:
         raise UsageError('--name must not be empty')
     if not str(opts.version).strip():
         raise UsageError('--version must not be empty')
-    if opts.board_key is not None and not BOARD_KEY.match(opts.board_key):
+    if opts.board_key is not None and not BOARD_KEY.fullmatch(opts.board_key):
         raise UsageError('--board-key %r must be letters, digits, dot, dash or underscore' % opts.board_key)
     if opts.flash_mb is not None and not 1 <= opts.flash_mb <= MAX_FLASH_MB:
         raise UsageError('--flash-mb must be between 1 and %d' % MAX_FLASH_MB)
@@ -272,7 +276,7 @@ def validate_options(opts: Options) -> None:
     for region in list(opts.compat_regions) + list(opts.first_regions) + list(opts.first_empty):
         if region.offset < 0 or region.size <= 0:
             raise UsageError('a region needs offset >= 0 and size > 0')
-        if region.sha256 is not None and not HEX64.match(region.sha256):
+        if region.sha256 is not None and not HEX64.fullmatch(region.sha256):
             raise UsageError('a region checksum must be 64 hexadecimal characters')
     if opts.update_table is not None and opts.update_table < 0:
         raise UsageError('--update-table must not be negative')
@@ -293,7 +297,7 @@ def measure(parts: Sequence[Part]) -> List[Dict[str, Any]]:
         if size == 0:
             raise ManifestError('file is empty: %s' % part.file)
         with part.file.open('rb') as handle:
-            head = handle.read(64 * 1024)
+            head = handle.read(HEAD_SAMPLE)
         measured.append({
             'file': part.file,
             'offset': part.offset,
@@ -410,7 +414,7 @@ def region_argument(text: str, with_checksum: bool = True) -> Region:
     if offset < 0 or size <= 0:
         raise argparse.ArgumentTypeError('%r needs offset >= 0 and size > 0' % text)
     digest = fields[2].lower() if len(fields) == 3 else None
-    if digest is not None and not HEX64.match(digest):
+    if digest is not None and not HEX64.fullmatch(digest):
         raise argparse.ArgumentTypeError('%r: the checksum must be 64 hexadecimal characters' % text)
     return Region(offset, size, digest)
 
@@ -440,7 +444,7 @@ def number_argument(text: str) -> int:
 
 
 def board_key_argument(text: str) -> str:
-    if not BOARD_KEY.match(text):
+    if not BOARD_KEY.fullmatch(text):
         raise argparse.ArgumentTypeError(
             '%r must start with a letter or digit and hold only letters, digits,'
             ' dot, dash or underscore' % text)

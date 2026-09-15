@@ -302,6 +302,44 @@ class ShapeTest(SiteFixture):
         self.write_index("script-src 'self'")
         self.assertIn(check.FAIL, self.levels(self.findings(), 'csp'))
 
+    def test_a_minimal_correct_policy_passes(self):
+        self.write_index("default-src 'self'; script-src 'self'")
+        found = self.findings()
+        self.assertEqual(self.fails(found), [])
+        self.assertIn(check.OK, self.levels(found, 'csp'))
+
+    def test_the_quotes_inside_the_attribute_survive_parsing(self):
+        self.write_index("default-src 'self'")
+        tag = '<meta http-equiv="Content-Security-Policy" content="default-src \'self\'">'
+        self.assertEqual(check.meta_attributes(tag)['content'], "default-src 'self'")
+        self.assertEqual(self.levels(self.findings(), 'csp'), [check.OK])
+
+    def test_the_other_fetch_directives_are_checked_too(self):
+        for policy, ok in (("default-src 'self'; connect-src 'self' https://skad.click", True),
+                           ("default-src 'self'; connect-src 'self' https://evil.example", False),
+                           ("default-src 'self'; script-src-elem 'self' https://skad.click", True),
+                           ("default-src 'self'; script-src-elem 'self' 'unsafe-inline'", False),
+                           ("default-src 'self'; style-src 'self'", True),
+                           ("default-src 'self'; style-src 'self' https://skad.click", False)):
+            with self.subTest(policy=policy):
+                self.write_index(policy)
+                levels = self.levels(self.findings(), 'csp')
+                self.assertEqual(levels, [check.OK] if ok else [check.FAIL])
+
+    def test_only_the_first_policy_has_to_carry_default_src(self):
+        head = ('<meta http-equiv="Content-Security-Policy" content="default-src \'self\'">'
+                '<meta http-equiv="Content-Security-Policy" content="script-src \'self\'">')
+        (self.site / 'index.html').write_text('<!doctype html><html><head>%s</head></html>' % head,
+                                              encoding='utf-8')
+        self.assertEqual(self.levels(self.findings(), 'csp'), [check.OK])
+
+    def test_a_later_policy_that_widens_a_directive_fails(self):
+        head = ('<meta http-equiv="Content-Security-Policy" content="default-src \'self\'">'
+                '<meta http-equiv="Content-Security-Policy" content="script-src * \'self\'">')
+        (self.site / 'index.html').write_text('<!doctype html><html><head>%s</head></html>' % head,
+                                              encoding='utf-8')
+        self.assertIn(check.FAIL, self.levels(self.findings(), 'csp'))
+
     # --- shapes the page refuses ------------------------------------------
 
     def test_a_malformed_board_key_fails(self):
@@ -367,6 +405,22 @@ class ShapeTest(SiteFixture):
         self.write_raw_manifest(data)
         self.assertIn(check.FAIL, self.levels(self.findings(), 'manifest'))
 
+    def test_an_unknown_profile_on_a_build_fails(self):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['builds'][0]['profile'] = 'whatever'
+        self.write_raw_manifest(data)
+        found = self.findings()
+        self.assertIn(check.FAIL, self.levels(found, 'manifest'))
+        self.assertTrue(any('whatever' in detail for what, detail in self.fails(found)))
+
+    def test_a_board_key_with_a_trailing_newline_fails(self):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['builds'][0]['boardKey'] = 'core2\n'
+        self.write_raw_manifest(data)
+        found = self.findings()
+        self.assertIn(check.FAIL, self.levels(found, 'manifest'))
+        self.assertTrue(any('boardKey' in detail for what, detail in self.fails(found)))
+
     def test_an_unknown_profile_fails(self):
         data = json.loads(self.manifest_path.read_text('utf-8'))
         data['profile'] = 'whatever'
@@ -427,6 +481,12 @@ class HelperTest(unittest.TestCase):
         with self.assertRaises(check.CrossOriginRedirect):
             handler.redirect_request(request, None, 302, 'Found', {}, 'https://evil.example/a')
 
+    def test_unquote_drops_only_the_outer_delimiter(self):
+        self.assertEqual(check.unquote('"default-src \'self\'"'), "default-src 'self'")
+        self.assertEqual(check.unquote("'width=device-width'"), 'width=device-width')
+        self.assertEqual(check.unquote('bare'), 'bare')
+        self.assertEqual(check.unquote('"'), '"')
+
     def test_version_comparison(self):
         self.assertTrue(check.newer('1.0.0', '0.9.9'))
         self.assertTrue(check.newer('1.0.0', '1.0.0-rc1'))
@@ -444,6 +504,11 @@ class ShippedDemoTest(unittest.TestCase):
         fails = [(f.what, f.detail) for f in found if f.level == check.FAIL]
         self.assertEqual(fails, [])
         self.assertIn(check.OK, [f.level for f in found if f.what == 'sha256'])
+
+    def test_the_shipped_policy_is_accepted(self):
+        """The product's own index.html, not a fixture: the parser must accept what we ship."""
+        found = check.check_site(str(REPO))
+        self.assertEqual([f.level for f in found if f.what == 'csp'], [check.OK])
 
 
 if __name__ == '__main__':

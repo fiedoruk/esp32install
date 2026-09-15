@@ -31,9 +31,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 if __package__:
-    from .manifest import CHIPS, boot_image_problem, covering, overlaps
+    from .manifest import CHIPS, HEAD_SAMPLE, boot_image_problem, covering, overlaps
 else:  # run as a script: tools/ is already on sys.path
-    from manifest import CHIPS, boot_image_problem, covering, overlaps
+    from manifest import CHIPS, HEAD_SAMPLE, boot_image_problem, covering, overlaps
 
 OK = 'OK'
 WARN = 'WARN'
@@ -44,18 +44,23 @@ EXIT_USAGE = 2
 
 USER_AGENT = 'esp32install-check/1.0'
 TIMEOUT = 30
-HEX64 = re.compile(r'^[0-9a-f]{64}$')
-BOARD_KEY = re.compile(r'^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$')
+HEX64 = re.compile(r'[0-9a-f]{64}')
+BOARD_KEY = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}')
 META_TAG = re.compile(r'<meta\b[^>]*>', re.IGNORECASE)
 META_ATTR = re.compile(r'([A-Za-z-]+)\s*=\s*("[^"]*"|\'[^\']*\'|[^\s">]+)')
 VERSION = re.compile(r'^[vV]?(\d+(?:\.\d+)*)(.*)$')
 SUMS_LINE = re.compile(r'^([0-9a-fA-F]{64})\s+\*?(\S.*)$')
-# A merged image is one part at offset 0 whose bootloader header sits further in, so keep
-# enough of every part to reach the deepest bootloader offset any chip declares.
-HEAD_SAMPLE = 64 * 1024
 SELF = "'self'"
-# What each directive may name. Everything else in them is a finding.
-CSP_ALLOWED = {'default-src': (SELF,), 'script-src': (SELF, 'https://skad.click')}
+COUNTER = 'https://skad.click'
+# What each directive may name. Everything else in them is a finding. The download counter is the
+# one third party the page is allowed to reach; styles have no reason to come from anywhere but us.
+CSP_ALLOWED = {
+    'default-src': (SELF,),
+    'script-src': (SELF, COUNTER),
+    'script-src-elem': (SELF, COUNTER),
+    'connect-src': (SELF, COUNTER),
+    'style-src': (SELF,),
+}
 CATALOG = 'catalog.json'
 INDEX = 'index.html'
 VENDOR_SUMS = 'vendor/esptool-js/SHA256SUMS'
@@ -261,10 +266,21 @@ def read_or_report(source: Source, ref: Any, subject: str) -> Tuple[Optional[Fet
         return None, [Finding(FAIL, exc.what, '%s: %s' % (subject, exc))]
 
 
+def unquote(value: str) -> str:
+    """Drop the delimiter the attribute opened with, and only that one.
+
+    `content="default-src 'self'"` carries quotes inside its value; stripping every quote at the
+    ends turns `'self'` into `'self`, which is a different CSP source.
+    """
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in '"\'':
+        return value[1:-1]
+    return value
+
+
 def meta_attributes(tag: str) -> Dict[str, str]:
     found = {}
     for name, value in META_ATTR.findall(tag):
-        found[name.lower()] = value.strip('"\'')
+        found[name.lower()] = unquote(value)
     return found
 
 
@@ -278,7 +294,7 @@ def csp_directives(policy: str) -> Dict[str, List[str]]:
     return found
 
 
-def csp_problem(policy: str) -> Optional[str]:
+def csp_problem(policy: str, require_default: bool = True) -> Optional[str]:
     """Why this policy does not lock the page down, or None if it does.
 
     default-src must be exactly 'self'. script-src, if present, may name only 'self' and the
@@ -286,7 +302,7 @@ def csp_problem(policy: str) -> Optional[str]:
     to reach a page that is about to write to a device over USB.
     """
     directives = csp_directives(policy)
-    if 'default-src' not in directives:
+    if require_default and 'default-src' not in directives:
         return 'no default-src'
     for directive, allowed in CSP_ALLOWED.items():
         if directive not in directives:
@@ -310,8 +326,8 @@ def check_index(source: Source) -> List[Finding]:
                 if meta_attributes(tag).get('http-equiv', '').lower() == 'content-security-policy']
     if not policies:
         return [Finding(FAIL, 'csp', '%s has no Content-Security-Policy meta tag' % INDEX)]
-    for policy in policies:
-        problem = csp_problem(policy)
+    for index, policy in enumerate(policies):
+        problem = csp_problem(policy, require_default=index == 0)
         if problem is not None:
             return [Finding(FAIL, 'csp', '%s: %s' % (INDEX, problem))]
     return [Finding(OK, 'csp', "%s pins default-src to %s" % (INDEX, SELF))]
@@ -382,7 +398,7 @@ def check_part(source: Source, manifest_ref: Any, part: Any,
 
     digest = hashlib.sha256(fetched.data).hexdigest()
     declared_sum = part.get('sha256')
-    if isinstance(declared_sum, str) and HEX64.match(declared_sum.lower()):
+    if isinstance(declared_sum, str) and HEX64.fullmatch(declared_sum.lower()):
         if digest != declared_sum.lower():
             findings.append(Finding(FAIL, 'sha256', '%s: %s is %s, manifest says %s'
                                     % (board, path, digest, declared_sum.lower())))
@@ -517,7 +533,12 @@ def check_manifest(source: Source, ref: Any, subject: str) -> List[Finding]:
             findings.append(Finding(FAIL, 'manifest', '%s: two builds share the boardKey %r; the page '
                                     'keeps only one of them' % (subject, board)))
         seen.add(board)
-        findings.extend(check_build(source, ref, build, board, build.get('profile', profile)))
+        build_profile = build.get('profile', profile)
+        if build_profile not in ('factory', 'preserve'):
+            findings.append(Finding(FAIL, 'manifest', '%s: %s declares profile %r; the page accepts '
+                                    'factory and preserve' % (subject, board, build_profile)))
+            build_profile = profile
+        findings.extend(check_build(source, ref, build, board, build_profile))
     return findings
 
 
@@ -527,7 +548,7 @@ def board_key(build: Dict[str, Any], index: int) -> Tuple[str, Optional[str]]:
     if raw is None:
         return 'build-%d' % (index + 1), None
     key = str(raw)
-    if not BOARD_KEY.match(key):
+    if not BOARD_KEY.fullmatch(key):
         return key, ('boardKey %r must start with a letter or digit and hold only letters, '
                      'digits, dot, dash or underscore' % key)
     return key, None
