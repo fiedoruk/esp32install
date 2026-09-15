@@ -10,7 +10,23 @@ export function detectLang({ htmlLang = '', query = '', navigatorLanguages = [],
   return ok(norm(htmlLang)) ?? ok(norm(query)) ?? navigatorLanguages.map(norm).map(ok).find(Boolean) ?? 'en';
 }
 
-const lookup = (dict, key) => key.split('.').reduce((o, k) => (o && typeof o === 'object' ? o[k] : undefined), dict);
+/**
+ * Walk the dotted key, but at every node try the rest of the key literally first: error codes are
+ * stored whole (`error` → `'manifest.url'`), so splitting on every dot alone would never find them.
+ * Anything that does not end on a non-empty string counts as missing, so a namespace object or an
+ * untranslated empty string falls through to the next dictionary.
+ */
+const lookup = (dict, key) => {
+  let node = dict;
+  const segments = key.split('.');
+  for (let i = 0; i < segments.length; i++) {
+    if (node === null || typeof node !== 'object') return undefined;
+    const rest = segments.slice(i).join('.');
+    if (rest in node) return typeof node[rest] === 'string' && node[rest].trim() ? node[rest] : undefined;
+    node = node[segments[i]];
+  }
+  return typeof node === 'string' && node.trim() ? node : undefined;
+};
 
 /**
  * `t(key, vars)` returns plain text: `{name}` is replaced with the value as text, never as markup,

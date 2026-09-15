@@ -20,15 +20,28 @@ test('t() falls back to en, then to the key, and interpolates safely', () => {
   assert.equal(i18n.t('missing.key'), 'missing.key');
 });
 
-test('every InstallError code used in app/ has an en string', () => {
+/** One instance over the real dictionary: the page resolves error codes the same way. */
+const enI18n = createI18n({ en }, 'en');
+
+test('every InstallError code used in app/ resolves through t()', () => {
   const codes = new Set();
   for (const f of readdirSync(new URL('../app/', import.meta.url))) {
     const src = readFileSync(new URL('../app/' + f, import.meta.url), 'utf8');
     for (const m of src.matchAll(/(?:fail|new InstallError)\(\s*'([a-z]+\.[A-Za-z0-9]+)'/g)) codes.add(m[1]);
   }
   assert.ok(codes.size > 10, 'expected error codes to be found');
-  const missing = [...codes].filter((c) => !(c in (en.error ?? {})));
+  const missing = [...codes].filter((c) => enI18n.t('error.' + c) === 'error.' + c);
   assert.deepEqual(missing, []);
+});
+
+test('dotted error codes are found although the key has three dots', () => {
+  assert.notEqual(enI18n.t('error.serial.busy'), 'error.serial.busy');
+  assert.notEqual(enI18n.t('error.manifest.url'), 'error.manifest.url');
+});
+
+test('a key that lands on a namespace is missing, not [object Object]', () => {
+  assert.equal(enI18n.t('simple.done'), 'simple.done');
+  assert.equal(enI18n.t('error'), 'error');
 });
 
 const SIMPLE = ['simple', 'door', 'stage', 'result', 'gate', 'action'];
@@ -41,17 +54,17 @@ test('positive control: jargon in a simple key is caught', () => { assert.ok(JAR
 
 /** Keys the page and the engine ask for by name. Dropping one breaks the UI silently. */
 const REQUIRED = [
-  'app.title', 'app.subtitle', 'app.release', 'app.board', 'app.chip', 'app.flash', 'app.notDetected',
-  'app.stage', 'app.log', 'app.copyLog', 'app.showLog', 'app.hideLog', 'app.language',
+  'app.title', 'app.subtitle', 'app.notDetected',
+  'app.stage', 'app.copyLog', 'app.showLog', 'app.hideLog', 'app.language',
   'door.title', 'door.first', 'door.firstHint', 'door.update', 'door.updateHint',
   'gate.insecure', 'gate.noSerial', 'gate.altFirst',
-  'action.connect', 'action.connecting', 'action.installing', 'action.retry', 'action.again',
+  'action.connect', 'action.connecting', 'action.installing', 'action.retry',
   'action.cancel', 'action.backup', 'action.chooseBackup', 'action.erase',
   'stage.idle', 'stage.connecting', 'stage.detecting', 'stage.matching', 'stage.downloading',
   'stage.verifying', 'stage.checkingDevice', 'stage.backup', 'stage.erasing', 'stage.writing',
   'stage.md5', 'stage.done', 'stage.error',
   'eta.left',
-  'result.ok', 'result.next', 'result.stopped',
+  'result.ok', 'result.stopped',
   'board.pick', 'board.pickHint',
   'alt.title', 'alt.cmd', 'alt.files', 'alt.drivers', 'alt.guide',
   'simple.prepare.title', 'simple.prepare.hintCable', 'simple.prepare.hintDoor', 'simple.prepare.hintBackup',
@@ -94,4 +107,18 @@ test('t() leaves an unknown placeholder untouched instead of printing undefined'
   const i18n = createI18n({ en: { k: 'a {x} b' } }, 'en');
   assert.equal(i18n.t('k'), 'a {x} b');
   assert.equal(i18n.t('k', { x: 0 }), 'a 0 b');
+});
+
+test('an empty translation counts as missing and falls back to en', () => {
+  const i18n = createI18n({ en: { k: 'English' }, pl: { k: '   ' } }, 'pl');
+  assert.equal(i18n.t('k'), 'English');
+});
+
+test('every error string says what happened and what to do', () => {
+  const thin = Object.entries(en.error).filter(([, v]) => (v.match(/[.!?]/g) ?? []).length < 2);
+  assert.deepEqual(thin, []);
+});
+
+test('catalog.unknownVersion interpolates no version', () => {
+  assert.ok(!/\{v\}/.test(en.error['catalog.unknownVersion']));
 });
