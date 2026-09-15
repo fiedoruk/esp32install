@@ -198,11 +198,21 @@ test('an unknown error thrown before the write is reported as engine.unexpected 
   assert.ok(!called(fake, 'writeFlash'));
 });
 
-test('write progress uses the per-part total from the callback', async () => {
+test('write progress scales compressed byte counts to the uncompressed image', async () => {
   const { inst, manifest, events } = await setup();
   await inst.run({ manifest, mode: 'first', options: {} });
   const w = events.filter((e) => e.type === 'stage' && e.stage === 'writing');
-  assert.ok(w.length >= 1);
-  assert.equal(w.at(-1).params.partTotal, 0x3000);
-  assert.equal(w.at(-1).percent, 90);
+  assert.ok(w.length >= 2, 'fake reports at least two progress steps');
+  // The fake reports totals of data.length / 3 (compressed); the ratio must still reach the end.
+  assert.ok(w.at(-1).params.partTotal < 0x3000);
+  assert.ok(w.at(-1).percent >= 89, `last writing percent ${w.at(-1).percent}`);
+  for (const e of w) assert.ok(e.percent <= 90 && e.percent >= 40, `percent out of range: ${e.percent}`);
+  assert.ok(w[0].percent < w.at(-1).percent, 'progress is monotonic across steps');
+});
+
+test('a hand-built Response with url === "" passes the origin check', async () => {
+  const img = image(0);
+  const { inst, manifest } = await setup({ img, fetch: async () => ({ ok: true, status: 200, url: '', arrayBuffer: async () => img.buffer.slice(0) }) });
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
 });

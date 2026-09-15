@@ -53,7 +53,7 @@ export async function fetchBytes(fetchFn, url, max) {
     throw new InstallError('manifest.fetch', { status: 0, url }, err);
   }
   if (!res.ok) throw new InstallError('manifest.fetch', { status: res.status, url });
-  const origin = new URL(res.url ?? url).origin;
+  const origin = new URL(res.url || url).origin; // a hand-built Response has url === ''
   if (origin !== new URL(url).origin) throw new InstallError('manifest.origin', { origin });
   let buf;
   try {
@@ -160,10 +160,13 @@ export function createInstaller(deps) {
       fileArray: parts.map((p) => ({ data: p.data, address: p.offset })),
       flashMode: 'keep', flashFreq: 'keep', flashSize: 'keep', eraseAll: false, compress: true,
       calculateMD5Hash: (image) => md5Hex(image),
+      // esptool-js reports `written`/`partTotal` in compressed bytes; scale the per-part
+      // fraction to the uncompressed size so the overall ratio stays in uncompressed bytes.
       reportProgress: (i, written, partTotal) => {
         startedAt ||= Date.now();
         const before = parts.slice(0, i).reduce((n, p) => n + p.data.length, 0);
-        done = before + Math.min(written, partTotal);
+        const frac = partTotal > 0 ? Math.min(written / partTotal, 1) : 0;
+        done = before + frac * parts[i].data.length;
         const elapsed = (Date.now() - startedAt) / 1000;
         const eta = done > 0 && elapsed > 1 ? Math.round(((total - done) * elapsed) / done) : undefined;
         stage('writing', 40 + (done / total) * 50, { n: i + 1, total: parts.length, written, partTotal }, eta);

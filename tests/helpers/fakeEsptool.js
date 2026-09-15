@@ -42,7 +42,9 @@ export function makeFakeEsptool({
       calls.push(['writeFlash', o.fileArray.map((f) => [f.address, f.data.length]), o.eraseAll, o.compress]);
       for (let i = 0; i < o.fileArray.length; i++) {
         o.calculateMD5Hash?.(o.fileArray[i].data);
-        o.reportProgress?.(i, o.fileArray[i].data.length, o.fileArray[i].data.length);
+        // Like esptool-js with compress: true, report progress in COMPRESSED bytes, in steps.
+        const compressed = Math.floor(o.fileArray[i].data.length / 3);
+        for (const w of [Math.floor(compressed / 2), compressed]) o.reportProgress?.(i, w, compressed);
         // Exact message esptool-js 0.6.1 throws (lib/esploader.js line 1453).
         if (md5Mismatch) throw new Error('MD5 of file does not match data in flash!');
       }
