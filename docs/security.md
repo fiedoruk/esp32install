@@ -1,0 +1,149 @@
+# Security model
+
+This page takes a file from the internet and writes it into the flash of a device
+in front of you. That is the most privileged thing a web page can do to hardware
+you own. This document says plainly what protects you and what does not.
+
+## What the installer trusts
+
+**The publisher.** Whoever controls the site controls the manifest, and the
+manifest names the bytes. If you install from a site, you are trusting that
+site's owner exactly as much as you would trust a downloaded `.exe`. No amount of
+checksum verification changes that: the checksum proves the file arrived intact,
+not that it is benign.
+
+**The transport, once.** HTTPS is what makes the manifest and the binaries come
+from the host you think they do. The installer requires a secure context anyway,
+because Web Serial does.
+
+**esptool-js.** The vendored library speaks the ESP bootloader protocol and does
+the writing. The version is pinned and its SHA-256 is checked by `tools/check.py`,
+so a replica can prove it is shipping the same bundle. What that bundle does once
+it runs is trusted code.
+
+**The browser.** Web Serial hands the page a port only after the person picks it
+in the browser's own dialog. The page cannot enumerate ports, cannot pick one
+silently, and gets nothing at all if the person closes the dialog.
+
+## What the installer verifies
+
+Against the release:
+
+- Every part URL resolves to the manifest's origin, or to an origin the site
+  listed in `allowOrigins`. `http:` and `https:` only. Credentials in the URL are
+  stripped.
+- The response that finally delivers the bytes is on the origin that was
+  requested, even after redirects.
+- Declared `size` and declared `sha256` must both hold. A part with no checksum
+  is hashed anyway and the hash is printed in the log, so it can be compared with
+  the release notes by hand.
+- Size limits: no empty part, 32 MiB per part, 64 MiB in total.
+
+Against the device:
+
+- The flash size comes from the JEDEC id, with no fallback to a guess.
+- Nothing may reach past the end of flash, and no two parts may overlap.
+- Whatever lands at the chip's bootloader offset must start with `0xE9` and carry
+  this chip family's image id.
+- A build is only offered when its declared chip family, flash size, USB ids,
+  chip-description substrings and feature strings match the hardware present.
+
+After writing:
+
+- esptool-js compares its own hash of each image with the MD5 read back from the
+  chip, and throws on any difference.
+- The `preserve` profile reads the MD5 back again itself, then re-reads the flash
+  header to prove that bytes outside the written parts are unchanged and that the
+  sector padding around them reads `0xff`.
+
+The `preserve` profile additionally refuses a device with secure boot or
+encrypted flash, checks the MAC address before and after every long step, demands
+that the existing flash header match the manifest's regions, and requires a
+whole-flash backup that was read twice, agreed with itself, and was handed back
+by the user from disk.
+
+## What the installer cannot verify
+
+**That the firmware is honest.** A checksum says the bytes are the bytes the
+publisher named. It says nothing about what they do. A malicious release with a
+correct checksum installs perfectly.
+
+**That the publisher is who they claim.** There is no code signing here, and no
+chain of trust beyond the TLS certificate of the site you are on.
+
+**ESP8266 images belong to this board.** ESP8266 firmware headers carry no chip
+id, so only the `0xE9` magic byte is checked.
+
+**ESP32-C61 images belong to this chip.** esptool-js 0.6.1 does not declare a
+bootloader offset for that family, so the header check is skipped entirely.
+
+**That an unversioned part is the right one.** A manifest may omit `size` and
+`sha256` outside the `preserve` profile, in which case there is nothing to
+compare against. `tools/check.py` warns about exactly that, and the `preserve`
+profile refuses it outright.
+
+**What a previous flasher left behind.** In the `factory` profile without an
+erase, anything not covered by the release stays on the chip.
+
+## Content-Security-Policy
+
+`index.html` carries a policy that keeps the page inside its own origin:
+
+```
+default-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:;
+style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none';
+frame-ancestors 'none'; form-action 'none'
+```
+
+`script-src 'self'` with no `unsafe-inline` and no `unsafe-eval` means no inline
+script and no string-to-code can run, so a manifest field that somehow reached
+the DOM cannot become script. `connect-src 'self'` is the reason `allowOrigins`
+needs a deliberate change to the page's policy as well as to the catalog if you
+move binaries off-origin. `frame-ancestors 'none'` stops another site from
+framing the installer and steering clicks at it. `form-action 'none'` and
+`base-uri 'none'` remove two classic redirection tricks. The page also sets
+`referrer: no-referrer`, so visiting an installer link does not tell the firmware
+host where you came from.
+
+`tools/check.py` fails if that meta tag is missing or if `default-src` is not
+`'self'`, which makes weakening the policy a visible act rather than a silent
+one.
+
+## No CDN
+
+Every byte the page loads comes from the same origin: the esptool-js bundle, the
+fonts, the stylesheets, the locale files. Nothing is fetched from a third party,
+so there is no script host that could be compromised into changing what gets
+written to your device, and the page keeps working on an air-gapped network.
+
+That is also why the fonts are vendored with their licences and checksums rather
+than linked.
+
+## No telemetry
+
+The product sends nothing anywhere. It has no analytics, no error reporting and
+no update check.
+
+It does call `window.__esp32installAnalytics(name, props)` when the surrounding
+site has defined that function, with `start`, `done` and `error` events carrying
+the system id, the version, the chip family and, for errors, the stage and the
+error code. The installer never defines it. A site that wants to count installs
+opts in by writing that function; a replica that does nothing sends nothing.
+
+## Backups contain your data
+
+A whole-flash backup is a copy of everything on the device. On a typical ESP32
+that includes the NVS partition, and NVS is where Wi-Fi SSIDs and passwords live,
+along with tokens, pairing keys and whatever else the firmware stored.
+
+The file never leaves your computer: it is produced in the browser and saved
+through the normal download dialog. But once it is on disk it is an unencrypted
+copy of your device's secrets.
+
+Keep it private. Do not attach it to a bug report, do not put it in a public
+repository, and do not hand it to a stranger who offers to look at your device.
+If you no longer need it, delete it.
+
+## Reporting a problem
+
+See [SECURITY.md](../SECURITY.md).
