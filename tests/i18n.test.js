@@ -1,0 +1,97 @@
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
+import { detectLang, createI18n } from '../app/i18n.js';
+
+const en = JSON.parse(readFileSync(new URL('../locales/en.json', import.meta.url), 'utf8'));
+
+test('detectLang order: html lang, ?lang, navigator, fallback en', () => {
+  const available = ['en', 'pl'];
+  assert.equal(detectLang({ htmlLang: 'pl', query: 'en', navigatorLanguages: ['de'], available }), 'pl');
+  assert.equal(detectLang({ htmlLang: '', query: 'pl', navigatorLanguages: ['de'], available }), 'pl');
+  assert.equal(detectLang({ htmlLang: '', query: '', navigatorLanguages: ['pl-PL', 'en'], available }), 'pl');
+  assert.equal(detectLang({ htmlLang: 'de', query: 'xx', navigatorLanguages: ['de-DE'], available }), 'en');
+});
+
+test('t() falls back to en, then to the key, and interpolates safely', () => {
+  const i18n = createI18n({ en: { a: { b: 'Hello {name}' }, only: 'EN only' }, pl: { a: { b: 'Cześć {name}' } } }, 'pl');
+  assert.equal(i18n.t('a.b', { name: '<b>' }), 'Cześć <b>');
+  assert.equal(i18n.t('only'), 'EN only');
+  assert.equal(i18n.t('missing.key'), 'missing.key');
+});
+
+test('every InstallError code used in app/ has an en string', () => {
+  const codes = new Set();
+  for (const f of readdirSync(new URL('../app/', import.meta.url))) {
+    const src = readFileSync(new URL('../app/' + f, import.meta.url), 'utf8');
+    for (const m of src.matchAll(/(?:fail|new InstallError)\(\s*'([a-z]+\.[A-Za-z0-9]+)'/g)) codes.add(m[1]);
+  }
+  assert.ok(codes.size > 10, 'expected error codes to be found');
+  const missing = [...codes].filter((c) => !(c in (en.error ?? {})));
+  assert.deepEqual(missing, []);
+});
+
+const SIMPLE = ['simple', 'door', 'stage', 'result', 'gate', 'action'];
+const JARGON = /\b(firmware|flash(ing|ed)?|offset|bootloader|md5|sha-?256|serial|baud|esptool|manifest|chip|partition|erase-all|binary|\.bin)\b/i;
+const flat = (o, p = '') => Object.entries(o).flatMap(([k, v]) => typeof v === 'object' ? flat(v, p + k + '.') : [[p + k, v]]);
+
+test('simple-layer strings carry no jargon', () => { const bad = flat(en).filter(([k, v]) => SIMPLE.includes(k.split('.')[0]) && JARGON.test(v)); assert.deepEqual(bad, []); });
+
+test('positive control: jargon in a simple key is caught', () => { assert.ok(JARGON.test('Flashing the firmware now')); });
+
+/** Keys the page and the engine ask for by name. Dropping one breaks the UI silently. */
+const REQUIRED = [
+  'app.title', 'app.subtitle', 'app.release', 'app.board', 'app.chip', 'app.flash', 'app.notDetected',
+  'app.stage', 'app.log', 'app.copyLog', 'app.showLog', 'app.hideLog', 'app.language',
+  'door.title', 'door.first', 'door.firstHint', 'door.update', 'door.updateHint',
+  'gate.insecure', 'gate.noSerial', 'gate.altFirst',
+  'action.connect', 'action.connecting', 'action.installing', 'action.retry', 'action.again',
+  'action.cancel', 'action.backup', 'action.chooseBackup', 'action.erase',
+  'stage.idle', 'stage.connecting', 'stage.detecting', 'stage.matching', 'stage.downloading',
+  'stage.verifying', 'stage.checkingDevice', 'stage.backup', 'stage.erasing', 'stage.writing',
+  'stage.md5', 'stage.done', 'stage.error',
+  'eta.left',
+  'result.ok', 'result.next', 'result.stopped',
+  'board.pick', 'board.pickHint',
+  'alt.title', 'alt.cmd', 'alt.files', 'alt.drivers', 'alt.guide',
+  'simple.prepare.title', 'simple.prepare.hintCable', 'simple.prepare.hintDoor', 'simple.prepare.hintBackup',
+  'simple.install.keepCable', 'simple.done.title', 'simple.done.next', 'simple.done.again', 'simple.stopped.title',
+  'tech.title', 'tech.chip', 'tech.flash', 'tech.board', 'tech.release', 'tech.checksum', 'tech.log',
+  'pick.title', 'pick.hint',
+  'erase.title', 'erase.textFirst', 'erase.textUpdate', 'erase.yes', 'erase.no',
+  'hint.open', 'hint.close',
+];
+const get = (o, k) => k.split('.').reduce((x, p) => (x && typeof x === 'object' ? x[p] : undefined), o);
+
+test('every key the page asks for exists in en.json', () => {
+  const missing = REQUIRED.filter((k) => typeof get(en, k) !== 'string' || !get(en, k).trim());
+  assert.deepEqual(missing, []);
+});
+
+/** Codes for parts of the engine that land in later tasks; the strings must already be there. */
+const FUTURE_CODES = [
+  'manifest.flashSizeMB', 'manifest.usb', 'manifest.filters', 'manifest.fetch', 'manifest.tooBig',
+  'catalog.fetch',
+  'serial.cancelled', 'serial.busy', 'serial.lost', 'serial.connect', 'serial.blocked',
+  'device.chipUnknown', 'device.flashUnknown', 'device.noMatch', 'device.changed', 'device.secured',
+  'device.layout', 'device.notEmpty',
+  'backup.mismatch', 'backup.file',
+  'flash.erase', 'flash.write', 'flash.verify',
+  'engine.load', 'engine.busy',
+];
+
+test('strings for codes the engine will throw later are already present', () => {
+  const missing = FUTURE_CODES.filter((c) => typeof en.error?.[c] !== 'string' || !en.error[c].trim());
+  assert.deepEqual(missing, []);
+});
+
+/** These two are thrown with different parameter shapes, so they must not name a parameter. */
+test('verify.empty and verify.part interpolate nothing', () => {
+  for (const c of ['verify.empty', 'verify.part']) assert.ok(!/\{/.test(en.error[c]), `${c} must not interpolate`);
+});
+
+test('t() leaves an unknown placeholder untouched instead of printing undefined', () => {
+  const i18n = createI18n({ en: { k: 'a {x} b' } }, 'en');
+  assert.equal(i18n.t('k'), 'a {x} b');
+  assert.equal(i18n.t('k', { x: 0 }), 'a 0 b');
+});
