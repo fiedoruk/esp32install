@@ -54,6 +54,13 @@ It has no entry for every possible JEDEC size code, so an unknown code yields
 falling back to the string `"4MB"` at line 1479, which is why we read the table
 directly instead.
 
+**4. `ESP8266` declares `BOOTLOADER_FLASH_OFFSET = 0x0` and no `IMAGE_CHIP_ID`.** Measured
+in the vendored bundle `vendor/esptool-js/esptool-js-0.6.1.js` by extracting the class
+whose `CHIP_NAME="ESP8266"` (2026-09-15): the offset is declared as `0`, the chip id is
+absent (the ESP8266 image header has no chip id field). `verify.js` therefore checks
+only the `0xE9` magic for ESP8266 and skips the chip id comparison. `ESP32-C61` is the
+only class in the bundle without a `BOOTLOADER_FLASH_OFFSET`.
+
 ## Consequences for `engine.js`
 
 - `fileArray[].data` is a `Uint8Array` in 0.6.1 (`lib/types/flashOptions.d.ts`),

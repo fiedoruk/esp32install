@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { CHIPS, sha256Hex, checkFetchedPart, checkLayout, checkBootImage, esptoolCommand } from '../app/verify.js';
 
 const bytes = (n, fill = 0) => new Uint8Array(n).fill(fill);
+const ABC_SHA256 = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
 
 test('chip table carries offsets and image chip ids measured from esptool-js 0.6.1', () => {
   assert.equal(CHIPS['ESP32'].bootloaderOffset, 0x1000);
@@ -14,15 +15,32 @@ test('chip table carries offsets and image chip ids measured from esptool-js 0.6
   assert.equal(CHIPS['ESP32-P4'].bootloaderOffset, 0x2000);
   assert.equal(CHIPS['ESP32-C5'].bootloaderOffset, 0x2000);
   assert.equal(CHIPS['ESP32-C61'].bootloaderOffset, null);
+  // ESP8266 class in the vendored bundle declares BOOTLOADER_FLASH_OFFSET=0 and no IMAGE_CHIP_ID.
+  assert.equal(CHIPS['ESP8266'].bootloaderOffset, 0x0);
+  assert.equal(CHIPS['ESP8266'].imageChipId, null);
+});
+
+test('chip table exposes the esptool --chip names', () => {
+  assert.equal(CHIPS['ESP32'].esptoolChip, 'esp32');
+  assert.equal(CHIPS['ESP32-S3'].esptoolChip, 'esp32s3');
+  assert.equal(CHIPS['ESP32-C3'].esptoolChip, 'esp32c3');
+  assert.equal(CHIPS['ESP32-C6'].esptoolChip, 'esp32c6');
+  assert.equal(CHIPS['ESP32-P4'].esptoolChip, 'esp32p4');
+});
+
+test('chip table rows are frozen: assignment throws in strict mode', () => {
+  assert.throws(() => { CHIPS.ESP32.bootloaderOffset = 0; }, TypeError);
+  assert.throws(() => { CHIPS['ESP32-ZZ'] = { bootloaderOffset: 0 }; }, TypeError);
+  assert.equal(CHIPS.ESP32.bootloaderOffset, 0x1000);
 });
 
 test('sha256Hex matches a known vector', async () => {
-  assert.equal(await sha256Hex(new TextEncoder().encode('abc')), 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad');
+  assert.equal(await sha256Hex(new TextEncoder().encode('abc')), ABC_SHA256);
 });
 
 test('checkFetchedPart verifies size and sha256 when declared, warns-free when not', async () => {
   const data = new TextEncoder().encode('abc');
-  const ok = await checkFetchedPart({ path: 'a', url: 'u', offset: 0, size: 3, sha256: 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad' }, data);
+  const ok = await checkFetchedPart({ path: 'a', url: 'u', offset: 0, size: 3, sha256: ABC_SHA256 }, data);
   assert.equal(ok.sha256.length, 64);
   await assert.rejects(checkFetchedPart({ path: 'a', url: 'u', offset: 0, size: 4 }, data), (e) => e.code === 'verify.size');
   await assert.rejects(checkFetchedPart({ path: 'a', url: 'u', offset: 0, sha256: 'f'.repeat(64) }, data), (e) => e.code === 'verify.sha256');
@@ -30,11 +48,33 @@ test('checkFetchedPart verifies size and sha256 when declared, warns-free when n
   await assert.rejects(checkFetchedPart({ path: 'a', url: 'u', offset: 0 }, bytes(10), { maxPart: 5 }), (e) => e.code === 'verify.tooLarge');
 });
 
+test('checkFetchedPart accepts an uppercase declared sha256', async () => {
+  const data = new TextEncoder().encode('abc');
+  const ok = await checkFetchedPart({ path: 'a', url: 'u', offset: 0, sha256: ABC_SHA256.toUpperCase() }, data);
+  assert.equal(ok.sha256, ABC_SHA256);
+});
+
 test('checkLayout rejects overlap, out-of-flash and oversized totals', () => {
   checkLayout([{ offset: 0, data: bytes(10) }, { offset: 10, data: bytes(5) }], 16);
   assert.throws(() => checkLayout([{ offset: 0, data: bytes(10) }, { offset: 9, data: bytes(5) }], 64), (e) => e.code === 'verify.overlap');
   assert.throws(() => checkLayout([{ offset: 60, data: bytes(10) }], 64), (e) => e.code === 'verify.beyondFlash');
   assert.throws(() => checkLayout([{ offset: 0, data: bytes(10) }], 64, { maxTotal: 5 }), (e) => e.code === 'verify.totalTooLarge');
+});
+
+test('checkLayout accepts a part that ends exactly at the flash size', () => {
+  checkLayout([{ offset: 54, data: bytes(10) }], 64);
+  assert.throws(() => checkLayout([{ offset: 55, data: bytes(10) }], 64), (e) => e.code === 'verify.beyondFlash');
+});
+
+test('checkLayout rejects an unusable flash size before looking at parts', () => {
+  const isFlash = (e) => e.code === 'verify.flashSize';
+  const parts = [{ offset: 0, data: bytes(4) }];
+  assert.throws(() => checkLayout(parts, undefined), isFlash);
+  assert.throws(() => checkLayout(parts, NaN), isFlash);
+  assert.throws(() => checkLayout(parts, 0), isFlash);
+  assert.throws(() => checkLayout(parts, -1), isFlash);
+  assert.throws(() => checkLayout(parts, '16'), isFlash);
+  assert.throws(() => checkLayout(parts, undefined), (e) => e.params.flashBytes === 'undefined');
 });
 
 test('checkLayout rejects a malformed part before doing any arithmetic', () => {
@@ -50,9 +90,14 @@ test('checkLayout rejects a malformed part before doing any arithmetic', () => {
   assert.throws(() => checkLayout([null], 64), isPart);
 });
 
-function imageWithHeader(chipId, magic = 0xe9) {
-  const d = bytes(0x2000, 0xff);
-  d[0x1000] = magic; d[0x1000 + 12] = chipId & 0xff; d[0x1000 + 13] = chipId >> 8;
+test('checkLayout rejects a zero-length part', () => {
+  assert.throws(() => checkLayout([{ offset: 0, data: bytes(4) }, { offset: 8, data: bytes(0) }], 64),
+    (e) => e.code === 'verify.empty' && e.params.offset === 8);
+});
+
+function imageWithHeader(chipId, magic = 0xe9, at = 0x1000) {
+  const d = bytes(at + 0x1000, 0xff);
+  d[at] = magic; d[at + 12] = chipId & 0xff; d[at + 13] = chipId >> 8;
   return d;
 }
 
@@ -69,6 +114,29 @@ test('checkBootImage validates magic and chip id at the chip bootloader offset',
   checkBootImage([{ offset: 0, data: bytes(16) }], 'ESP32-C61');
 });
 
+test('checkBootImage rejects a chip family that is not in the table', () => {
+  assert.throws(() => checkBootImage([{ offset: 0, data: bytes(64) }], 'ESP32-XX'),
+    (e) => e.code === 'verify.chipUnknown' && e.params.chipFamily === 'ESP32-XX');
+});
+
+test('checkBootImage needs a full 24-byte header at the bootloader offset', () => {
+  const header = (n) => { const d = bytes(n, 0xff); d[0] = 0xe9; d[12] = 9; d[13] = 0; return d; };
+  assert.throws(() => checkBootImage([{ offset: 0, data: header(23) }], 'ESP32-S3'), (e) => e.code === 'verify.notAnImage');
+  checkBootImage([{ offset: 0, data: header(24) }], 'ESP32-S3');
+});
+
+test('checkBootImage accepts a holder that starts exactly at the bootloader offset', () => {
+  const d = bytes(64, 0xff); d[0] = 0xe9; d[12] = 0; d[13] = 0;
+  checkBootImage([{ offset: 0x1000, data: d }], 'ESP32');
+});
+
+test('checkBootImage validates C5 and P4 at 0x2000', () => {
+  checkBootImage([{ offset: 0, data: imageWithHeader(23, 0xe9, 0x2000) }], 'ESP32-C5');
+  checkBootImage([{ offset: 0, data: imageWithHeader(18, 0xe9, 0x2000) }], 'ESP32-P4');
+  assert.throws(() => checkBootImage([{ offset: 0, data: imageWithHeader(18, 0xe9, 0x2000) }], 'ESP32-C5'),
+    (e) => e.code === 'verify.wrongChip' && e.params.found === 'ESP32-P4');
+});
+
 test('esptoolCommand renders offsets and file names in order', () => {
   const parts = [{ path: 'x/app.bin', url: 'u', offset: 0x20000 }, { path: 'x/table.bin', url: 'u', offset: 0x8000 }];
   const cmd = esptoolCommand('ESP32-S3', parts, ['app.bin', 'table.bin']);
@@ -76,4 +144,10 @@ test('esptoolCommand renders offsets and file names in order', () => {
   // Positive control: a family missing from CHIPS still renders a lowercase chip name instead of throwing.
   const unknown = esptoolCommand('ESP32-XX', [{ path: 'a.bin', url: 'u', offset: 0 }], ['a.bin']);
   assert.equal(unknown, 'python -m esptool --chip esp32xx --port PORT --baud 460800 write_flash 0x0 a.bin');
+});
+
+test('esptoolCommand rejects a file name list that does not match the parts', () => {
+  const parts = [{ path: 'a.bin', url: 'u', offset: 0 }, { path: 'b.bin', url: 'u', offset: 0x10000 }];
+  assert.throws(() => esptoolCommand('ESP32', parts, ['a.bin']), (e) => e.code === 'verify.part' && e.params.index === 1);
+  assert.throws(() => esptoolCommand('ESP32', parts, ['a.bin', 'b.bin', 'c.bin']), (e) => e.code === 'verify.part');
 });

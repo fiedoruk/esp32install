@@ -1,18 +1,19 @@
 import { InstallError } from './errors.js';
 
 /** Measured from esptool-js 0.6.1 lib/targets/*.js (2026-09-15). null = not declared by the library. */
+const row = (bootloaderOffset, imageChipId, esptoolChip) => Object.freeze({ bootloaderOffset, imageChipId, esptoolChip });
 export const CHIPS = Object.freeze({
-  'ESP8266':   { bootloaderOffset: 0x0,    imageChipId: null, esptoolChip: 'esp8266' },
-  'ESP32':     { bootloaderOffset: 0x1000, imageChipId: 0,    esptoolChip: 'esp32' },
-  'ESP32-S2':  { bootloaderOffset: 0x1000, imageChipId: 2,    esptoolChip: 'esp32s2' },
-  'ESP32-S3':  { bootloaderOffset: 0x0,    imageChipId: 9,    esptoolChip: 'esp32s3' },
-  'ESP32-C2':  { bootloaderOffset: 0x0,    imageChipId: 12,   esptoolChip: 'esp32c2' },
-  'ESP32-C3':  { bootloaderOffset: 0x0,    imageChipId: 5,    esptoolChip: 'esp32c3' },
-  'ESP32-C5':  { bootloaderOffset: 0x2000, imageChipId: 23,   esptoolChip: 'esp32c5' },
-  'ESP32-C6':  { bootloaderOffset: 0x0,    imageChipId: 13,   esptoolChip: 'esp32c6' },
-  'ESP32-C61': { bootloaderOffset: null,   imageChipId: 20,   esptoolChip: 'esp32c61' },
-  'ESP32-H2':  { bootloaderOffset: 0x0,    imageChipId: 16,   esptoolChip: 'esp32h2' },
-  'ESP32-P4':  { bootloaderOffset: 0x2000, imageChipId: 18,   esptoolChip: 'esp32p4' },
+  'ESP8266':   row(0x0, null, 'esp8266'),
+  'ESP32':     row(0x1000, 0, 'esp32'),
+  'ESP32-S2':  row(0x1000, 2, 'esp32s2'),
+  'ESP32-S3':  row(0x0, 9, 'esp32s3'),
+  'ESP32-C2':  row(0x0, 12, 'esp32c2'),
+  'ESP32-C3':  row(0x0, 5, 'esp32c3'),
+  'ESP32-C5':  row(0x2000, 23, 'esp32c5'),
+  'ESP32-C6':  row(0x0, 13, 'esp32c6'),
+  'ESP32-C61': row(null, 20, 'esp32c61'),
+  'ESP32-H2':  row(0x0, 16, 'esp32h2'),
+  'ESP32-P4':  row(0x2000, 18, 'esp32p4'),
 });
 
 const ESP_IMAGE_MAGIC = 0xe9;
@@ -29,16 +30,18 @@ export async function checkFetchedPart(part, data, limits = {}) {
   if (data.length > maxPart) fail('verify.tooLarge', { path: part.path, bytes: data.length, max: maxPart });
   if (part.size !== undefined && data.length !== part.size) fail('verify.size', { path: part.path, bytes: data.length, expected: part.size });
   const sha256 = await sha256Hex(data);
-  if (part.sha256 !== undefined && sha256 !== part.sha256) fail('verify.sha256', { path: part.path, expected: part.sha256, actual: sha256 });
+  if (part.sha256 !== undefined && sha256 !== String(part.sha256).toLowerCase()) fail('verify.sha256', { path: part.path, expected: part.sha256, actual: sha256 });
   return { sha256 };
 }
 
 export function checkLayout(parts, flashBytes, limits = {}) {
+  if (!Number.isSafeInteger(flashBytes) || flashBytes <= 0) fail('verify.flashSize', { flashBytes: String(flashBytes) });
   const maxTotal = limits.maxTotal ?? 64 * 1024 * 1024;
   parts.forEach((p, index) => {
     const offsetOk = p !== null && typeof p === 'object' && Number.isSafeInteger(p.offset) && p.offset >= 0;
     const dataOk = offsetOk && p.data instanceof Uint8Array;
     if (!offsetOk || !dataOk) fail('verify.part', { index, offset: p?.offset });
+    if (p.data.length === 0) fail('verify.empty', { offset: p.offset });
   });
   let total = 0;
   const sorted = [...parts].sort((a, b) => a.offset - b.offset);
@@ -56,7 +59,8 @@ export function checkLayout(parts, flashBytes, limits = {}) {
 /** The part that covers the chip's bootloader offset must start with an ESP image header for this chip. */
 export function checkBootImage(parts, chipFamily) {
   const chip = CHIPS[chipFamily];
-  if (!chip || chip.bootloaderOffset === null) return;
+  if (!chip) fail('verify.chipUnknown', { chipFamily });
+  if (chip.bootloaderOffset === null) return;
   const at = chip.bootloaderOffset;
   const holder = parts.find((p) => p.offset <= at && p.offset + p.data.length > at);
   if (!holder) return;
@@ -71,6 +75,7 @@ export function checkBootImage(parts, chipFamily) {
 }
 
 export function esptoolCommand(chipFamily, parts, fileNames) {
+  if (fileNames.length !== parts.length) fail('verify.part', { index: Math.min(parts.length, fileNames.length) });
   const chip = CHIPS[chipFamily]?.esptoolChip ?? chipFamily.toLowerCase().replace('-', '');
   const pairs = parts.map((p, i) => ({ offset: p.offset, name: fileNames[i] })).sort((a, b) => a.offset - b.offset)
     .map((p) => `0x${p.offset.toString(16)} ${p.name}`).join(' ');
