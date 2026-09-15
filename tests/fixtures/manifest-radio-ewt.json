@@ -1,0 +1,6 @@
+{
+  "name": "Open Radio Core2 0.4.1 — factory install, ERASES ALL SETTINGS",
+  "version": "0.4.1",
+  "new_install_prompt_erase": true,
+  "builds": [ { "chipFamily": "ESP32", "parts": [ { "path": "open-radio-0-4-1.bin", "offset": 0 } ] } ]
+}
