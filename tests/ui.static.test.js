@@ -70,6 +70,32 @@ test('every button has visible text or an aria-label', () => {
   assert.deepEqual(mute.map(([m]) => m.slice(0, 80)), []);
 });
 
+test('every dialog has an accessible name from its heading', () => {
+  const dialogs = [...html.matchAll(/<dialog\b([^>]*)>/g)].map((m) => m[1]);
+  assert.equal(dialogs.length, 3);
+  for (const attrs of dialogs) {
+    const m = /aria-labelledby="([^"]+)"/.exec(attrs);
+    assert.ok(m, 'dialog without aria-labelledby: ' + attrs);
+    assert.match(html, new RegExp(`<h2[^>]*\\bid="${m[1]}"`), 'heading ' + m[1] + ' must exist');
+  }
+});
+
+test('every input has a <label for> or an aria-label', () => {
+  const inputs = [...html.matchAll(/<input\b([^>]*)>/g)].map((m) => m[1]);
+  assert.ok(inputs.length >= 4);
+  const unlabelled = inputs.filter((attrs) => {
+    if (/aria-label="[^"]+"/.test(attrs)) return false;
+    const id = /\bid="([^"]+)"/.exec(attrs)?.[1];
+    return !id || !new RegExp(`<label[^>]*\\bfor="${id}"`).test(html);
+  });
+  assert.deepEqual(unlabelled, []);
+});
+
+test('no theme toggle: the system colour scheme decides', () => {
+  assert.doesNotMatch(html, /theme-toggle|data-theme=/);
+  assert.match(theme, /--backdrop:/);
+});
+
 test('theme.css vendors Figtree and Source Sans 3 locally and never reaches the network', () => {
   assert.match(theme, /@font-face\s*\{[^}]*font-family:\s*"Figtree"/);
   assert.match(theme, /@font-face\s*\{[^}]*font-family:\s*"Source Sans 3"/);

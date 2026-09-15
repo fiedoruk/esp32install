@@ -94,8 +94,11 @@ export function mountUi({ i18n, system }) {
     if (text !== undefined) $(id + '-text').textContent = text;
   };
 
+  const hideHatches = () => { for (const id of ['tech', 'log-details', 'alt-wrap']) $(id).hidden = true; };
+
   const ui = {
     showScreen,
+    hideHatches,
     showGate(kind) {
       $('gate').hidden = false;
       $('gate-text').textContent = t('gate.' + kind);
@@ -109,7 +112,7 @@ export function mountUi({ i18n, system }) {
     },
     showSystems(systems, hrefFor) {
       $('pick').hidden = false;
-      for (const id of ['tech', 'log-details', 'alt-wrap']) $(id).hidden = true; // nothing to show without a system
+      hideHatches(); // nothing to show without a system
       clear($('pick-list'));
       for (const s of systems) {
         const li = document.createElement('li');
@@ -151,7 +154,8 @@ export function mountUi({ i18n, system }) {
         : stage === 'downloading' ? t('stage.downloading') : t('stage.' + stage);
       $('stage-text').textContent = sentence;
       setRing(percent, !MEASURED.has(stage));
-      $('eta').textContent = eta !== undefined && eta > 0 ? t('eta.left', { seconds: eta }) : '';
+      $('eta').textContent = eta === undefined || eta <= 0 ? ''
+        : eta >= 90 ? t('eta.leftMin', { minutes: Math.ceil(eta / 60) }) : t('eta.left', { seconds: eta });
     },
     setHardware(hw) {
       $('fact-chip').textContent = hw.chipDescription;
@@ -174,6 +178,7 @@ export function mountUi({ i18n, system }) {
       const done = $('screen-done');
       done.classList.remove('is-error');
       $('done-title').textContent = t('simple.done.title');
+      $('done-unplug').hidden = false; // the cable promise from screen 2 is released here
       $('done-text').textContent = t('result.ok', { system: name, version });
       $('done-next').hidden = !next;
       if (next) { $('done-next').href = next; $('done-next').textContent = t('simple.done.next'); }
@@ -187,6 +192,7 @@ export function mountUi({ i18n, system }) {
       const done = $('screen-done');
       done.classList.add('is-error');
       $('done-title').textContent = t('simple.stopped.title');
+      $('done-unplug').hidden = true;
       $('done-text').textContent = t('error.' + code, safeParams(error?.params));
       $('done-next').hidden = true;
       $('retry').hidden = false;

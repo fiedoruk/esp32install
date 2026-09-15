@@ -14,15 +14,10 @@
 <body>
 <header class="top">
   <a class="brand" href="./">esp32install</a>
-  <div class="top-tools">
-    <nav class="lang" data-i18n-attr="aria-label:app.language">
-      <a href="?lang=en" hreflang="en" lang="en">EN</a>
-      <a href="?lang=pl" hreflang="pl" lang="pl">PL</a>
-    </nav>
-    <button class="theme" id="theme-toggle" type="button" aria-label="Light or dark" aria-pressed="false">
-      <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="8"/><path d="M12 4v16A8 8 0 0 0 12 4z" fill="currentColor" stroke="none"/></svg>
-    </button>
-  </div>
+  <nav class="lang" data-i18n-attr="aria-label:app.language">
+    <a href="?lang=en" hreflang="en" lang="en">EN</a>
+    <a href="?lang=pl" hreflang="pl" lang="pl">PL</a>
+  </nav>
 </header>
 
 <main id="app" class="app">
@@ -62,20 +57,20 @@
       </div>
       <div class="hint-text" id="hint-door" hidden data-i18n="simple.prepare.hintDoor"></div>
       <div class="doors" id="doors" role="radiogroup" data-i18n-attr="aria-label:door.title">
-        <label class="door">
-          <input type="radio" name="mode" value="first" checked>
+        <label class="door" for="mode-first">
+          <input type="radio" name="mode" id="mode-first" value="first" checked>
           <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M8 18l16-8 16 8v16l-16 8-16-8z"/><path d="M8 18l16 8 16-8M24 26v16"/><rect x="18" y="8" width="12" height="9" rx="2"/></svg>
           <span><b data-i18n="door.first"></b><small data-i18n="door.firstHint"></small></span>
         </label>
-        <label class="door">
-          <input type="radio" name="mode" value="update">
+        <label class="door" for="mode-update">
+          <input type="radio" name="mode" id="mode-update" value="update">
           <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="10" y="20" width="28" height="20" rx="4"/><rect x="16" y="26" width="16" height="8" rx="1.5"/><path d="M24 4v12M18 10l6-6 6 6"/></svg>
           <span><b data-i18n="door.update"></b><small id="door-update-hint"></small></span>
         </label>
       </div>
 
       <div class="opt-row" id="backup-opt" hidden>
-        <label class="opt"><input type="checkbox" id="backup"><span id="backup-label"></span></label>
+        <label class="opt" for="backup"><input type="checkbox" id="backup"><span id="backup-label"></span></label>
         <button class="hint" type="button" aria-expanded="false" aria-controls="hint-backup" data-i18n-attr="aria-label:hint.open"><span aria-hidden="true">?</span></button>
       </div>
       <div class="hint-text" id="hint-backup" hidden data-i18n="simple.prepare.hintBackup"></div>
@@ -84,11 +79,12 @@
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 20h14"/></svg>
         <span id="connect-label"></span>
       </button>
+      <p class="note" data-i18n="simple.prepare.picker"></p>
     </section>
 
     <section class="screen" id="screen-install" hidden>
       <div class="ring-wrap">
-        <svg class="ring" id="ring" viewBox="0 0 120 120" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-i18n-attr="aria-label:app.stage">
+        <svg class="ring" id="ring" viewBox="0 0 120 120" role="progressbar" aria-valuemin="0" aria-valuemax="100" aria-valuenow="0" data-i18n-attr="aria-label:app.progress">
           <circle class="ring-track" cx="60" cy="60" r="54"/>
           <circle class="ring-arc" id="ring-arc" cx="60" cy="60" r="54"/>
         </svg>
@@ -108,6 +104,7 @@
         <path class="mark-stop" d="M60 36v30M60 80v4"/>
       </svg>
       <h1 id="done-title"></h1>
+      <p class="lead" id="done-unplug" data-i18n="simple.done.unplug"></p>
       <p class="lead" id="done-text" aria-live="assertive"></p>
       <a id="done-next" class="cta" hidden></a>
       <button class="cta" id="retry" type="button" hidden data-i18n="action.retry"></button>
@@ -149,26 +146,26 @@
     </details>
   </div>
 
-  <dialog id="board-dialog">
-    <h2 data-i18n="board.pick"></h2>
+  <dialog id="board-dialog" aria-labelledby="board-title">
+    <h2 id="board-title" data-i18n="board.pick"></h2>
     <p id="board-hint"></p>
     <div id="board-list" class="choices"></div>
     <div class="row"><button type="button" class="quiet-btn" id="board-cancel" data-i18n="action.cancel"></button></div>
   </dialog>
 
-  <dialog id="erase-dialog">
+  <dialog id="erase-dialog" aria-labelledby="erase-title">
     <div class="line">
       <h2 id="erase-title"></h2>
       <button class="hint" type="button" aria-expanded="false" aria-controls="hint-erase" data-i18n-attr="aria-label:hint.open"><span aria-hidden="true">?</span></button>
     </div>
-    <div class="hint-text" id="hint-erase" hidden data-i18n="simple.prepare.hintBackup"></div>
+    <div class="hint-text" id="hint-erase" hidden data-i18n="erase.hint"></div>
     <p id="erase-text"></p>
     <div class="row"><button type="button" class="warn-btn" id="erase-yes"></button><button type="button" class="quiet-btn" id="erase-no" autofocus></button></div>
   </dialog>
 
-  <dialog id="backup-dialog">
-    <h2 data-i18n="action.chooseBackup"></h2>
-    <label class="file"><input type="file" id="backup-file" accept=".bin"></label>
+  <dialog id="backup-dialog" aria-labelledby="backup-title">
+    <h2 id="backup-title" data-i18n="action.chooseBackup"></h2>
+    <label class="file" for="backup-file"><span data-i18n="action.chooseBackup"></span><input type="file" id="backup-file" accept=".bin"></label>
     <div class="row"><button type="button" class="quiet-btn" id="backup-cancel" data-i18n="action.cancel"></button></div>
   </dialog>
 </main>

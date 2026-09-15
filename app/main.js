@@ -12,7 +12,6 @@ import { mountUi, fileNameOf } from './ui.js';
 import { InstallError } from './errors.js';
 
 const AVAILABLE = ['en', 'pl'];
-const THEME_KEY = 'esp32install.theme';
 
 const track = (name, props) => { try { window.__esp32installAnalytics?.(name, props); } catch { /* never ours to fix */ } };
 let i18n = null; // set once the dictionary is loaded, so a boot failure can still speak
@@ -20,24 +19,6 @@ let i18n = null; // set once the dictionary is loaded, so a boot failure can sti
 async function loadJson(url, max = 512 * 1024) {
   const bytes = await fetchBytes(fetch.bind(window), url, max);
   return JSON.parse(new TextDecoder().decode(bytes));
-}
-
-/** Light/dark: the system decides unless the visitor pressed the toggle; the choice is remembered per browser. */
-function setupTheme() {
-  const root = document.documentElement;
-  const btn = document.getElementById('theme-toggle');
-  let saved = null;
-  try { saved = localStorage.getItem(THEME_KEY); } catch { /* storage may be blocked */ }
-  if (saved === 'light' || saved === 'dark') root.dataset.theme = saved;
-  const isDark = () => (root.dataset.theme ? root.dataset.theme === 'dark' : matchMedia('(prefers-color-scheme: dark)').matches);
-  const reflect = () => btn.setAttribute('aria-pressed', String(isDark()));
-  reflect();
-  btn.addEventListener('click', () => {
-    const next = isDark() ? 'light' : 'dark';
-    root.dataset.theme = next;
-    try { localStorage.setItem(THEME_KEY, next); } catch { /* storage may be blocked */ }
-    reflect();
-  });
 }
 
 /** Language links keep `?fw=` and friends; only `lang` changes. */
@@ -52,7 +33,6 @@ function setupLangLinks(lang) {
 }
 
 async function boot() {
-  setupTheme();
   const q = new URLSearchParams(location.search);
   const wanted = detectLang({ htmlLang: '', query: q.get('lang') ?? '', navigatorLanguages: navigator.languages ?? [], available: AVAILABLE });
   const dicts = { en: await loadJson(new URL('../locales/en.json', import.meta.url).href) };
@@ -137,5 +117,6 @@ boot().catch((e) => {
   const el = document.getElementById('gate');
   el.hidden = false;
   document.getElementById('gate-text').textContent = i18n ? i18n.t('error.' + err.code, err.params) : err.code;
+  for (const id of ['tech', 'log-details', 'alt-wrap']) document.getElementById(id).hidden = true; // nothing to show without a system
   console.error(err);
 });

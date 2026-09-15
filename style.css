@@ -46,7 +46,6 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
   color: var(--ink);
   text-decoration: none;
 }
-.top-tools { display: flex; align-items: center; gap: 12px; }
 .lang { display: flex; gap: 2px; }
 .lang a {
   font-family: var(--font-display);
@@ -58,17 +57,6 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
   color: var(--dim);
 }
 .lang a[aria-current="true"] { background: var(--bg-2); color: var(--ink); }
-.theme {
-  width: 36px; height: 36px;
-  padding: 0;
-  border: 1px solid var(--line);
-  border-radius: 999px;
-  background: var(--bg-2);
-  color: var(--ink);
-  cursor: pointer;
-  display: inline-flex; align-items: center; justify-content: center;
-}
-.theme svg { width: 18px; height: 18px; stroke-width: 1.8; }
 .foot { padding: 24px 0 32px; font-size: 14px; color: var(--dim); justify-content: center; }
 .foot a { color: var(--dim); }
 
@@ -191,6 +179,7 @@ p { margin: 0; }
   cursor: pointer;
 }
 .cta:disabled { opacity: 0.55; cursor: progress; }
+.note { color: var(--dim); font-size: 16px; text-align: center; }
 .cta svg { width: 20px; height: 20px; stroke-width: 2.2; }
 .quiet {
   align-self: center;
@@ -336,7 +325,7 @@ dialog {
   padding: 24px;
   font-size: 18px;
 }
-dialog::backdrop { background: rgb(20 32 43 / 0.55); }
+dialog::backdrop { background: var(--backdrop); }
 dialog h2 { margin-bottom: 12px; }
 dialog .line h2 { margin-bottom: 0; }
 dialog .row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 16px; }
@@ -354,8 +343,8 @@ dialog p { margin-top: 8px; }
   cursor: pointer;
 }
 .choice:hover { border-color: var(--accent); }
-.file { display: block; margin-top: 12px; }
-.file input { width: 100%; font: 16px var(--font-body); }
+.file { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; color: var(--dim); }
+.file input { width: 100%; font: 16px var(--font-body); color: var(--ink); }
 
 /* ---- small screens ------------------------------------------------------- */
 

@@ -7,7 +7,8 @@
     "copyLog": "Copy log",
     "showLog": "Show technical log",
     "hideLog": "Hide technical log",
-    "language": "Language"
+    "language": "Language",
+    "progress": "Progress"
   },
   "door": {
     "title": "What are you doing?",
@@ -46,7 +47,10 @@
     "done": "Done",
     "error": "Stopped"
   },
-  "eta": { "left": "about {seconds} s left" },
+  "eta": {
+    "left": "about {seconds} s left",
+    "leftMin": "about {minutes} min left"
+  },
   "result": {
     "ok": "{system} {version} is now on your device.",
     "stopped": "Nothing was written."
@@ -56,21 +60,38 @@
       "title": "Plug the device into this computer with a USB cable.",
       "hintCable": "Use a cable that came with a phone or camera. Some thin cables only charge and carry no data.",
       "hintDoor": "If you are not sure, choose First installation. It is always safe.",
-      "hintBackup": "A copy lets you put the device back exactly as it was. It takes a few minutes and is optional."
+      "hintBackup": "A copy lets you put the device back exactly as it was. It takes a few minutes and is optional.",
+      "picker": "After you click, your browser opens a small window asking which device to use. Choose the one that appeared when you plugged in the cable."
     },
-    "install": { "keepCable": "Keep the cable connected until this finishes." },
-    "done": { "title": "All done.", "next": "What to do next", "again": "Install on another device" },
-    "stopped": { "title": "Stopped before anything changed." }
+    "install": {
+      "keepCable": "Keep the cable connected until this finishes."
+    },
+    "done": {
+      "title": "All done.",
+      "next": "What to do next",
+      "again": "Install on another device",
+      "unplug": "You can unplug the cable now."
+    },
+    "stopped": {
+      "title": "Stopped before anything changed."
+    }
   },
-  "pick": { "title": "Choose a system", "hint": "Pick what you want to put on your device." },
+  "pick": {
+    "title": "Choose a system",
+    "hint": "Pick what you want to put on your device."
+  },
   "erase": {
     "title": "Erase everything on the device?",
     "textFirst": "This will erase everything on {board}, including saved Wi-Fi and settings, and install a fresh copy.",
     "textUpdate": "Erasing also removes saved settings. You can keep them.",
     "yes": "Erase and install",
-    "no": "Keep settings"
+    "no": "Keep settings",
+    "hint": "Erasing removes saved Wi-Fi and settings from the device. The system you are installing goes on fresh. Your copy from the previous step, if you made one, is not affected."
   },
-  "hint": { "open": "More about this", "close": "Close" },
+  "hint": {
+    "open": "More about this",
+    "close": "Close"
+  },
   "tech": {
     "title": "Details",
     "chip": "Chip",

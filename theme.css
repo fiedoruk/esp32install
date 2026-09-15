@@ -46,6 +46,7 @@
   --warn: #8A5300;
   --stop: #B42318;
   --done: #1B7F3B;
+  --backdrop: rgb(20 32 43 / 0.55);
   --font-display: "Figtree", system-ui, sans-serif;
   --font-body: "Source Sans 3", system-ui, sans-serif;
   --font-mono: "Recursive Mono Casual", ui-monospace, "SF Mono", Menlo, monospace;
@@ -68,6 +69,7 @@
     --warn: #FFC96B;
     --stop: #FF8C82;
     --done: #6FD08C;
+    --backdrop: rgb(3 9 18 / 0.7);
     color-scheme: dark;
   }
 }
@@ -83,6 +85,7 @@
   --warn: #FFC96B;
   --stop: #FF8C82;
   --done: #6FD08C;
+  --backdrop: rgb(3 9 18 / 0.7);
   color-scheme: dark;
 }
 
@@ -97,5 +100,6 @@
   --warn: #8A5300;
   --stop: #B42318;
   --done: #1B7F3B;
+  --backdrop: rgb(20 32 43 / 0.55);
   color-scheme: light;
 }
