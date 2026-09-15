@@ -5,7 +5,8 @@ const K = Array.from({ length: 64 }, (_, i) => Math.floor(Math.abs(Math.sin(i + 
 const rotl = (x, c) => ((x << c) | (x >>> (32 - c))) >>> 0;
 
 export function md5Hex(input) {
-  const src = input instanceof Uint8Array ? input : new Uint8Array(input);
+  if (!(input instanceof Uint8Array)) throw new TypeError('md5Hex expects a Uint8Array');
+  const src = input;
   const bitLen = src.length * 8;
   const paddedLen = (((src.length + 8) >>> 6) + 1) * 64;
   let a0 = 0x67452301, b0 = 0xefcdab89, c0 = 0x98badcfe, d0 = 0x10325476;

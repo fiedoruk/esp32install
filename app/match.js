@@ -8,7 +8,7 @@ export function whyNot(build, hw) {
   if (build.usbVendorId !== undefined && hw.usbVendorId !== undefined && build.usbVendorId !== hw.usbVendorId) return 'usb';
   if (build.usbProductId !== undefined && hw.usbProductId !== undefined && build.usbProductId !== hw.usbProductId) return 'usb';
   if (!includesAll(lower(hw.chipDescription), build.chipDescriptionIncludes)) return 'description';
-  if (!includesAll(lower((hw.features ?? []).join(' | ')), build.featuresAll)) return 'features';
+  if (!build.featuresAll.every((n) => (hw.features ?? []).some((f) => lower(f).includes(lower(n))))) return 'features';
   return null;
 }
 

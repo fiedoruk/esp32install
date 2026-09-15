@@ -15,3 +15,6 @@ test('agrees with node:crypto on sizes around block boundaries and a 3 MB image'
     assert.equal(md5Hex(new Uint8Array(d)), createHash('md5').update(d).digest('hex'), `n=${n}`);
   }
 });
+test('rejects input that is not a Uint8Array', () => {
+  assert.throws(() => md5Hex([1, 2, 3]), TypeError);
+});

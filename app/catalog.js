@@ -1,11 +1,9 @@
 import { InstallError } from './errors.js';
 
-const channelOf = (release) => release.channel ?? 'stable';
-
 /**
- * Releases are listed newest-first per channel in catalog.json; we keep that order and do not parse
- * versions. Without `v`, `channel: 'pre'` opts into the newest pre-release and falls back to the
- * newest stable one when the system publishes none; any other channel selects the newest stable.
+ * Releases are listed newest-first across all channels in catalog.json; we keep that order and do not
+ * parse versions. Without `v`, `channel: 'pre'` takes the newest release whatever its channel, which
+ * may be a stable one; any other channel takes the newest release whose channel is stable.
  */
 export function pickRelease(catalog, { fw, v, channel } = {}) {
   const systems = Array.isArray(catalog?.systems) ? catalog.systems : [];
@@ -13,11 +11,10 @@ export function pickRelease(catalog, { fw, v, channel } = {}) {
   const system = systems.find((s) => s.id === fw);
   if (!system) throw new InstallError('catalog.unknownSystem', { fw });
   const releases = Array.isArray(system.releases) ? system.releases : [];
-  const newestStable = () => releases.find((r) => channelOf(r) === 'stable');
   let release;
   if (v) release = releases.find((r) => r.version === v);
-  else if (channel === 'pre') release = releases.find((r) => channelOf(r) === 'pre') ?? newestStable();
-  else release = newestStable();
+  else if (channel === 'pre') release = releases[0];
+  else release = releases.find((r) => (r.channel ?? 'stable') === 'stable');
   if (!release) throw new InstallError('catalog.unknownVersion', { fw, v: v ?? '' });
   return { system, release };
 }
