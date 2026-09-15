@@ -1,0 +1,195 @@
+/**
+ * Install engine. The only module that touches Web Serial and esptool-js; both come in
+ * through `createInstaller(deps)` so the whole flow runs against a fake in tests.
+ *
+ * Factory profile: connect → detect → match → download + verify every part →
+ * layout check → boot-image check → (erase) → write with MD5 → hard reset.
+ * Nothing is erased or written until every verification step has passed.
+ */
+import { InstallError } from './errors.js';
+import { compatibleBuilds, mismatchReasons } from './match.js';
+import { checkFetchedPart, checkLayout, checkBootImage } from './verify.js';
+import { md5Hex } from './md5.js';
+
+const BAUD = 460800;
+const PART_MAX = 32 * 1024 * 1024;
+
+/** Turns whatever Web Serial or esptool-js throws into an InstallError with a known code. */
+export function mapSerialError(err) {
+  if (err instanceof InstallError) return err;
+  const msg = String(err?.message ?? err ?? '');
+  if (err?.name === 'NotFoundError' || /no port selected/i.test(msg)) return new InstallError('serial.cancelled', {}, err);
+  if (err?.name === 'SecurityError') return new InstallError('serial.blocked', {}, err);
+  if (/already open|failed to open|in use|access denied/i.test(msg)) return new InstallError('serial.busy', {}, err);
+  if (/failed to connect|timed out waiting for packet|sync/i.test(msg)) return new InstallError('serial.connect', {}, err);
+  if (/MD5 of file does not match|md5|hash of data/i.test(msg)) return new InstallError('flash.verify', {}, err);
+  if (/device lost|disconnected|the device has been lost/i.test(msg)) return new InstallError('serial.lost', {}, err);
+  return new InstallError('flash.write', { detail: msg }, err);
+}
+
+/** Flash size in MB from the JEDEC id. Fails closed: no table entry means unknown, never 4 MB. */
+export function flashSizeFromId(loader, id) {
+  if (!Number.isInteger(id) || id === 0 || id === 0xffffff) throw new InstallError('device.flashUnknown', { id: (id ?? 0).toString(16) });
+  const code = (id >> 16) & 0xff;
+  const label = loader.DETECTED_FLASH_SIZES?.[code];
+  const m = /^(\d+)MB$/.exec(label ?? '');
+  if (!m) throw new InstallError('device.flashUnknown', { id: id.toString(16) });
+  return Number(m[1]);
+}
+
+export async function fetchBytes(fetchFn, url, max) {
+  const res = await fetchFn(url, { cache: 'no-store', credentials: 'same-origin', redirect: 'follow' });
+  if (!res.ok) throw new InstallError('manifest.fetch', { status: res.status, url });
+  const buf = await res.arrayBuffer();
+  if (buf.byteLength > max) throw new InstallError('verify.tooLarge', { path: url, bytes: buf.byteLength, max });
+  return new Uint8Array(buf);
+}
+
+export function createInstaller(deps) {
+  const { esptool, requestPort, fetchFn, onEvent, chooseBuild, confirmErase } = deps;
+  let busy = false, transport = null, loader = null, cancelled = false, lost = false;
+  const emit = (e) => { try { onEvent?.(e); } catch { /* UI errors must not break the flow */ } };
+  const stage = (s, percent, params = {}, eta) => emit({ type: 'stage', stage: s, percent, params, eta });
+  const log = (line) => emit({ type: 'log', line: String(line) });
+  const terminal = { clean() {}, write: log, writeLine: log };
+  const check = () => { if (cancelled) throw new InstallError('serial.cancelled'); if (lost) throw new InstallError('serial.lost'); };
+
+  async function cleanup() {
+    if (transport) { try { await transport.disconnect(); } catch (e) { log('disconnect: ' + (e?.message ?? e)); } }
+    transport = null; loader = null;
+  }
+
+  async function connect(build) {
+    stage('connecting', 2);
+    const filters = build?.usbVendorId !== undefined
+      ? [{ usbVendorId: build.usbVendorId, ...(build.usbProductId !== undefined ? { usbProductId: build.usbProductId } : {}) }]
+      : [];
+    const port = await requestPort(filters);
+    transport = new esptool.Transport(port, false, true);
+    transport.setDeviceLostCallback?.(() => { lost = true; log('device lost'); });
+    loader = new esptool.ESPLoader({ transport, baudrate: BAUD, terminal, debugLogging: false });
+    const description = await loader.main('default_reset');
+    check();
+    stage('detecting', 8);
+    const chipFamily = String(loader.chip?.CHIP_NAME ?? '').trim();
+    if (!chipFamily) throw new InstallError('device.chipUnknown');
+    let features = [];
+    try { features = (await loader.chip.getChipFeatures?.(loader)) ?? []; } catch (e) { log('features: ' + (e?.message ?? e)); }
+    let chipDescription = String(description ?? chipFamily);
+    try { chipDescription = String(await loader.chip.getChipDescription?.(loader) ?? chipDescription); } catch { /* keep description */ }
+    const flashSizeMB = flashSizeFromId(loader, await loader.readFlashId());
+    const info = port.getInfo?.() ?? {};
+    const hw = { chipFamily, chipDescription, features, flashSizeMB, usbVendorId: info.usbVendorId, usbProductId: info.usbProductId };
+    emit({ type: 'hardware', hw });
+    log(`chip ${chipDescription}; flash ${flashSizeMB} MB; usb ${info.usbVendorId?.toString(16) ?? '-'}:${info.usbProductId?.toString(16) ?? '-'}`);
+    return hw;
+  }
+
+  async function pick(manifest, hw) {
+    stage('matching', 10);
+    const fits = compatibleBuilds(manifest.builds, hw);
+    if (fits.length === 0) {
+      throw new InstallError('device.noMatch', { chip: hw.chipFamily, flash: hw.flashSizeMB + ' MB', reasons: mismatchReasons(manifest.builds, hw) });
+    }
+    const build = fits.length === 1 ? fits[0] : await chooseBuild(fits, hw);
+    if (!build) throw new InstallError('serial.cancelled');
+    emit({ type: 'build', build });
+    return build;
+  }
+
+  /**
+   * Downloads every part and verifies it in a fixed order: per part `checkFetchedPart`,
+   * then `checkLayout` against the detected flash size, then `checkBootImage` against
+   * the chip esptool-js reported (`loader.chip.CHIP_NAME`, never the description string).
+   */
+  async function download(build, hw) {
+    const parts = [];
+    for (let i = 0; i < build.parts.length; i++) {
+      const p = build.parts[i];
+      stage('downloading', 12 + (i / build.parts.length) * 18, { name: p.path });
+      const data = await fetchBytes(fetchFn, p.url, PART_MAX);
+      check();
+      const { sha256 } = await checkFetchedPart(p, data);
+      if (p.sha256 === undefined) log(`no checksum declared for ${p.path}; downloaded sha256 ${sha256}`);
+      parts.push({ offset: p.offset, data, path: p.path, sha256 });
+    }
+    stage('verifying', 32);
+    checkLayout(parts, hw.flashSizeMB * 1024 * 1024);
+    checkBootImage(parts, hw.chipFamily);
+    return parts;
+  }
+
+  async function erase() {
+    stage('erasing', 35);
+    try {
+      await loader.eraseFlash();
+    } catch (err) {
+      if (err instanceof InstallError) throw err;
+      throw new InstallError('flash.erase', { detail: String(err?.message ?? err ?? '') }, err);
+    }
+  }
+
+  /** Writes the verified parts. Erase is a separate step, so `eraseAll` is always false here. */
+  async function write(parts) {
+    const total = parts.reduce((n, p) => n + p.data.length, 0);
+    let done = 0, startedAt = 0;
+    await loader.writeFlash({
+      fileArray: parts.map((p) => ({ data: p.data, address: p.offset })),
+      flashMode: 'keep', flashFreq: 'keep', flashSize: 'keep', eraseAll: false, compress: true,
+      calculateMD5Hash: (image) => md5Hex(image),
+      reportProgress: (i, written) => {
+        startedAt ||= Date.now();
+        const before = parts.slice(0, i).reduce((n, p) => n + p.data.length, 0);
+        done = before + written;
+        const elapsed = (Date.now() - startedAt) / 1000;
+        const eta = done > 0 && elapsed > 1 ? Math.round(((total - done) * elapsed) / done) : undefined;
+        stage('writing', 40 + (done / total) * 50, { n: i + 1, total: parts.length }, eta);
+      },
+    });
+  }
+
+  async function runFactory(job) {
+    const { manifest, mode } = job;
+    const hw = await connect(manifest.builds.length === 1 ? manifest.builds[0] : null);
+    const build = await pick(manifest, hw);
+    const parts = await download(build, hw);
+    check();
+    let eraseFirst = build.eraseAll;
+    if (!eraseFirst && manifest.promptErase) eraseFirst = await confirmErase(build, mode);
+    if (eraseFirst) { await erase(); check(); }
+    await write(parts);
+    check();
+    stage('md5', 92);
+    stage('done', 100);
+    await loader.after('hard_reset');
+    return {
+      verified: true,
+      version: manifest.version,
+      build: build.boardKey,
+      parts: parts.map((p) => ({ path: p.path, offset: p.offset, sha256: p.sha256 })),
+    };
+  }
+
+  return {
+    async run(job) {
+      if (busy) throw new InstallError('engine.busy');
+      busy = true; cancelled = false; lost = false;
+      try {
+        const profile = job.manifest.profile;
+        const result = profile === 'preserve'
+          ? await (await import('./preserve.js')).runPreserve({ job, connect, pick, download, loader: () => loader, stage, log, emit, check, deps })
+          : await runFactory(job);
+        await cleanup();
+        emit({ type: 'done', result });
+        return result;
+      } catch (err) {
+        const error = mapSerialError(err);
+        log('ERROR ' + error.code + (error.cause?.message ? ': ' + error.cause.message : ''));
+        await cleanup();
+        emit({ type: 'error', error });
+        throw error;
+      } finally { busy = false; }
+    },
+    cancel() { cancelled = true; },
+  };
+}
