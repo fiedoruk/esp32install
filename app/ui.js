@@ -30,6 +30,11 @@ function safeParams(params = {}) {
 
 const MEASURED = new Set(['backup', 'writing', 'done']);
 
+/** Hides the three technical hatches; used when there is no system to describe (list, boot failure). */
+export function hideHatches() {
+  for (const id of ['tech', 'log-details', 'alt-wrap']) $(id).hidden = true;
+}
+
 export function mountUi({ i18n, system }) {
   const t = i18n.t;
   const vars = { system };
@@ -93,8 +98,6 @@ export function mountUi({ i18n, system }) {
     li.classList.add(state);
     if (text !== undefined) $(id + '-text').textContent = text;
   };
-
-  const hideHatches = () => { for (const id of ['tech', 'log-details', 'alt-wrap']) $(id).hidden = true; };
 
   const ui = {
     showScreen,

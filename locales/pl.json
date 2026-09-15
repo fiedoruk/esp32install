@@ -30,6 +30,7 @@
     "cancel": "Przerwij",
     "backup": "Najpierw zapisz kopię tego, co jest na urządzeniu (około {minutes} min)",
     "chooseBackup": "Wybierz zapisaną przed chwilą kopię",
+    "chooseBackupTitle": "Teraz wskaż kopię zapisaną przed chwilą",
     "erase": "Wyczyść całe urządzenie przed instalacją"
   },
   "stage": {

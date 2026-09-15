@@ -8,7 +8,7 @@ import { normalizeManifest } from './manifest.js';
 import { createInstaller, fetchBytes } from './engine.js';
 import { esptoolCommand } from './verify.js';
 import { saveBlob } from './backup.js';
-import { mountUi, fileNameOf } from './ui.js';
+import { mountUi, fileNameOf, hideHatches } from './ui.js';
 import { InstallError } from './errors.js';
 
 const AVAILABLE = ['en', 'pl'];
@@ -117,6 +117,6 @@ boot().catch((e) => {
   const el = document.getElementById('gate');
   el.hidden = false;
   document.getElementById('gate-text').textContent = i18n ? i18n.t('error.' + err.code, err.params) : err.code;
-  for (const id of ['tech', 'log-details', 'alt-wrap']) document.getElementById(id).hidden = true; // nothing to show without a system
+  hideHatches(); // nothing to show without a system
   console.error(err);
 });

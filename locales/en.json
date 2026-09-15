@@ -30,6 +30,7 @@
     "cancel": "Cancel",
     "backup": "Save a copy of what is on the device first (about {minutes} min)",
     "chooseBackup": "Choose the copy you just saved",
+    "chooseBackupTitle": "Now choose the copy you just saved",
     "erase": "Clear everything on the device before installing"
   },
   "stage": {
