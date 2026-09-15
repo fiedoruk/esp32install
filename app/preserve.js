@@ -1,0 +1,179 @@
+/**
+ * Preserve profile: writes the release parts into a device that keeps its factory
+ * bootloader, partition table and data. Every check is a hard stop before the first
+ * write, and there is no erase path: this module never calls `eraseFlash`.
+ *
+ * Order: connect → match → security state → identity (MAC) → header read + layout
+ * checks → download + verify → mandatory verified backup, saved and re-selected by the
+ * user → identity + header re-check → write part by part with an MD5 read-back →
+ * read-back of everything outside the written parts → hard reset.
+ */
+import { InstallError } from './errors.js';
+import { sha256Hex } from './verify.js';
+import { md5Hex } from './md5.js';
+import { readRange, verifiedBackup, matchesBackup, backupFilename } from './backup.js';
+
+const PAGE = 0x1000;
+const fail = (code, params = {}) => { throw new InstallError(code, params); };
+const hex = (n) => '0x' + n.toString(16);
+
+/** Index of the first byte in `[from, to)` where `a` and `b` differ, or -1. */
+function differs(a, b, from = 0, to = a.length) {
+  for (let i = from; i < to; i++) if (a[i] !== b[i]) return i;
+  return -1;
+}
+
+/** Security info: the flags word (bytes 0-3) and the flash-encryption count (byte 4) must both be zero. */
+async function assertUnlocked(loader, log) {
+  let info;
+  try {
+    info = await loader.checkCommand('security info', 0x14, new Uint8Array(0), 0, 20, 5000);
+  } catch (err) {
+    log('security info: ' + (err?.message ?? err) + '; treating the device as locked');
+    fail('device.secured', { reason: 'unsupported' });
+  }
+  if (!(info instanceof Uint8Array) || info.length !== 20) fail('device.secured', { reason: 'malformed' });
+  const flags = (info[0] | (info[1] << 8) | (info[2] << 16) | (info[3] << 24)) >>> 0;
+  if (flags !== 0 || info[4] !== 0) fail('device.secured', { flags: hex(flags), cryptCount: info[4] });
+}
+
+/** In update mode the page at `update.tableOffset` must hold this release's table, padded with 0xff. */
+function tablePageOf(build) {
+  const offset = build.compatibility.update.tableOffset;
+  if (offset === undefined) return null;
+  const part = build.parts.find((p) => p.offset === offset);
+  if (!part) fail('manifest.compatibility', { boardKey: build.boardKey });
+  return { offset, size: Math.max(PAGE, part.size), part };
+}
+
+/** The header spans every range the manifest makes a claim about, in either mode. */
+function headerSizeOf(compat, tablePage) {
+  const ranges = [...compat.regions, ...compat.firstInstall.regions, ...compat.firstInstall.empty];
+  if (tablePage) ranges.push(tablePage);
+  return ranges.reduce((n, r) => Math.max(n, r.offset + r.size), 0);
+}
+
+async function checkHeader(header, build, mode, tablePage) {
+  const compat = build.compatibility;
+  const region = async (r) => {
+    // A region without a checksum makes a claim this installer cannot check: fail closed.
+    if (!r.sha256) fail('manifest.compatibility', { boardKey: build.boardKey });
+    if ((await sha256Hex(header.subarray(r.offset, r.offset + r.size))) !== r.sha256) fail('device.layout', { offset: hex(r.offset), size: r.size });
+  };
+  for (const r of compat.regions) await region(r);
+  if (mode === 'update') {
+    const { offset, size, part } = tablePage;
+    const page = header.subarray(offset, offset + size);
+    if ((await sha256Hex(page.subarray(0, part.size))) !== part.sha256) fail('device.layout', { offset: hex(offset), size: part.size });
+    if (page.subarray(part.size).some((b) => b !== 0xff)) fail('device.layout', { offset: hex(offset), size });
+    return;
+  }
+  for (const r of compat.firstInstall.regions) await region(r);
+  for (const r of compat.firstInstall.empty) {
+    const i = header.subarray(r.offset, r.offset + r.size).findIndex((b) => b !== 0xff);
+    if (i >= 0) fail('device.notEmpty', { offset: hex(r.offset + i) });
+  }
+}
+
+/** Writes one part at a time, `eraseAll` false, and cross-checks each with the chip's own MD5. */
+async function writeParts(loader, parts, stage) {
+  const total = parts.reduce((n, p) => n + p.data.length, 0);
+  let before = 0, startedAt = 0;
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    await loader.writeFlash({
+      fileArray: [{ data: p.data, address: p.offset }],
+      flashMode: 'keep', flashFreq: 'keep', flashSize: 'keep', eraseAll: false, compress: true,
+      calculateMD5Hash: (image) => md5Hex(image),
+      reportProgress: (_, written, partTotal) => {
+        startedAt ||= Date.now();
+        const done = before + (partTotal > 0 ? Math.min(written / partTotal, 1) : 0) * p.data.length;
+        const elapsed = (Date.now() - startedAt) / 1000;
+        const eta = done > 0 && elapsed > 1 ? Math.round(((total - done) * elapsed) / done) : undefined;
+        stage('writing', 40 + (done / total) * 50, { n: i + 1, total: parts.length, written, partTotal }, eta);
+      },
+    });
+    const onChip = String(await loader.flashMd5sum(p.offset, p.data.length)).toLowerCase();
+    if (onChip !== md5Hex(p.data)) fail('flash.verify', { offset: hex(p.offset), path: p.path });
+    before += p.data.length;
+  }
+}
+
+/** Every byte of the header outside the written ranges must read back exactly as before. */
+function checkUntouched(before, after, parts) {
+  const ranges = parts.map((p) => [p.offset, p.offset + p.data.length]).sort((a, b) => a[0] - b[0]);
+  let pos = 0;
+  for (const [start, end] of [...ranges, [before.length, before.length]]) {
+    const i = differs(before, after, pos, Math.min(start, before.length));
+    if (i >= 0) fail('flash.verify', { offset: hex(i) });
+    pos = Math.max(pos, end);
+  }
+}
+
+export async function runPreserve(ctx) {
+  const { job, connect, pick, download, stage, log, check, deps } = ctx;
+  const { manifest, mode } = job;
+  const loader = () => ctx.loader();
+  const hw = await connect(manifest.builds.length === 1 ? manifest.builds[0] : null);
+  const build = await pick(manifest, hw);
+  const flashBytes = hw.flashSizeMB * 1024 * 1024;
+
+  stage('checkingDevice', 11);
+  await assertUnlocked(loader(), log);
+  const mac = String(await loader().chip.readMac(loader()));
+  const sameDevice = async () => {
+    const now = String(await loader().chip.readMac(loader()));
+    if (now !== mac) fail('device.changed', { expected: mac, actual: now });
+  };
+  check();
+  const tablePage = mode === 'update' ? tablePageOf(build) : null;
+  const headerSize = headerSizeOf(build.compatibility, tablePage);
+  if (headerSize > flashBytes) fail('device.layout', { offset: hex(headerSize), flashBytes });
+  const header = await readRange(loader(), 0, headerSize);
+  await checkHeader(header, build, mode, tablePage);
+  log(`device ${mac}: the first ${headerSize} bytes match the release (${mode})`);
+  check();
+
+  const parts = await download(build, hw);
+  check();
+
+  // Mandatory backup: two reads that agree, saved, then re-selected by the user so the
+  // copy on disk is proven to be the one the write is about to rely on.
+  await sameDevice();
+  stage('backup', 33);
+  const backup = await verifiedBackup(loader(), flashBytes, (done, total) => stage('backup', 33 + (done / total) * 6));
+  if (differs(backup.bytes, header, 0, headerSize) >= 0) fail('device.changed', { reason: 'header' });
+  const filename = backupFilename(manifest.name, backup.sha256);
+  await deps.saveBackup(backup.bytes, filename);
+  log(`backup ${filename} sha256 ${backup.sha256}`);
+  check();
+  const file = await deps.requestBackupFile();
+  check();
+  if (!file) fail('serial.cancelled');
+  if (!(await matchesBackup(file, backup.sha256, flashBytes))) fail('backup.file', { filename });
+  check();
+
+  // Last checks before the first write, then no cancellation until the parts are on the chip.
+  await sameDevice();
+  const again = await readRange(loader(), 0, headerSize);
+  if (differs(again, header) >= 0) fail('device.changed', { reason: 'header' });
+  check();
+  ctx.setWriting?.();
+  await writeParts(loader(), parts, stage);
+  stage('md5', 92);
+  checkUntouched(header, await readRange(loader(), 0, headerSize), parts);
+  // The parts are written and verified by now; a failed reset is not a failed install.
+  try {
+    await loader().after('hard_reset');
+  } catch (e) {
+    log('reset: ' + (e?.message ?? e) + '; press the reset button or unplug and replug the device');
+  }
+  stage('done', 100);
+  return {
+    verified: true,
+    version: manifest.version,
+    build: build.boardKey,
+    parts: parts.map((p) => ({ path: p.path, offset: p.offset, sha256: p.sha256 })),
+    backup: { sha256: backup.sha256, filename },
+  };
+}

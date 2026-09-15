@@ -3,13 +3,16 @@
  * through `createInstaller(deps)` so the whole flow runs against a fake in tests.
  *
  * Factory profile: connect → detect → match → download + verify every part →
- * layout check → boot-image check → (erase) → write with MD5 → hard reset.
+ * layout check → boot-image check → (optional backup) → (erase) → write with MD5 → hard reset.
  * Nothing is erased or written until every verification step has passed.
+ * Preserve profile: see preserve.js; it shares connect/pick/download and never erases.
  */
 import { InstallError } from './errors.js';
 import { compatibleBuilds, mismatchReasons } from './match.js';
-import { checkFetchedPart, checkLayout, checkBootImage } from './verify.js';
+import { checkFetchedPart, checkLayout, checkBootImage, sha256Hex } from './verify.js';
 import { md5Hex } from './md5.js';
+import { runPreserve } from './preserve.js';
+import { readWholeFlash, backupFilename } from './backup.js';
 
 const BAUD = 460800;
 const PART_MAX = 32 * 1024 * 1024;
@@ -66,7 +69,7 @@ export async function fetchBytes(fetchFn, url, max) {
 }
 
 export function createInstaller(deps) {
-  const { esptool, requestPort, fetchFn, onEvent, chooseBuild, confirmErase } = deps;
+  const { esptool, requestPort, fetchFn, onEvent, chooseBuild, confirmErase, saveBackup } = deps;
   let busy = false, transport = null, loader = null, cancelled = false, lost = false, writing = false;
   const emit = (e) => { try { onEvent?.(e); } catch { /* UI errors must not break the flow */ } };
   const stage = (s, percent, params = {}, eta) => emit({ type: 'stage', stage: s, percent, params, eta });
@@ -180,6 +183,14 @@ export function createInstaller(deps) {
     const build = await pick(manifest, hw);
     const parts = await download(build, hw);
     check();
+    // Optional keepsake copy (D-04): one read, saved, not re-verified and never a gate.
+    if (job.options?.backup) {
+      stage('backup', 33);
+      const flashBytes = hw.flashSizeMB * 1024 * 1024;
+      const bytes = await readWholeFlash(loader, flashBytes, (done, total) => stage('backup', 33 + (done / total) * 2));
+      await saveBackup(bytes, backupFilename(manifest.name, await sha256Hex(bytes)));
+      check();
+    }
     let eraseFirst = build.eraseAll;
     if (!eraseFirst && manifest.promptErase) eraseFirst = await confirmErase(build, mode);
     check();
@@ -210,7 +221,7 @@ export function createInstaller(deps) {
       try {
         const profile = job.manifest.profile;
         const result = profile === 'preserve'
-          ? await (await import('./preserve.js')).runPreserve({ job, connect, pick, download, loader: () => loader, stage, log, emit, check, deps })
+          ? await runPreserve({ job, connect, pick, download, loader: () => loader, stage, log, emit, check, deps, setWriting: () => { writing = true; } })
           : await runFactory(job);
         await cleanup();
         emit({ type: 'done', result });

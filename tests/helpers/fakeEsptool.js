@@ -1,4 +1,6 @@
 /** Minimal stand-in for esptool-js 0.6.1 used by engine tests. Records calls; never touches hardware. */
+import { md5Hex } from '../../app/md5.js';
+
 export function makeFakeEsptool({
   chipName = 'ESP32',
   flashId = 0x001840c8,
@@ -7,9 +9,21 @@ export function makeFakeEsptool({
   failErase = false,
   failReset = false,
   features = ['WiFi', 'BT'],
+  // Preserve-profile knobs. `flashImage` seeds the simulated flash (copied, never shared).
+  flashImage = null,
+  flashBytes = 16 * 1024 * 1024,
+  mac = 'aa:bb:cc:dd:ee:ff',
+  macSequence = null,       // e.g. ['a', 'a', 'b']: readMac answers in turn, then repeats the last
+  securityInfo = null,      // Uint8Array returned by checkCommand('security info', ...)
+  securityRejects = false,  // chip that does not know the security-info command
+  tamperRead = null,        // (addr, n, index, data) => void — may mutate the bytes returned by readFlash
+  corruptAt = null,         // flash address bumped after every writeFlash (models a bad write)
 } = {}) {
   const calls = [];
   const transports = [];
+  const flash = new Uint8Array(flashBytes).fill(0xff);
+  if (flashImage) flash.set(flashImage.subarray(0, flashBytes), 0);
+  let macCalls = 0, readCalls = 0;
   class Transport {
     constructor(...args) { this.args = args; this.port = args[0]; transports.push(this); calls.push(['transport']); }
     setDeviceLostCallback(fn) { this.lost = fn; }
@@ -18,6 +32,7 @@ export function makeFakeEsptool({
   class ESPLoader {
     constructor(opts) {
       this.opts = opts;
+      this.flash = flash;
       this.DETECTED_FLASH_SIZES = { 0x14: '1MB', 0x15: '2MB', 0x16: '4MB', 0x17: '8MB', 0x18: '16MB' };
     }
     async main() {
@@ -28,31 +43,54 @@ export function makeFakeEsptool({
         IMAGE_CHIP_ID: chipName === 'ESP32' ? 0 : 9,
         getChipDescription: async () => chipName + '-D0WD-V3 (revision v3.1)',
         getChipFeatures: async () => features,
-        readMac: async () => 'aa:bb:cc:dd:ee:ff',
+        readMac: async () => {
+          calls.push(['readMac']);
+          if (!macSequence) return mac;
+          return macSequence[Math.min(macCalls++, macSequence.length - 1)];
+        },
       };
       calls.push(['main']);
       return 'desc';
     }
     async readFlashId() { calls.push(['readFlashId']); return flashId; }
+    async checkCommand(desc, op, data, chk, len, timeout) {
+      calls.push(['checkCommand', desc, op, len, timeout]);
+      if (securityRejects) throw new Error(`Failed to ${desc} failed with status 5,0`);
+      return securityInfo ?? new Uint8Array(20);
+    }
+    async readFlash(addr, n) {
+      calls.push(['readFlash', addr, n]);
+      const out = flash.slice(addr, addr + n);
+      tamperRead?.(addr, n, readCalls++, out);
+      return out;
+    }
+    async flashMd5sum(addr, n) {
+      calls.push(['flashMd5sum', addr, n]);
+      return md5Hex(flash.slice(addr, addr + n));
+    }
     async eraseFlash() {
       calls.push(['eraseFlash']);
       if (failErase) throw new Error('Timed out waiting for packet header');
+      flash.fill(0xff);
     }
     async writeFlash(o) {
       calls.push(['writeFlash', o.fileArray.map((f) => [f.address, f.data.length]), o.eraseAll, o.compress]);
+      if (o.eraseAll) flash.fill(0xff);
       for (let i = 0; i < o.fileArray.length; i++) {
         o.calculateMD5Hash?.(o.fileArray[i].data);
         // Like esptool-js with compress: true, report progress in COMPRESSED bytes, in steps.
         const compressed = Math.floor(o.fileArray[i].data.length / 3);
         for (const w of [Math.floor(compressed / 2), compressed]) o.reportProgress?.(i, w, compressed);
+        flash.set(o.fileArray[i].data, o.fileArray[i].address);
         // Exact message esptool-js 0.6.1 throws (lib/esploader.js line 1453).
         if (md5Mismatch) throw new Error('MD5 of file does not match data in flash!');
       }
+      if (corruptAt !== null) flash[corruptAt] = (flash[corruptAt] + 1) & 0xff; // cumulative, so two writes never cancel out
     }
     async after(mode) {
       calls.push(['after', mode]);
       if (failReset) throw new Error('Failed to reset device');
     }
   }
-  return { ESPLoader, Transport, calls, transports };
+  return { ESPLoader, Transport, calls, transports, flash };
 }

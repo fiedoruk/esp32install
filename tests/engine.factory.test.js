@@ -7,7 +7,7 @@ import { sha256Hex } from '../app/verify.js';
 
 function image(chipId) { const d = new Uint8Array(0x3000).fill(0xff); d[0x1000] = 0xe9; d[0x1000 + 12] = chipId; d[0x1000 + 13] = 0; return d; }
 
-async function setup({ fake = makeFakeEsptool(), img = image(0), sha, confirm = true, choose, fetch, confirmFn } = {}) {
+async function setup({ fake = makeFakeEsptool(), img = image(0), sha, confirm = true, choose, fetch, confirmFn, saveBackup } = {}) {
   const manifest = normalizeManifest({ name: 'Demo', version: '1.0', new_install_prompt_erase: true,
     builds: [{ chipFamily: 'ESP32', parts: [{ path: 'demo.bin', offset: 0, size: img.length, ...(sha ? { sha256: sha } : {}) }] }] },
     'https://h/install/manifests/demo.json');
@@ -20,6 +20,7 @@ async function setup({ fake = makeFakeEsptool(), img = image(0), sha, confirm = 
     onEvent: (e) => events.push(e),
     chooseBuild: choose ?? (async (builds) => builds[0]),
     confirmErase: confirmFn ?? (async () => confirm),
+    saveBackup: saveBackup ?? (async () => { throw new Error('saveBackup must not be called unless options.backup is true'); }),
   });
   return { inst, manifest, events, fake, port };
 }
@@ -215,4 +216,29 @@ test('a hand-built Response with url === "" passes the origin check', async () =
   const { inst, manifest } = await setup({ img, fetch: async () => ({ ok: true, status: 200, url: '', arrayBuffer: async () => img.buffer.slice(0) }) });
   const r = await inst.run({ manifest, mode: 'first', options: {} });
   assert.equal(r.verified, true);
+});
+
+test('factory with options.backup: true saves one whole-flash copy before the erase; false never calls saveBackup', async () => {
+  const saved = [];
+  const { inst, manifest, fake } = await setup({ saveBackup: async (bytes, name) => { fake.calls.push(['saveBackup', name]); saved.push({ bytes, name }); } });
+  const r = await inst.run({ manifest, mode: 'first', options: { backup: true } });
+  assert.equal(r.verified, true);
+  const names = fake.calls.map((c) => c[0]);
+  assert.equal(names.filter((n) => n === 'saveBackup').length, 1);
+  assert.ok(names.indexOf('saveBackup') < names.indexOf('eraseFlash'), 'the copy is taken before the erase');
+  assert.ok(names.indexOf('saveBackup') > names.indexOf('readFlashId'));
+  assert.equal(saved[0].bytes.length, 16 * 1024 * 1024);
+  assert.ok(saved[0].bytes.every((b) => b === 0xff), 'the copy is the blank flash the fake started with');
+  assert.match(saved[0].name, /^Demo-backup-[0-9a-f]{8}\.bin$/);
+  assert.equal(saved[0].name.slice(12, 20), (await sha256Hex(saved[0].bytes)).slice(0, 8));
+  // Only one read pass: a keepsake, not a gate.
+  assert.equal(fake.calls.filter((c) => c[0] === 'readFlash').length, 64);
+
+  const s2 = await setup();
+  await s2.inst.run({ manifest: s2.manifest, mode: 'first', options: { backup: false } });
+  assert.ok(!called(s2.fake, 'saveBackup'));
+  assert.ok(!called(s2.fake, 'readFlash'));
+  const s3 = await setup();
+  await s3.inst.run({ manifest: s3.manifest, mode: 'first', options: {} });
+  assert.ok(!called(s3.fake, 'saveBackup'));
 });
