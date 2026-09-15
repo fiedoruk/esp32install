@@ -5,11 +5,13 @@ export function makeFakeEsptool({
   md5Mismatch = false,
   failConnect = false,
   failErase = false,
+  failReset = false,
   features = ['WiFi', 'BT'],
 } = {}) {
   const calls = [];
+  const transports = [];
   class Transport {
-    constructor(port) { this.port = port; calls.push(['transport']); }
+    constructor(...args) { this.args = args; this.port = args[0]; transports.push(this); calls.push(['transport']); }
     setDeviceLostCallback(fn) { this.lost = fn; }
     async disconnect() { calls.push(['disconnect']); }
   }
@@ -45,7 +47,10 @@ export function makeFakeEsptool({
         if (md5Mismatch) throw new Error('MD5 of file does not match data in flash!');
       }
     }
-    async after(mode) { calls.push(['after', mode]); }
+    async after(mode) {
+      calls.push(['after', mode]);
+      if (failReset) throw new Error('Failed to reset device');
+    }
   }
-  return { ESPLoader, Transport, calls };
+  return { ESPLoader, Transport, calls, transports };
 }

@@ -90,7 +90,7 @@ const FUTURE_CODES = [
   'device.layout', 'device.notEmpty',
   'backup.mismatch', 'backup.file',
   'flash.erase', 'flash.write', 'flash.verify',
-  'engine.load', 'engine.busy',
+  'engine.load', 'engine.busy', 'engine.unexpected',
 ];
 
 test('strings for codes the engine will throw later are already present', () => {

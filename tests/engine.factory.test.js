@@ -7,26 +7,30 @@ import { sha256Hex } from '../app/verify.js';
 
 function image(chipId) { const d = new Uint8Array(0x3000).fill(0xff); d[0x1000] = 0xe9; d[0x1000 + 12] = chipId; d[0x1000 + 13] = 0; return d; }
 
-async function setup({ fake = makeFakeEsptool(), img = image(0), sha, confirm = true, choose } = {}) {
+async function setup({ fake = makeFakeEsptool(), img = image(0), sha, confirm = true, choose, fetch, confirmFn } = {}) {
   const manifest = normalizeManifest({ name: 'Demo', version: '1.0', new_install_prompt_erase: true,
     builds: [{ chipFamily: 'ESP32', parts: [{ path: 'demo.bin', offset: 0, size: img.length, ...(sha ? { sha256: sha } : {}) }] }] },
     'https://h/install/manifests/demo.json');
   const events = [];
+  const port = { getInfo: () => ({ usbVendorId: 0x1a86, usbProductId: 0x55d4 }) };
   const inst = createInstaller({
     esptool: fake,
-    requestPort: async () => ({ getInfo: () => ({ usbVendorId: 0x1a86, usbProductId: 0x55d4 }) }),
-    fetchFn: async () => ({ ok: true, status: 200, arrayBuffer: async () => img.buffer.slice(0) }),
+    requestPort: async () => port,
+    fetchFn: fetch ?? (async () => ({ ok: true, status: 200, arrayBuffer: async () => img.buffer.slice(0) })),
     onEvent: (e) => events.push(e),
     chooseBuild: choose ?? (async (builds) => builds[0]),
-    confirmErase: async () => confirm,
+    confirmErase: confirmFn ?? (async () => confirm),
   });
-  return { inst, manifest, events, fake };
+  return { inst, manifest, events, fake, port };
 }
+const called = (fake, name) => fake.calls.some((c) => c[0] === name);
 
 test('happy path: connect, detect, verify, erase (confirmed), write with MD5, reset', async () => {
-  const { inst, manifest, events, fake } = await setup();
+  const { inst, manifest, events, fake, port } = await setup();
   const r = await inst.run({ manifest, mode: 'first', options: {} });
   assert.equal(r.verified, true);
+  assert.equal(fake.transports.length, 1);
+  assert.deepEqual(fake.transports[0].args, [port, false, true]);
   const names = fake.calls.map((c) => c[0]);
   assert.deepEqual(names, ['transport', 'main', 'readFlashId', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
   const w = fake.calls.find((c) => c[0] === 'writeFlash');
@@ -118,4 +122,87 @@ test('a second run while one is in flight → engine.busy', async () => {
   const first = inst.run({ manifest, mode: 'first', options: {} });
   await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'engine.busy');
   await first;
+});
+
+test('cancel() from inside confirmErase → serial.cancelled, no erase, no write, disconnect called', async () => {
+  let inst;
+  const s = await setup({ confirmFn: async () => { inst.cancel(); return true; } });
+  inst = s.inst;
+  await assert.rejects(inst.run({ manifest: s.manifest, mode: 'first', options: {} }), (e) => e.code === 'serial.cancelled');
+  assert.ok(!called(s.fake, 'eraseFlash'));
+  assert.ok(!called(s.fake, 'writeFlash'));
+  assert.ok(called(s.fake, 'disconnect'));
+  assert.equal(s.events.at(-1).type, 'error');
+});
+
+test('fetchFn rejecting (network) → manifest.fetch with status 0, nothing erased or written', async () => {
+  const { inst, manifest, fake } = await setup({ fetch: async () => { throw new TypeError('Failed to fetch'); } });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'manifest.fetch' && e.params.status === 0 && e.cause instanceof TypeError);
+  assert.ok(!called(fake, 'eraseFlash'));
+  assert.ok(!called(fake, 'writeFlash'));
+});
+
+test('redirect to another origin → manifest.origin, nothing erased or written', async () => {
+  const img = image(0);
+  const { inst, manifest, fake } = await setup({ img, fetch: async () => ({ ok: true, status: 200, url: 'https://evil.example/demo.bin', arrayBuffer: async () => img.buffer.slice(0) }) });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'manifest.origin' && e.params.origin === 'https://evil.example');
+  assert.ok(!called(fake, 'eraseFlash'));
+  assert.ok(!called(fake, 'writeFlash'));
+});
+
+test('redirect within the same origin is accepted', async () => {
+  const img = image(0);
+  const { inst, manifest } = await setup({ img, fetch: async () => ({ ok: true, status: 200, url: 'https://h/cdn/demo-v1.bin', arrayBuffer: async () => img.buffer.slice(0) }) });
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
+});
+
+test('reset failure after a verified write still resolves with verified: true and a done event', async () => {
+  const fake = makeFakeEsptool({ failReset: true });
+  const { inst, manifest, events } = await setup({ fake });
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
+  assert.ok(called(fake, 'after'));
+  assert.equal(events.at(-1).type, 'done');
+  assert.ok(events.some((e) => e.type === 'log' && /reset: Failed to reset device/.test(e.line)));
+  assert.ok(!events.some((e) => e.type === 'error'));
+  const doneIdx = events.findIndex((e) => e.type === 'stage' && e.stage === 'done');
+  const resetLogIdx = events.findIndex((e) => e.type === 'log' && /^reset: /.test(e.line));
+  assert.ok(resetLogIdx >= 0 && doneIdx > resetLogIdx, 'done stage must follow the reset attempt');
+});
+
+test('device lost during download → serial.lost, nothing written', async () => {
+  const img = image(0);
+  const fake = makeFakeEsptool();
+  const { inst, manifest } = await setup({ img, fake, fetch: async () => {
+    fake.transports[0].lost();
+    return { ok: true, status: 200, arrayBuffer: async () => img.buffer.slice(0) };
+  } });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'serial.lost');
+  assert.ok(!called(fake, 'eraseFlash'));
+  assert.ok(!called(fake, 'writeFlash'));
+  assert.ok(called(fake, 'disconnect'));
+});
+
+test('unknown errors map to engine.unexpected before a write and flash.write during one', () => {
+  const err = new Error('something odd');
+  assert.equal(mapSerialError(err).code, 'engine.unexpected');
+  assert.equal(mapSerialError(err, { writing: false }).code, 'engine.unexpected');
+  assert.equal(mapSerialError(err, { writing: true }).code, 'flash.write');
+});
+
+test('an unknown error thrown before the write is reported as engine.unexpected by run()', async () => {
+  const fake = makeFakeEsptool();
+  const { inst, manifest } = await setup({ fake, choose: undefined, confirmFn: async () => { throw new Error('ui exploded'); } });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'engine.unexpected');
+  assert.ok(!called(fake, 'writeFlash'));
+});
+
+test('write progress uses the per-part total from the callback', async () => {
+  const { inst, manifest, events } = await setup();
+  await inst.run({ manifest, mode: 'first', options: {} });
+  const w = events.filter((e) => e.type === 'stage' && e.stage === 'writing');
+  assert.ok(w.length >= 1);
+  assert.equal(w.at(-1).params.partTotal, 0x3000);
+  assert.equal(w.at(-1).percent, 90);
 });

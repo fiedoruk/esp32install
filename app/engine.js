@@ -14,8 +14,12 @@ import { md5Hex } from './md5.js';
 const BAUD = 460800;
 const PART_MAX = 32 * 1024 * 1024;
 
-/** Turns whatever Web Serial or esptool-js throws into an InstallError with a known code. */
-export function mapSerialError(err) {
+/**
+ * Turns whatever Web Serial or esptool-js throws into an InstallError with a known code.
+ * An unrecognised error becomes `flash.write` only once a write has started; before that
+ * the device is untouched, so it is reported as `engine.unexpected`.
+ */
+export function mapSerialError(err, { writing = false } = {}) {
   if (err instanceof InstallError) return err;
   const msg = String(err?.message ?? err ?? '');
   if (err?.name === 'NotFoundError' || /no port selected/i.test(msg)) return new InstallError('serial.cancelled', {}, err);
@@ -24,7 +28,7 @@ export function mapSerialError(err) {
   if (/failed to connect|timed out waiting for packet|sync/i.test(msg)) return new InstallError('serial.connect', {}, err);
   if (/MD5 of file does not match|md5|hash of data/i.test(msg)) return new InstallError('flash.verify', {}, err);
   if (/device lost|disconnected|the device has been lost/i.test(msg)) return new InstallError('serial.lost', {}, err);
-  return new InstallError('flash.write', { detail: msg }, err);
+  return new InstallError(writing ? 'flash.write' : 'engine.unexpected', { detail: msg }, err);
 }
 
 /** Flash size in MB from the JEDEC id. Fails closed: no table entry means unknown, never 4 MB. */
@@ -37,17 +41,33 @@ export function flashSizeFromId(loader, id) {
   return Number(m[1]);
 }
 
+/**
+ * Downloads one part. Network failures become `manifest.fetch` with status 0. Redirects are
+ * followed, but the final response must stay on the origin the manifest layer validated.
+ */
 export async function fetchBytes(fetchFn, url, max) {
-  const res = await fetchFn(url, { cache: 'no-store', credentials: 'same-origin', redirect: 'follow' });
+  let res;
+  try {
+    res = await fetchFn(url, { cache: 'no-store', credentials: 'same-origin', redirect: 'follow' });
+  } catch (err) {
+    throw new InstallError('manifest.fetch', { status: 0, url }, err);
+  }
   if (!res.ok) throw new InstallError('manifest.fetch', { status: res.status, url });
-  const buf = await res.arrayBuffer();
+  const origin = new URL(res.url ?? url).origin;
+  if (origin !== new URL(url).origin) throw new InstallError('manifest.origin', { origin });
+  let buf;
+  try {
+    buf = await res.arrayBuffer();
+  } catch (err) {
+    throw new InstallError('manifest.fetch', { status: 0, url }, err);
+  }
   if (buf.byteLength > max) throw new InstallError('verify.tooLarge', { path: url, bytes: buf.byteLength, max });
   return new Uint8Array(buf);
 }
 
 export function createInstaller(deps) {
   const { esptool, requestPort, fetchFn, onEvent, chooseBuild, confirmErase } = deps;
-  let busy = false, transport = null, loader = null, cancelled = false, lost = false;
+  let busy = false, transport = null, loader = null, cancelled = false, lost = false, writing = false;
   const emit = (e) => { try { onEvent?.(e); } catch { /* UI errors must not break the flow */ } };
   const stage = (s, percent, params = {}, eta) => emit({ type: 'stage', stage: s, percent, params, eta });
   const log = (line) => emit({ type: 'log', line: String(line) });
@@ -65,6 +85,7 @@ export function createInstaller(deps) {
       ? [{ usbVendorId: build.usbVendorId, ...(build.usbProductId !== undefined ? { usbProductId: build.usbProductId } : {}) }]
       : [];
     const port = await requestPort(filters);
+    check(); // a cancel during the port picker must not reset the device
     transport = new esptool.Transport(port, false, true);
     transport.setDeviceLostCallback?.(() => { lost = true; log('device lost'); });
     loader = new esptool.ESPLoader({ transport, baudrate: BAUD, terminal, debugLogging: false });
@@ -92,6 +113,7 @@ export function createInstaller(deps) {
       throw new InstallError('device.noMatch', { chip: hw.chipFamily, flash: hw.flashSizeMB + ' MB', reasons: mismatchReasons(manifest.builds, hw) });
     }
     const build = fits.length === 1 ? fits[0] : await chooseBuild(fits, hw);
+    check();
     if (!build) throw new InstallError('serial.cancelled');
     emit({ type: 'build', build });
     return build;
@@ -133,17 +155,18 @@ export function createInstaller(deps) {
   async function write(parts) {
     const total = parts.reduce((n, p) => n + p.data.length, 0);
     let done = 0, startedAt = 0;
+    writing = true;
     await loader.writeFlash({
       fileArray: parts.map((p) => ({ data: p.data, address: p.offset })),
       flashMode: 'keep', flashFreq: 'keep', flashSize: 'keep', eraseAll: false, compress: true,
       calculateMD5Hash: (image) => md5Hex(image),
-      reportProgress: (i, written) => {
+      reportProgress: (i, written, partTotal) => {
         startedAt ||= Date.now();
         const before = parts.slice(0, i).reduce((n, p) => n + p.data.length, 0);
-        done = before + written;
+        done = before + Math.min(written, partTotal);
         const elapsed = (Date.now() - startedAt) / 1000;
         const eta = done > 0 && elapsed > 1 ? Math.round(((total - done) * elapsed) / done) : undefined;
-        stage('writing', 40 + (done / total) * 50, { n: i + 1, total: parts.length }, eta);
+        stage('writing', 40 + (done / total) * 50, { n: i + 1, total: parts.length, written, partTotal }, eta);
       },
     });
   }
@@ -156,12 +179,19 @@ export function createInstaller(deps) {
     check();
     let eraseFirst = build.eraseAll;
     if (!eraseFirst && manifest.promptErase) eraseFirst = await confirmErase(build, mode);
-    if (eraseFirst) { await erase(); check(); }
-    await write(parts);
     check();
+    // Last cancellation point. Once the erase has started the flash is already blank, so
+    // stopping here would leave a dead device; the write runs to completion regardless.
+    if (eraseFirst) await erase();
+    await write(parts);
     stage('md5', 92);
+    // The image is written and MD5-verified by now; a failed reset is not a failed install.
+    try {
+      await loader.after('hard_reset');
+    } catch (e) {
+      log('reset: ' + (e?.message ?? e) + '; press the reset button or unplug and replug the device');
+    }
     stage('done', 100);
-    await loader.after('hard_reset');
     return {
       verified: true,
       version: manifest.version,
@@ -173,7 +203,7 @@ export function createInstaller(deps) {
   return {
     async run(job) {
       if (busy) throw new InstallError('engine.busy');
-      busy = true; cancelled = false; lost = false;
+      busy = true; cancelled = false; lost = false; writing = false;
       try {
         const profile = job.manifest.profile;
         const result = profile === 'preserve'
@@ -183,7 +213,7 @@ export function createInstaller(deps) {
         emit({ type: 'done', result });
         return result;
       } catch (err) {
-        const error = mapSerialError(err);
+        const error = mapSerialError(err, { writing });
         log('ERROR ' + error.code + (error.cause?.message ? ': ' + error.cause.message : ''));
         await cleanup();
         emit({ type: 'error', error });
