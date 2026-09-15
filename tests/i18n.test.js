@@ -5,9 +5,10 @@ import { detectLang, createI18n } from '../app/i18n.js';
 
 const en = JSON.parse(readFileSync(new URL('../locales/en.json', import.meta.url), 'utf8'));
 
-test('detectLang order: html lang, ?lang, navigator, fallback en', () => {
+test('detectLang order: ?lang, html lang, navigator, fallback en', () => {
   const available = ['en', 'pl'];
-  assert.equal(detectLang({ htmlLang: 'pl', query: 'en', navigatorLanguages: ['de'], available }), 'pl');
+  assert.equal(detectLang({ htmlLang: 'pl', query: 'en', navigatorLanguages: ['de'], available }), 'en', '/pl/…?lang=en gives English');
+  assert.equal(detectLang({ htmlLang: 'pl', query: '', navigatorLanguages: ['en-US'], available }), 'pl', '/pl/ gives Polish to an English browser');
   assert.equal(detectLang({ htmlLang: '', query: 'pl', navigatorLanguages: ['de'], available }), 'pl');
   assert.equal(detectLang({ htmlLang: '', query: '', navigatorLanguages: ['pl-PL', 'en'], available }), 'pl');
   assert.equal(detectLang({ htmlLang: 'de', query: 'xx', navigatorLanguages: ['de-DE'], available }), 'en');

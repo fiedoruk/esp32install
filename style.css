@@ -325,8 +325,8 @@ dialog {
   padding: 24px;
   font-size: 18px;
 }
-/* Literal first: Chrome 89–121 do not pass custom properties into ::backdrop. */
-dialog::backdrop { background: rgb(20 32 43 / 0.55); background: var(--backdrop); }
+/* Fallback inside var(): Chrome 89–121 do not inherit custom properties into ::backdrop. */
+dialog::backdrop { background: var(--backdrop, rgb(20 32 43 / 0.55)); }
 dialog h2 { margin-bottom: 12px; }
 dialog .line h2 { margin-bottom: 0; }
 dialog .row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 16px; }

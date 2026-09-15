@@ -72,6 +72,8 @@
     --backdrop: rgb(3 9 18 / 0.7);
     color-scheme: dark;
   }
+  /* Legacy browsers do not inherit tokens into ::backdrop; set it on the pseudo-element too. */
+  :root:not([data-theme="light"]) dialog::backdrop { --backdrop: rgb(3 9 18 / 0.7); }
 }
 
 :root[data-theme="dark"] {
@@ -88,6 +90,7 @@
   --backdrop: rgb(3 9 18 / 0.7);
   color-scheme: dark;
 }
+:root[data-theme="dark"] dialog::backdrop { --backdrop: rgb(3 9 18 / 0.7); }
 
 :root[data-theme="light"] {
   --bg: #ECEAF2;

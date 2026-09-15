@@ -34,7 +34,7 @@ function setupLangLinks(lang) {
 
 async function boot() {
   const q = new URLSearchParams(location.search);
-  const wanted = detectLang({ htmlLang: '', query: q.get('lang') ?? '', navigatorLanguages: navigator.languages ?? [], available: AVAILABLE });
+  const wanted = detectLang({ htmlLang: document.documentElement.lang, query: q.get('lang') ?? '', navigatorLanguages: navigator.languages ?? [], available: AVAILABLE });
   const dicts = { en: await loadJson(new URL('../locales/en.json', import.meta.url).href) };
   if (wanted !== 'en') {
     try { dicts[wanted] = await loadJson(new URL(`../locales/${wanted}.json`, import.meta.url).href); } catch { /* not translated yet: English */ }
@@ -50,7 +50,8 @@ async function boot() {
   const picked = pickRelease(catalog, { fw: q.get('fw') ?? '', v: q.get('v') ?? '', channel: q.get('channel') ?? '' });
   if (picked.systems) {
     const ui = mountUi({ i18n, system: '' });
-    ui.showSystems(picked.systems, (s) => `?fw=${encodeURIComponent(s.id)}${lang !== 'en' ? '&lang=' + lang : ''}`);
+    // Path-safe: a copy under /pl/install/ with <base href="/install/"> must stay under /pl/.
+    ui.showSystems(picked.systems, (s) => `${location.pathname}?fw=${encodeURIComponent(s.id)}${lang !== 'en' ? '&lang=' + lang : ''}`);
     return;
   }
   const { system, release } = picked;

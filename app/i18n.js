@@ -3,11 +3,14 @@
  * other languages may translate a subset and fall back key by key.
  */
 
-/** Pick a language: page markup wins, then `?lang=`, then the browser, then English. */
+/**
+ * Pick a language: `?lang=` wins (so `/pl/…?lang=en` works), then the page markup (so `/pl/` gives
+ * Polish to an English browser), then the browser, then English.
+ */
 export function detectLang({ htmlLang = '', query = '', navigatorLanguages = [], available = ['en'] } = {}) {
   const norm = (s) => String(s ?? '').toLowerCase().split('-')[0];
   const ok = (l) => (available.includes(l) ? l : null);
-  return ok(norm(htmlLang)) ?? ok(norm(query)) ?? navigatorLanguages.map(norm).map(ok).find(Boolean) ?? 'en';
+  return ok(norm(query)) ?? ok(norm(htmlLang)) ?? navigatorLanguages.map(norm).map(ok).find(Boolean) ?? 'en';
 }
 
 /**

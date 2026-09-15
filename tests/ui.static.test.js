@@ -96,6 +96,11 @@ test('no theme toggle: the system colour scheme decides', () => {
   assert.match(theme, /--backdrop:/);
 });
 
+test('dialog backdrop resolves on browsers that do not inherit tokens into ::backdrop', () => {
+  assert.match(style, /dialog::backdrop\s*\{\s*background:\s*var\(--backdrop,\s*rgb\([^)]*\)\);\s*\}/);
+  assert.match(theme, /dialog::backdrop\s*\{\s*--backdrop:/);
+});
+
 test('theme.css vendors Figtree and Source Sans 3 locally and never reaches the network', () => {
   assert.match(theme, /@font-face\s*\{[^}]*font-family:\s*"Figtree"/);
   assert.match(theme, /@font-face\s*\{[^}]*font-family:\s*"Source Sans 3"/);
