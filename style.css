@@ -1,0 +1,377 @@
+/*
+ * esp32install layout. Three screens on one plate, one action each. Everything technical sits
+ * behind <details>. Colours and fonts come from theme.css; nothing here names a colour.
+ */
+
+*, *::before, *::after { box-sizing: border-box; }
+[hidden] { display: none !important; }
+
+html { height: 100%; }
+body {
+  margin: 0;
+  min-height: 100%;
+  background: var(--bg);
+  color: var(--ink);
+  font-family: var(--font-body);
+  font-size: 18px;
+  line-height: 1.5;
+  font-feature-settings: "tnum";
+  display: flex;
+  flex-direction: column;
+}
+
+a { color: var(--accent); }
+a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible {
+  outline: 3px solid var(--accent);
+  outline-offset: 3px;
+}
+svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; stroke-linejoin: round; }
+
+/* ---- header / footer -------------------------------------------------- */
+
+.top, .foot {
+  width: min(100% - 32px, var(--maxw));
+  margin: 0 auto;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: var(--gap);
+}
+.top { padding: 20px 0 8px; }
+.brand {
+  font-family: var(--font-display);
+  font-weight: 800;
+  font-size: 22px;
+  letter-spacing: -0.01em;
+  color: var(--ink);
+  text-decoration: none;
+}
+.top-tools { display: flex; align-items: center; gap: 12px; }
+.lang { display: flex; gap: 2px; }
+.lang a {
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 14px;
+  padding: 6px 10px;
+  border-radius: 999px;
+  text-decoration: none;
+  color: var(--dim);
+}
+.lang a[aria-current="true"] { background: var(--bg-2); color: var(--ink); }
+.theme {
+  width: 36px; height: 36px;
+  padding: 0;
+  border: 1px solid var(--line);
+  border-radius: 999px;
+  background: var(--bg-2);
+  color: var(--ink);
+  cursor: pointer;
+  display: inline-flex; align-items: center; justify-content: center;
+}
+.theme svg { width: 18px; height: 18px; stroke-width: 1.8; }
+.foot { padding: 24px 0 32px; font-size: 14px; color: var(--dim); justify-content: center; }
+.foot a { color: var(--dim); }
+
+/* ---- the plate ---------------------------------------------------------- */
+
+.app { flex: 1; }
+.plate {
+  width: min(100% - 32px, var(--maxw));
+  margin: 8px auto 0;
+  background: var(--bg-2);
+  border-radius: var(--radius);
+  border: 1px solid var(--line);
+  box-shadow: 0 1px 0 var(--line);
+  padding: clamp(20px, 5vw, 40px);
+  display: flex;
+  flex-direction: column;
+  gap: var(--gap);
+}
+.kicker {
+  margin: 0;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 15px;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--dim);
+}
+.kicker:empty { display: none; }
+
+h1, h2, h3 {
+  font-family: var(--font-display);
+  font-weight: 700;
+  line-height: 1.15;
+  letter-spacing: -0.01em;
+  margin: 0;
+}
+h1 { font-size: clamp(24px, 4.2vw, 32px); }
+h2 { font-size: 20px; }
+h3 { font-size: 17px; margin-top: 8px; }
+p { margin: 0; }
+.lead { font-size: 19px; }
+
+/* ---- screens ------------------------------------------------------------ */
+
+.screen { display: none; flex-direction: column; gap: var(--gap); }
+.screen.is-active { display: flex; animation: fade 200ms ease-out; }
+.screen[hidden] { display: none; }
+@keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+.picto { width: min(100%, 300px); height: auto; color: var(--ink); stroke-width: 2; align-self: center; }
+
+.line { display: flex; align-items: flex-start; gap: 10px; }
+.line > h1, .line > h2 { flex: 1; }
+.door-title { color: var(--dim); font-weight: 600; margin-top: 8px; }
+
+/* "?" hints: a small ring, the text opens underneath, never a tooltip. */
+.hint {
+  flex: none;
+  width: 30px; height: 30px;
+  margin-top: 2px;
+  padding: 0;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dim);
+  font: 600 15px var(--font-display);
+  cursor: pointer;
+}
+.hint[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+.hint-text {
+  border-left: 3px solid var(--accent);
+  padding: 8px 14px;
+  color: var(--dim);
+  background: var(--bg);
+  border-radius: 0 var(--radius) var(--radius) 0;
+}
+
+/* Two doors: a binary choice, equal size on purpose. */
+.doors { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.door {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  padding: 18px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  cursor: pointer;
+  color: var(--ink);
+}
+.door input { position: absolute; inset: 0; opacity: 0; margin: 0; cursor: pointer; }
+.door svg { width: 44px; height: 44px; color: var(--dim); }
+.door b { display: block; font-family: var(--font-display); font-weight: 700; font-size: 19px; }
+.door small { display: block; font-size: 15px; color: var(--dim); line-height: 1.4; margin-top: 2px; }
+.door:has(input:checked) { border-color: var(--accent); }
+.door:has(input:checked) svg { color: var(--accent); }
+.door:has(input:focus-visible) { outline: 3px solid var(--accent); outline-offset: 3px; }
+.door:has(input:disabled) { opacity: 0.6; cursor: default; }
+
+.opt-row { display: flex; align-items: flex-start; gap: 10px; }
+.opt { flex: 1; display: flex; gap: 10px; align-items: flex-start; color: var(--dim); cursor: pointer; }
+.opt input { width: 20px; height: 20px; margin: 4px 0 0; accent-color: var(--accent); flex: none; }
+
+/* The one button. */
+.cta {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  gap: 10px;
+  width: 100%;
+  min-height: 60px;
+  padding: 14px 20px;
+  margin-top: 8px;
+  border: 0;
+  border-radius: var(--radius);
+  background: var(--accent);
+  color: var(--accent-ink);
+  font: 700 20px var(--font-display);
+  text-decoration: none;
+  cursor: pointer;
+}
+.cta:disabled { opacity: 0.55; cursor: progress; }
+.cta svg { width: 20px; height: 20px; stroke-width: 2.2; }
+.quiet {
+  align-self: center;
+  color: var(--dim);
+  font-size: 16px;
+}
+
+/* ---- screen 2: ring and lamps ------------------------------------------ */
+
+.ring-wrap { position: relative; width: 180px; height: 180px; align-self: center; margin-top: 8px; }
+.ring { width: 100%; height: 100%; transform: rotate(-90deg); }
+.ring-track { stroke: var(--line); stroke-width: var(--ring-width); }
+.ring-arc {
+  stroke: var(--accent);
+  stroke-width: var(--ring-width);
+  stroke-dasharray: 339.292;
+  stroke-dashoffset: var(--off, 339.292);
+  transition: stroke-dashoffset 400ms ease-out;
+}
+.ring.is-busy .ring-arc { animation: turn 2.4s linear infinite; transform-origin: 60px 60px; }
+.ring.is-done .ring-arc { stroke: var(--done); }
+@keyframes turn { to { transform: rotate(360deg); } }
+.ring-center {
+  position: absolute; inset: 0;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center;
+  padding: 0 30px;
+}
+.eta { font-family: var(--font-display); font-weight: 700; font-size: 17px; line-height: 1.2; color: var(--ink); }
+.stage-text { text-align: center; font-size: 20px; min-height: 1.5em; }
+
+.lamps { list-style: none; margin: 4px 0 0; padding: 0; display: flex; flex-direction: column; gap: 8px; align-self: center; }
+.lamp { display: flex; align-items: center; gap: 10px; color: var(--dim); }
+.lamp i {
+  width: 14px; height: 14px;
+  border-radius: 999px;
+  border: 2px solid var(--line);
+  background: transparent;
+  flex: none;
+}
+.lamp.is-on { color: var(--ink); }
+.lamp.is-on i { border-color: var(--accent); background: var(--accent); }
+.lamp.is-on.is-pulse i { animation: pulse 2s ease-in-out infinite; }
+.lamp.is-off i { border-color: var(--line); background: transparent; }
+.lamp.is-done i { border-color: var(--done); background: var(--done); }
+@keyframes pulse { 50% { opacity: 0.35; } }
+
+/* ---- screen 3 ----------------------------------------------------------- */
+
+.mark { width: 120px; height: 120px; align-self: center; }
+.mark-ring { stroke: var(--done); stroke-width: var(--ring-width); }
+.mark-ok { stroke: var(--done); stroke-width: 7; }
+.mark-stop { display: none; stroke: var(--stop); stroke-width: 7; }
+.is-error .mark-ring { stroke: var(--stop); }
+.is-error .mark-ok { display: none; }
+.is-error .mark-stop { display: block; }
+.is-error #done-text { color: var(--ink); }
+
+/* ---- technical layer: the service hatch --------------------------------- */
+
+details { border-top: 1px solid var(--line); padding-top: 12px; }
+summary {
+  cursor: pointer;
+  list-style: none;
+  font-family: var(--font-display);
+  font-weight: 600;
+  font-size: 16px;
+  color: var(--dim);
+  display: flex; align-items: center; gap: 8px;
+}
+summary::-webkit-details-marker { display: none; }
+summary::before {
+  content: "";
+  width: 8px; height: 8px;
+  border-right: 2px solid currentColor;
+  border-bottom: 2px solid currentColor;
+  transform: rotate(-45deg);
+  transition: transform 150ms;
+  margin: 0 4px 0 2px;
+}
+details[open] > summary::before { transform: rotate(45deg); }
+.facts {
+  display: grid;
+  grid-template-columns: max-content 1fr;
+  gap: 6px 16px;
+  margin: 12px 0 0;
+  font-size: 16px;
+}
+.facts dt { color: var(--dim); }
+.facts dd { margin: 0; overflow-wrap: anywhere; }
+.facts dd:empty::before { content: "\2014"; color: var(--line); }
+
+pre {
+  margin: 12px 0 0;
+  padding: 12px 14px;
+  border-radius: calc(var(--radius) - 6px);
+  background: var(--bg);
+  color: var(--ink);
+  font: 14px/1.5 ui-monospace, "SF Mono", Menlo, monospace;
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+}
+/* The vendored mono font is asked for only once a hatch is open, so it never loads for the first layer. */
+details[open] pre, details[open] code { font-family: var(--font-mono); }
+.log pre { max-height: 240px; overflow: auto; min-height: 3em; }
+.small, .quiet-btn, .warn-btn {
+  margin-top: 10px;
+  padding: 8px 14px;
+  border-radius: 999px;
+  border: 1.5px solid var(--line);
+  background: transparent;
+  color: var(--ink);
+  font: 600 15px var(--font-body);
+  cursor: pointer;
+}
+.alt { display: flex; flex-direction: column; gap: 6px; margin-top: 8px; font-size: 16px; }
+.alt ul { margin: 4px 0 0; padding-left: 20px; }
+.alt li { margin: 4px 0; }
+.alt code { font: 13px ui-monospace, "SF Mono", Menlo, monospace; color: var(--dim); overflow-wrap: anywhere; }
+.pick-list { list-style: none; margin: 8px 0 0; padding: 0; display: grid; gap: 10px; }
+.pick-list a {
+  display: block;
+  padding: 16px 18px;
+  border: 2px solid var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  text-decoration: none;
+  font-family: var(--font-display);
+  font-weight: 700;
+  font-size: 19px;
+}
+.pick-list small { display: block; font: 15px var(--font-body); color: var(--dim); }
+.gate p { padding: 12px 16px; border-left: 3px solid var(--warn); background: var(--bg); border-radius: 0 var(--radius) var(--radius) 0; }
+
+/* ---- dialogs: one sentence, two buttons -------------------------------- */
+
+dialog {
+  width: min(100% - 32px, 460px);
+  border: 1px solid var(--line);
+  border-radius: var(--radius);
+  background: var(--bg-2);
+  color: var(--ink);
+  padding: 24px;
+  font-size: 18px;
+}
+dialog::backdrop { background: rgb(20 32 43 / 0.55); }
+dialog h2 { margin-bottom: 12px; }
+dialog .line h2 { margin-bottom: 0; }
+dialog .row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 16px; }
+dialog p { margin-top: 8px; }
+.warn-btn { border-color: var(--warn); color: var(--warn); }
+.choices { display: grid; gap: 8px; margin-top: 12px; }
+.choice {
+  padding: 12px 14px;
+  border: 2px solid var(--line);
+  border-radius: calc(var(--radius) - 4px);
+  background: transparent;
+  color: var(--ink);
+  font: 600 17px var(--font-body);
+  text-align: left;
+  cursor: pointer;
+}
+.choice:hover { border-color: var(--accent); }
+.file { display: block; margin-top: 12px; }
+.file input { width: 100%; font: 16px var(--font-body); }
+
+/* ---- small screens ------------------------------------------------------- */
+
+@media (max-width: 700px) {
+  body { font-size: 17px; }
+  .doors { grid-template-columns: 1fr; }
+  .ring-wrap { width: 150px; height: 150px; }
+  .plate { padding: 20px 16px; }
+  .facts { grid-template-columns: 1fr; gap: 2px 0; }
+  .facts dt { margin-top: 6px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  .screen.is-active { animation: none; }
+  .ring.is-busy .ring-arc { animation: none; }
+  .lamp.is-on.is-pulse i { animation: none; }
+  .ring-arc { transition: none; }
+  summary::before { transition: none; }
+}

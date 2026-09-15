@@ -1,0 +1,18 @@
+{
+  "name": "Demo firmware",
+  "version": "1.0.0",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "chipFamily": "ESP32",
+      "parts": [
+        {
+          "path": "demo.bin",
+          "offset": 4096,
+          "size": 4096,
+          "sha256": "c939cfc0405acccaa7433d7c80e4a9481acf94bb3e5bd5d072b680ace1677b6a"
+        }
+      ]
+    }
+  ]
+}

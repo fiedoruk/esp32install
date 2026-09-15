@@ -1,0 +1,101 @@
+/*
+ * esp32install theme: tokens only. A replica changes this file and nothing else.
+ * Direction: a home-appliance panel. One plate on a lavender-grey field, one cobalt action,
+ * state colours from ISO 3864 (blue = do this, green = safe, amber = caution, red = stop only).
+ * Fonts are vendored under assets/fonts/ (SIL OFL 1.1, licence next to each family).
+ */
+
+@font-face {
+  font-family: "Figtree";
+  src: url("assets/fonts/figtree/Figtree[wght].woff2") format("woff2");
+  font-weight: 300 900;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Source Sans 3";
+  src: url("assets/fonts/source-sans-3/SourceSans3-Regular.ttf.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+@font-face {
+  font-family: "Source Sans 3";
+  src: url("assets/fonts/source-sans-3/SourceSans3-Semibold.ttf.woff2") format("woff2");
+  font-weight: 600;
+  font-style: normal;
+  font-display: swap;
+}
+/* Used only by the technical log and the esptool command, so the browser fetches it lazily. */
+@font-face {
+  font-family: "Recursive Mono Casual";
+  src: url("assets/fonts/recursive/RecursiveMonoCslSt-Regular.woff2") format("woff2");
+  font-weight: 400;
+  font-style: normal;
+  font-display: swap;
+}
+
+:root {
+  --bg: #ECEAF2;
+  --bg-2: #FFFFFF;
+  --ink: #14202B;
+  --dim: #4F5B66;
+  --line: #B9BCCB;
+  --accent: #1A56C4;
+  --accent-ink: #FFFFFF;
+  --warn: #8A5300;
+  --stop: #B42318;
+  --done: #1B7F3B;
+  --font-display: "Figtree", system-ui, sans-serif;
+  --font-body: "Source Sans 3", system-ui, sans-serif;
+  --font-mono: "Recursive Mono Casual", ui-monospace, "SF Mono", Menlo, monospace;
+  --ring-width: 10px;
+  --radius: 14px;
+  --gap: 16px;
+  --maxw: 720px;
+  color-scheme: light;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root:not([data-theme="light"]) {
+    --bg: #0E1B2E;
+    --bg-2: #162740;
+    --ink: #EEF3F8;
+    --dim: #A7B4C2;
+    --line: #2F4460;
+    --accent: #7FB2FF;
+    --accent-ink: #0E1B2E;
+    --warn: #FFC96B;
+    --stop: #FF8C82;
+    --done: #6FD08C;
+    color-scheme: dark;
+  }
+}
+
+:root[data-theme="dark"] {
+  --bg: #0E1B2E;
+  --bg-2: #162740;
+  --ink: #EEF3F8;
+  --dim: #A7B4C2;
+  --line: #2F4460;
+  --accent: #7FB2FF;
+  --accent-ink: #0E1B2E;
+  --warn: #FFC96B;
+  --stop: #FF8C82;
+  --done: #6FD08C;
+  color-scheme: dark;
+}
+
+:root[data-theme="light"] {
+  --bg: #ECEAF2;
+  --bg-2: #FFFFFF;
+  --ink: #14202B;
+  --dim: #4F5B66;
+  --line: #B9BCCB;
+  --accent: #1A56C4;
+  --accent-ink: #FFFFFF;
+  --warn: #8A5300;
+  --stop: #B42318;
+  --done: #1B7F3B;
+  color-scheme: light;
+}
