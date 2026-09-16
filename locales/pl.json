@@ -38,7 +38,9 @@
     "theme": "Jasny albo ciemny",
     "themeLight": "Jasny",
     "themeDark": "Ciemny",
-    "wifiSend": "Wyślij do urządzenia"
+    "wifiSend": "Wyślij do urządzenia",
+    "console": "Pokaż, co mówi urządzenie",
+    "consoleStop": "Przestań słuchać urządzenia"
   },
   "stage": {
     "idle": "Czekam na start",

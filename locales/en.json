@@ -38,7 +38,9 @@
     "theme": "Light or dark",
     "themeLight": "Light",
     "themeDark": "Dark",
-    "wifiSend": "Send to the device"
+    "wifiSend": "Send to the device",
+    "console": "Show what the device says",
+    "consoleStop": "Stop listening to the device"
   },
   "stage": {
     "idle": "Ready",

@@ -211,3 +211,18 @@ test('the Wi-Fi step lives on the done screen, hidden until the device asks for 
   assert.match(main, /loadClient: \(\) => import\('\.\.\/vendor\/improv-wifi\/serial\.js'\)/);
   assert.match(read('app/improv.js'), /safeNextUrl\(client\.nextUrl\)/, 'the device address is checked before it becomes a link');
 });
+
+test('the console lives inside the technical log: one button, hidden until a port was picked, lines through textContent under a cap', () => {
+  assert.match(html, /<details class="log" id="log-details">[\s\S]*?<pre id="log"><\/pre>[\s\S]*?<button type="button" class="small" id="console-toggle" hidden aria-pressed="false" data-i18n="action\.console"><\/button>[\s\S]*?<\/details>/);
+  const ui = read('app/ui.js');
+  assert.match(ui, /const logLines = createLineBuffer\(\);/, 'the log <pre> is fed from the capped buffer');
+  assert.match(ui, /pre\.textContent = logLines\.text\(\);/);
+  assert.doesNotMatch(ui, /innerHTML/, 'nothing the device prints is ever parsed as markup');
+  assert.match(ui, /appendDeviceLine\(line\)/);
+  assert.match(ui, /ui\.setConsoleAvailable\(false\);/, 'startInstall hides the button');
+  const main = read('app/main.js');
+  assert.match(main, /if \(monitor\) \{ const m = monitor; monitor = null; await m\.stop\(\); ui\.setConsoleRunning\(false\); \}/, 'releasePort stops the console');
+  assert.match(main, /await releasePort\(\); \/\/ the Wi-Fi step must not hold the port/, 'and every install starts with releasePort');
+  assert.match(main, /ui\.setConsoleAvailable\(Boolean\(port\)\);[\s\S]*?ui\.setError\(e\.error\);\s*ui\.setConsoleAvailable\(Boolean\(port\)\);/, 'offered on the done screen and on the stopped screen');
+  assert.match(read('app/console.js'), /export const MAX_LINES = 500;/);
+});

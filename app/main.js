@@ -14,6 +14,7 @@ import { saveBlob, saveBackupWithHandle } from './backup.js';
 import { mountUi, translateDom, fileNameOf, hideHatches } from './ui.js';
 import { mountThemeToggle } from './theme.js';
 import { createImprovSession } from './improv.js';
+import { createConsole } from './console.js';
 import { InstallError } from './errors.js';
 
 const AVAILABLE = ['en', 'pl'];
@@ -56,14 +57,45 @@ async function loadEngine(ui) {
  * the optional Wi-Fi step; whatever holds it then lets go before the next install starts.
  */
 function makeInstaller({ esptool, ui, fw, guide, nameOf }) {
-  let chip = '', stage = 'idle', version = '', port = null, build = null, improv = null;
+  let chip = '', stage = 'idle', version = '', port = null, build = null, improv = null, monitor = null;
   const log = (line) => ui.appendLog(line);
 
-  /** Ends the Wi-Fi step, waiting for whatever it is doing; the port is free afterwards. */
+  /** Ends the Wi-Fi step and the console, waiting for whatever they are doing; the port is free afterwards. */
   async function releasePort() {
     ui.hideWifi();
     if (improv) { const s = improv; improv = null; await s.close(); }
+    if (monitor) { const m = monitor; monitor = null; await m.stop(); ui.setConsoleRunning(false); }
   }
+
+  /**
+   * The console: what the device prints, streamed into the technical log. Offered on the done
+   * and the stopped screen alike, because a failed boot is exactly what one wants to read.
+   * It takes the port only once the installer and the Wi-Fi step have let go of it.
+   */
+  ui.bindConsole(async () => {
+    if (monitor) { await releasePort(); return; }
+    if (!port) return;
+    await releasePort();
+    const m = createConsole({
+      port,
+      onLine: (line) => ui.appendDeviceLine(line),
+      onEnd: (error) => {
+        if (monitor === m) monitor = null;
+        ui.setConsoleRunning(false);
+        log('console: ' + (error ? 'ended with ' + String(error?.message ?? error) : 'the device went away'));
+      },
+    });
+    monitor = m;
+    try {
+      await m.start();
+      ui.setConsoleRunning(true);
+      log('console: listening at 115200');
+    } catch (e) {
+      monitor = null;
+      ui.setConsoleRunning(false);
+      log('console: could not open the port (' + String(e?.message ?? e) + ')');
+    }
+  });
 
   /**
    * After the install: ask the restarted device whether it takes Wi-Fi details. A silent device
@@ -127,9 +159,11 @@ function makeInstaller({ esptool, ui, fw, guide, nameOf }) {
       else if (e.type === 'done') {
         ui.setResult({ system: nameOf(), version: e.result.version, next: guide, checksum: e.result.parts?.map((p) => p.sha256).filter(Boolean).join(', ') });
         track('done', { fw, version, chip });
+        ui.setConsoleAvailable(Boolean(port));
         offerWifi().catch((err) => log('improv: ' + String(err?.message ?? err)));
       } else if (e.type === 'error') {
         ui.setError(e.error);
+        ui.setConsoleAvailable(Boolean(port));
         track('error', { fw, version, chip, stage, code: e.error?.code });
       }
     },

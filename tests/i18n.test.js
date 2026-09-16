@@ -76,7 +76,7 @@ const REQUIRED = [
   'simple.own.whole', 'simple.own.wholeHint', 'simple.own.app', 'simple.own.appHint', 'simple.own.address', 'simple.own.device',
   'simple.own.pickDevice', 'simple.own.plan', 'simple.own.unknownDevice', 'simple.own.badAddress', 'simple.own.url', 'simple.own.urlHint', 'simple.own.urlGo',
   'simple.wifi.title', 'simple.wifi.hint', 'simple.wifi.network', 'simple.wifi.password', 'simple.wifi.ok', 'simple.wifi.skip', 'simple.wifi.open',
-  'action.wifiSend',
+  'action.wifiSend', 'action.console', 'action.consoleStop',
   'pick.title', 'pick.hint',
   'erase.title', 'erase.textFirst', 'erase.textUpdate', 'erase.yes', 'erase.no',
   'hint.open', 'hint.close',

@@ -5,6 +5,7 @@
  * and `action.*`; chip names, sizes and checksums only ever land inside <details>.
  */
 import { InstallError } from './errors.js';
+import { createLineBuffer } from './console.js';
 
 const $ = (id) => document.getElementById(id);
 const clear = (el) => { while (el.firstChild) el.removeChild(el.firstChild); };
@@ -116,6 +117,14 @@ export function mountUi({ i18n, system }) {
     li.classList.remove('is-on', 'is-off', 'is-done');
     li.classList.add(state);
     if (text !== undefined) $(id + '-text').textContent = text;
+  };
+
+  // The technical log: installer lines and, when the console runs, the device's own lines, capped.
+  const logLines = createLineBuffer();
+  const showLog = () => {
+    const pre = $('log');
+    pre.textContent = logLines.text();
+    pre.scrollTop = pre.scrollHeight;
   };
 
   /** The device's own address after Wi-Fi setup, as a link; nothing is shown when it gave none. */
@@ -254,6 +263,7 @@ export function mountUi({ i18n, system }) {
       $('eta').textContent = '';
       $('save-backup').hidden = true;
       $('wifi').hidden = true;
+      ui.setConsoleAvailable(false);
       $('stage-text').textContent = t('stage.connecting');
       setLamp('lamp-device', 'is-off', t('app.notDetected'));
       setLamp('lamp-cable', 'is-on');
@@ -281,10 +291,22 @@ export function mountUi({ i18n, system }) {
       $('fact-board').textContent = b.board;
       setLamp('lamp-device', 'is-on', b.board);
     },
-    appendLog(line) {
-      const pre = $('log');
-      pre.textContent += `[${new Date().toLocaleTimeString()}] ${line}\n`;
-      pre.scrollTop = pre.scrollHeight;
+    appendLog(line) { logLines.push(`[${new Date().toLocaleTimeString()}] ${line}`); showLog(); },
+    /** A line the device itself printed; the same <pre>, marked, and under the same cap. */
+    appendDeviceLine(line) { logLines.push(`[${new Date().toLocaleTimeString()}] > ${line}`); showLog(); },
+    /** The console button is offered only when a port was picked and no install is running. */
+    setConsoleAvailable(on) { $('console-toggle').hidden = !on; if (!on) ui.setConsoleRunning(false); },
+    setConsoleRunning(on) {
+      const btn = $('console-toggle');
+      btn.setAttribute('aria-pressed', String(on));
+      btn.textContent = t(on ? 'action.consoleStop' : 'action.console');
+      btn.disabled = false;
+    },
+    bindConsole(fn) {
+      $('console-toggle').addEventListener('click', async () => {
+        $('console-toggle').disabled = true; // one click at a time; setConsoleRunning re-enables
+        try { await fn(); } finally { $('console-toggle').disabled = false; }
+      });
     },
     setResult({ system: name, version, next, checksum }) {
       setRing(100, false);
