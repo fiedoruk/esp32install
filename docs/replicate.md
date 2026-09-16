@@ -59,6 +59,15 @@ nested `location /install/assets/fonts/` that overrides it.
 `tools/check.py <your url>` warns when the page comes back with a long
 `max-age`, or with no `Cache-Control` at all.
 
+**Ranges, if you have them; nothing if you do not.** An image is nearly four
+megabytes, and on a link that drops the page used to start the download again
+from nothing every time. It now counts the bytes as they arrive and asks for the
+rest with a `Range` header when a stream breaks. Every ordinary static server
+answers ranges already and there is nothing to switch on. A host that does not —
+or a download script of your own that streams the file itself — answers with the
+whole file instead, and the page takes that from the beginning, which is exactly
+what it did before. Nothing is required of you either way.
+
 Nothing else matters. No PHP, no Node, no server-side code of any kind.
 
 One thing the files cannot do for themselves: stop another site from framing
@@ -499,7 +508,10 @@ where the script runs and the real bytes arrive.
 
 The installer checks the size and the SHA-256 of what arrives, so the script has
 to send the bytes unchanged: no compression the manifest does not know about, no
-HTML error page in place of the file. Count the lines, not the bytes; `wc -l
+HTML error page in place of the file. `readfile` sends the whole file and ignores
+a `Range` header, which is allowed and harmless — a download through the counter
+that breaks halfway starts again rather than picking up where it stopped, and the
+page handles that by itself. Count the lines, not the bytes; `wc -l
 downloads.log` is the number. Keep that log where the server does not hand it
 out: the path above is outside the document root altogether, which is the point —
 `__DIR__ . '/downloads.log'` would publish it as `/firmware/downloads.log`. Where

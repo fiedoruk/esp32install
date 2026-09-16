@@ -58,28 +58,108 @@ export function flashSizeFromId(loader, id) {
   return Number(m[1]);
 }
 
+/** How many times a download that broke is picked up again before it is reported as a failure. */
+const RESUME_TRIES = 4;
+/** Between tries. A link that just dropped is rarely back in the same millisecond. */
+const RESUME_WAIT = [500, 1500, 3000, 5000];
+
+/** The byte a partial answer starts at, from its `Content-Range`, or null when it does not say. */
+function rangeFrom(res) {
+  const m = /^bytes\s+(\d+)-(\d+)\/(\d+|\*)$/i.exec(String(res.headers?.get?.('Content-Range') ?? '').trim());
+  return m ? Number(m[1]) : null;
+}
+
+/** The whole file's length as this answer states it, given that it starts at `at`, or null. */
+function totalFrom(res, at) {
+  const m = /^bytes\s+\d+-\d+\/(\d+)$/i.exec(String(res.headers?.get?.('Content-Range') ?? '').trim());
+  if (m) return Number(m[1]);
+  const length = Number(res.headers?.get?.('Content-Length'));
+  return Number.isSafeInteger(length) && length > 0 ? at + length : null;
+}
+
 /**
- * Downloads one part. Network failures become `manifest.fetch` with status 0. Redirects are
- * followed, but the final response must stay on the origin the manifest layer validated.
+ * Hands the body over piece by piece. A browser gives a stream; the hand-built answers a test or
+ * a polyfill produces do not, and those are read whole, exactly as this always did.
  */
-export async function fetchBytes(fetchFn, url, max) {
-  let res;
-  try {
-    res = await fetchFn(url, { cache: 'no-store', credentials: 'same-origin', redirect: 'follow' });
-  } catch (err) {
-    throw new InstallError('manifest.fetch', { status: 0, url }, err);
+async function drain(res, onPiece) {
+  const reader = res.body?.getReader?.();
+  if (!reader) { onPiece(new Uint8Array(await res.arrayBuffer())); return; }
+  for (;;) {
+    const { value, done } = await reader.read();
+    if (done) return;
+    if (value?.length) onPiece(value instanceof Uint8Array ? value : new Uint8Array(value));
   }
-  if (!res.ok) throw new InstallError('manifest.fetch', { status: res.status, url });
-  const origin = new URL(res.url || url).origin; // a hand-built Response has url === ''
-  if (origin !== new URL(url).origin) throw new InstallError('manifest.origin', { origin });
-  let buf;
-  try {
-    buf = await res.arrayBuffer();
-  } catch (err) {
-    throw new InstallError('manifest.fetch', { status: 0, url }, err);
+}
+
+/**
+ * Downloads one part, in pieces, and picks the download up again where it stopped.
+ *
+ * An image is nearly four megabytes. On a link that drops — a phone on a train, a workshop's
+ * wifi, a hotel — the old whole-file read started again from nothing every time, and on a bad
+ * enough link it never finished at all. So the bytes are counted as they arrive, and a stream
+ * that breaks partway is resumed with `Range: bytes=<what we have>-`.
+ *
+ * Nothing here requires anything of the server. A host that does not do ranges answers the
+ * resumed request with 200 and the whole file, and that answer is taken from the beginning
+ * instead of spliced onto what came before. A host that never breaks is asked exactly once, with
+ * no `Range` header at all, which is what every host was asked before this existed.
+ *
+ * A short answer counts as broken too: where the host said how long the file is, a stream that
+ * ends early is resumed rather than passed on to fail its checksum three checks later.
+ *
+ * Network failures become `manifest.fetch` with status 0, as before. Redirects are followed, but
+ * every answer, the resumed ones included, must stay on the origin the manifest layer validated.
+ */
+export async function fetchBytes(fetchFn, url, max, options = {}) {
+  const onProgress = options.onProgress ?? null;
+  const wait = options.wait ?? ((ms) => new Promise((resolve) => setTimeout(resolve, ms)));
+  const want = new URL(url).origin;
+  let pieces = [], have = 0, total = null, tries = 0;
+  // Gives up, unless there is something to resume and a try left. `have === 0` is the plain
+  // unreachable-server case and is reported at once, exactly as it was.
+  const giveUp = async (cause) => {
+    if (have === 0 || tries >= RESUME_TRIES) throw new InstallError('manifest.fetch', { status: 0, url }, cause);
+    await wait(RESUME_WAIT[tries++]);
+  };
+  for (;;) {
+    const resuming = have > 0;
+    let res;
+    try {
+      res = await fetchFn(url, {
+        cache: 'no-store', credentials: 'same-origin', redirect: 'follow',
+        ...(resuming ? { headers: { Range: `bytes=${have}-` } } : {}),
+      });
+    } catch (err) {
+      await giveUp(err);
+      continue;
+    }
+    if (!res.ok) throw new InstallError('manifest.fetch', { status: res.status, url });
+    const origin = new URL(res.url || url).origin; // a hand-built Response has url === ''
+    if (origin !== want) throw new InstallError('manifest.origin', { origin });
+    // The host ignored the range, or answered from somewhere else than where we stopped: take
+    // this answer as the whole file rather than splicing two beginnings together.
+    if (resuming && (res.status !== 206 || rangeFrom(res) !== have)) { pieces = []; have = 0; total = null; }
+    total = totalFrom(res, have) ?? total;
+    let broke = null;
+    try {
+      await drain(res, (piece) => {
+        have += piece.length;
+        if (have > max) throw new InstallError('verify.tooLarge', { path: url, bytes: have, max });
+        pieces.push(piece);
+        onProgress?.(have, total);
+      });
+    } catch (err) {
+      if (err instanceof InstallError) throw err;
+      broke = err;
+    }
+    if (broke === null && (total === null || have === total)) break;
+    if (broke === null && total !== null && have > total) throw new InstallError('manifest.fetch', { status: 0, url });
+    await giveUp(broke ?? undefined);
   }
-  if (buf.byteLength > max) throw new InstallError('verify.tooLarge', { path: url, bytes: buf.byteLength, max });
-  return new Uint8Array(buf);
+  const out = new Uint8Array(have);
+  let at = 0;
+  for (const piece of pieces) { out.set(piece, at); at += piece.length; }
+  return out;
 }
 
 /**
@@ -200,10 +280,24 @@ export function createInstaller(deps) {
   async function download(build, hw) {
     const parts = [];
     const local = build.parts.every((p) => p.bytes instanceof Uint8Array);
+    // The stage bar moves with the bytes now that they arrive in pieces. An estimate needs a
+    // length for every part, which a manifest gives when it declares `size`; without one the
+    // bar still moves and no time is guessed, because a guess from an unknown total is a lie.
+    const sizes = build.parts.map((p) => (p.bytes instanceof Uint8Array ? p.bytes.length : p.size));
+    const totalBytes = sizes.every((n) => Number.isSafeInteger(n) && n > 0) ? sizes.reduce((a, b) => a + b, 0) : null;
+    const startedAt = now();
+    let doneBytes = 0;
+    const share = (fraction) => 12 + fraction * 18;
     for (let i = 0; i < build.parts.length; i++) {
       const p = build.parts[i];
-      stage('downloading', 12 + (i / build.parts.length) * 18, { name: p.path, local });
-      const data = p.bytes instanceof Uint8Array ? p.bytes : await fetchBytes(fetchFn, p.url, PART_MAX);
+      stage('downloading', share(i / build.parts.length), { name: p.path, local });
+      const onProgress = (got, partTotal) => {
+        const within = partTotal > 0 ? Math.min(got / partTotal, 1) : 0;
+        const eta = totalBytes === null ? undefined : etaSeconds(startedAt, doneBytes + got, totalBytes, now);
+        stage('downloading', share((i + within) / build.parts.length), { name: p.path, local }, eta);
+      };
+      const data = p.bytes instanceof Uint8Array ? p.bytes : await fetchBytes(fetchFn, p.url, PART_MAX, { onProgress });
+      doneBytes += data.length;
       check();
       const { sha256 } = await checkFetchedPart(p, data);
       if (p.sha256 === undefined) log(`no checksum declared for ${p.path}; downloaded sha256 ${sha256}`);

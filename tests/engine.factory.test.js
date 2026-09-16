@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createInstaller, mapSerialError, flashSizeFromId, fetchOwnFile } from '../app/engine.js';
+import { createInstaller, mapSerialError, flashSizeFromId, fetchOwnFile, fetchBytes } from '../app/engine.js';
 import { normalizeManifest, localManifest } from '../app/manifest.js';
 import { makeFakeEsptool } from './helpers/fakeEsptool.js';
 
@@ -883,4 +883,150 @@ test('preserve refuses to state them at all, because it never writes where they 
       compatibility: { regions: [{ offset: 0, size: 0x1000, sha256: 'a'.repeat(64) }], update: { tableOffset: 0 } },
       parts: [{ path: 'a.bin', offset: 0, size: 16, sha256: 'b'.repeat(64) }] }],
   }, 'https://h/i/m.json'), (e) => e.code === 'manifest.preserveNoFlashParams');
+});
+
+/* --- a download that breaks is picked up, not started again ------------------ */
+
+/** A body delivered in pieces, which may stop partway. `stopAfter` bytes, then a network error. */
+const streamed = (bytes, { stopAfter = Infinity, piece = 1024 } = {}) => {
+  let at = 0, sent = 0;
+  return {
+    getReader: () => ({
+      read: async () => {
+        if (at >= bytes.length) return { done: true, value: undefined };
+        if (sent >= stopAfter) throw new TypeError('network error');
+        const n = Math.min(piece, bytes.length - at, stopAfter - sent);
+        const value = bytes.subarray(at, at + n);
+        at += n; sent += n;
+        return { done: false, value };
+      },
+    }),
+  };
+};
+
+const headers = (map) => ({ get: (k) => map[k.toLowerCase()] ?? null });
+
+/** A host that answers ranges, breaking every answer after `stopAfter` bytes. */
+function rangeHost(bytes, { stopAfter = Infinity, ranges = true } = {}) {
+  const asked = [];
+  const fetchFn = async (url, opts) => {
+    const range = /^bytes=(\d+)-$/.exec(opts?.headers?.Range ?? '');
+    asked.push(range ? Number(range[1]) : null);
+    const from = ranges && range ? Number(range[1]) : 0;
+    const rest = bytes.subarray(from);
+    return {
+      ok: true, status: from > 0 ? 206 : 200, url,
+      headers: headers(from > 0
+        ? { 'content-range': `bytes ${from}-${bytes.length - 1}/${bytes.length}`, 'content-length': String(rest.length) }
+        : { 'content-length': String(bytes.length) }),
+      body: streamed(rest, { stopAfter }),
+    };
+  };
+  return { fetchFn, asked };
+}
+
+const clock = () => 0;
+const noWait = { wait: async () => {} };
+
+test('a stream that breaks is resumed from the byte it reached, and the bytes come out whole', async () => {
+  const bytes = Uint8Array.from({ length: 5000 }, (_, i) => i & 0xff);
+  const { fetchFn, asked } = rangeHost(bytes, { stopAfter: 2048 });
+  const got = await fetchBytes(fetchFn, 'https://h/f.bin', 1 << 20, noWait);
+  assert.deepEqual([...got], [...bytes]);
+  assert.deepEqual(asked, [null, 2048, 4096], 'one plain request, then two that say where to carry on');
+});
+
+test('a host that never breaks is asked once, with no Range header at all', async () => {
+  const bytes = Uint8Array.from({ length: 3000 }, (_, i) => i & 0xff);
+  const { fetchFn, asked } = rangeHost(bytes);
+  const seen = [];
+  const spy = async (url, opts) => { seen.push(opts); return fetchFn(url, opts); };
+  assert.deepEqual([...await fetchBytes(spy, 'https://h/f.bin', 1 << 20, noWait)], [...bytes]);
+  assert.deepEqual(asked, [null]);
+  assert.equal(seen[0].headers, undefined, 'exactly the request this always made');
+});
+
+test('a host that ignores ranges is taken from the beginning, never spliced', async () => {
+  const bytes = Uint8Array.from({ length: 4000 }, (_, i) => (i * 7) & 0xff);
+  let attempt = 0;
+  const fetchFn = async (url) => {
+    attempt += 1;
+    return { ok: true, status: 200, url, headers: headers({ 'content-length': String(bytes.length) }),
+      body: streamed(bytes, { stopAfter: attempt === 1 ? 1500 : Infinity }) };
+  };
+  assert.deepEqual([...await fetchBytes(fetchFn, 'https://h/f.bin', 1 << 20, noWait)], [...bytes]);
+  assert.equal(attempt, 2);
+});
+
+test('a stream that ends early on a host that said how long the file is counts as broken', async () => {
+  const bytes = Uint8Array.from({ length: 4096 }, (_, i) => i & 0xff);
+  let attempt = 0;
+  const fetchFn = async (url, opts) => {
+    attempt += 1;
+    const range = /^bytes=(\d+)-$/.exec(opts?.headers?.Range ?? '');
+    const from = range ? Number(range[1]) : 0;
+    // The first answer simply stops at 1000 bytes with no error at all: a truncated response.
+    const body = attempt === 1 ? bytes.subarray(0, 1000) : bytes.subarray(from);
+    return { ok: true, status: from > 0 ? 206 : 200, url,
+      headers: headers(from > 0
+        ? { 'content-range': `bytes ${from}-${bytes.length - 1}/${bytes.length}` }
+        : { 'content-length': String(bytes.length) }),
+      body: streamed(body) };
+  };
+  assert.deepEqual([...await fetchBytes(fetchFn, 'https://h/f.bin', 1 << 20, noWait)], [...bytes]);
+  assert.equal(attempt, 2);
+});
+
+test('a link that never comes back is reported, not retried for ever', async () => {
+  const bytes = new Uint8Array(5000);
+  const { fetchFn, asked } = rangeHost(bytes, { stopAfter: 512 });
+  await assert.rejects(fetchBytes(fetchFn, 'https://h/f.bin', 1 << 20, noWait),
+    (e) => e.code === 'manifest.fetch' && e.params.status === 0);
+  assert.equal(asked.length, 5, 'the first request and four goes at picking it up');
+});
+
+test('a server that is simply not there is reported at once, as it always was', async () => {
+  let calls = 0;
+  const fetchFn = async () => { calls += 1; throw new TypeError('failed to fetch'); };
+  await assert.rejects(fetchBytes(fetchFn, 'https://h/f.bin', 1 << 20, noWait),
+    (e) => e.code === 'manifest.fetch' && e.params.status === 0);
+  assert.equal(calls, 1, 'nothing to resume means nothing to retry');
+});
+
+test('the size limit is applied to the bytes as they arrive, not after they are all in memory', async () => {
+  const bytes = new Uint8Array(8192);
+  const { fetchFn } = rangeHost(bytes);
+  await assert.rejects(fetchBytes(fetchFn, 'https://h/f.bin', 4096, noWait),
+    (e) => e.code === 'verify.tooLarge' && e.params.max === 4096);
+});
+
+test('a resumed answer from another origin is refused like any other', async () => {
+  const bytes = new Uint8Array(4000);
+  let attempt = 0;
+  const fetchFn = async (url) => {
+    attempt += 1;
+    return attempt === 1
+      ? { ok: true, status: 200, url, headers: headers({ 'content-length': String(bytes.length) }), body: streamed(bytes, { stopAfter: 1000 }) }
+      : { ok: true, status: 206, url: 'https://evil.example/f.bin', headers: headers({ 'content-range': `bytes 1000-3999/4000` }), body: streamed(bytes.subarray(1000)) };
+  };
+  await assert.rejects(fetchBytes(fetchFn, 'https://h/f.bin', 1 << 20, noWait),
+    (e) => e.code === 'manifest.origin' && e.params.origin === 'https://evil.example');
+});
+
+test('an HTTP error is still an HTTP error, with its status', async () => {
+  await assert.rejects(fetchBytes(async () => ({ ok: false, status: 404 }), 'https://h/f.bin', 1 << 20, noWait),
+    (e) => e.code === 'manifest.fetch' && e.params.status === 404);
+});
+
+test('the stage bar moves with the bytes while a part downloads', async () => {
+  const img = image(0);
+  const { fetchFn } = rangeHost(img);
+  const { inst, manifest, events } = await setup({ img, fetch: fetchFn, now: clock, over: {
+    builds: [{ chipFamily: 'ESP32', parts: [{ path: 'demo.bin', offset: 0, size: img.length }] }],
+  } });
+  await inst.run({ manifest, mode: 'first', options: {} });
+  const percents = events.filter((e) => e.type === 'stage' && e.stage === 'downloading').map((e) => e.percent);
+  assert.ok(percents.length > 3, 'more than one step per part: ' + percents.length);
+  assert.ok(percents.every((v, i) => i === 0 || v >= percents[i - 1]), 'and it only ever goes forward');
+  assert.ok(percents.at(-1) <= 30 && percents.at(-1) > percents[0]);
 });
