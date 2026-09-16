@@ -454,12 +454,20 @@ test('every secondary control wears one class, and none of them borrows the acce
 
 test('the signet is drawn in fills on a 2px grid, and the favicon is the same drawing', () => {
   const icon = read('favicon.svg');
-  const body = /d="M16 6h10a4 4 0 0 1 4 4v12a4 4 0 0 1-4 4H16a4 4 0 0 1-4-4V10a4 4 0 0 1 4-4Zm1 4/;
-  const plug = /d="M2 13h6v1h5v4H8v1H2Z"/;
+  // Every edge on an even coordinate, so half of each is still a whole pixel at 16px. The first
+  // drawing put the lead on 13/19 and the state light on a radius of two: at 16px the lead greyed
+  // out into half pixels and the light came out one pixel of accent in a corner.
+  const body = /d="M16 6h10a4 4 0 0 1 4 4v12a4 4 0 0 1-4 4H16a4 4 0 0 1-4-4V10a4 4 0 0 1 4-4ZM16 10h10v6H16Z"/;
+  const plug = /d="M2 12h6v2h4v4H8v2H2Z"/;
   for (const [what, src] of [['the header sign', html], ['favicon.svg', icon]]) {
     assert.match(src, body, what + ': the body with the screen cut out of it');
     assert.match(src, plug, what + ': the plug and its lead');
-    assert.match(src, /<circle[^>]*cx="26" cy="22" r="2"/, what + ': the state dot');
+    assert.match(src, /<rect[^>]*x="16" y="20" width="8" height="4" rx="2"/, what + ': the state light');
+    // The lead and the light are the two pieces that fell apart at 16px. Every number in them is
+    // even, so halving the grid still lands on whole pixels.
+    const numbers = [...(/d="(M2[^"]*)"/.exec(src)?.[1] ?? '').matchAll(/\d+/g)].map((m) => Number(m[0]));
+    assert.ok(numbers.length >= 8, what + ': the lead is drawn');
+    assert.deepEqual(numbers.filter((n) => n % 2 !== 0), [], what + ': the lead sits on even units');
   }
   // Fills, not strokes: a 1.5px line disappears at 16px, which is what the old sign did.
   assert.doesNotMatch(icon, /stroke/, 'no strokes in the favicon');

@@ -2,9 +2,12 @@
   <!-- The esp32install signet: a lead going into a device with a screen.
        Same drawing as the header sign in index.html; keep the two in step.
        A tab strip has no theme to read, so here the whole sign is the accent,
-       the screen is a hole and the state dot is cut in white: legible on a white
-       strip and on a dark one, with no media query to be ignored. -->
-  <path fill-rule="evenodd" d="M16 6h10a4 4 0 0 1 4 4v12a4 4 0 0 1-4 4H16a4 4 0 0 1-4-4V10a4 4 0 0 1 4-4Zm1 4a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1h-8Z"/>
-  <path d="M2 13h6v1h5v4H8v1H2Z"/>
-  <circle cx="26" cy="22" r="2" fill="#FFFFFF"/>
+       the screen is a hole and the state light is cut in white: legible on a white
+       strip and on a dark one, with no media query to be ignored.
+       Every edge lands on an even coordinate, so at 16px the drawing still falls on
+       whole pixels: the earlier lead rendered on halves and greyed away, and the
+       earlier round dot came out one pixel wide. -->
+  <path fill-rule="evenodd" d="M16 6h10a4 4 0 0 1 4 4v12a4 4 0 0 1-4 4H16a4 4 0 0 1-4-4V10a4 4 0 0 1 4-4ZM16 10h10v6H16Z"/>
+  <path d="M2 12h6v2h4v4H8v2H2Z"/>
+  <rect x="16" y="20" width="8" height="4" rx="2" fill="#FFFFFF"/>
 </svg>
