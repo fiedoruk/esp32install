@@ -124,9 +124,14 @@ never calls `eraseFlash`.
    the install on either profile.
 
    **ESP8266** has neither feature, and its ROM predates the command: it is answered
-   without being asked. **The classic ESP32** is the one family whose ROM has no such
-   command and whose state can still be read, so it is the only family the efuse
-   fallback covers: the two block-0 efuses esptool reads at `EFUSE_RD_REG_BASE`
+   without being asked. **The classic ESP32 is not asked either.** esptool defines
+   `get_security_info` from the ESP32-S2 onwards, so this family cannot answer, and a
+   family that cannot answer must not be questioned: whatever it replies is noise that
+   then has to be guessed at. Measured on an ESP32-D0WDQ6-V3 on 16 September 2026, the
+   reply came back with status 255 — neither a payload nor the ROM's invalid-command
+   code — and a stock, unlocked board was refused with "this device is locked by its
+   maker". It is the one family whose ROM has no such command and whose state can still
+   be read, so it is the only family the efuse fallback covers: the two block-0 efuses esptool reads at `EFUSE_RD_REG_BASE`
    `0x3FF5A000` — `FLASH_CRYPT_CNT` (seven bits at bit 20 of word 0, encryption on
    when an odd number of them are blown) and `ABS_DONE_0`/`ABS_DONE_1` (bits 4 and 5
    of word 6, secure boot v1 and v2). Every later family puts something else at that

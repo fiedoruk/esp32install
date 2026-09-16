@@ -17,6 +17,9 @@ export function makeFakeEsptool({
   securityInfo = null,      // payload the ROM answers command 0x14 with: 12 bytes on an ESP32-S2, 20 on an ESP32-S3
   securityRejects = false,  // chip that does not know the security-info command
   securityFails = null,     // message: the command throws instead of answering (a timeout, a serial error)
+  securityStatus = null,    // [status, error] bytes to answer with instead of a payload. The shape a real
+                            // ESP32-D0WDQ6-V3 gave on 16.09.2026 was [255, 0]: not a payload, and not the
+                            // ROM's invalid-command code (5) either.
   efuse = null,             // { 0: word0, 6: word6 }: block-0 efuses a classic ESP32 would report
   tamperRead = null,        // (addr, n, index, data) => void — may mutate the bytes returned by readFlash
   corruptAt = null,         // flash address bumped after every writeFlash (models a bad write)
@@ -73,6 +76,7 @@ export function makeFakeEsptool({
       if (op !== 0x14) throw new Error(`fake esptool: no command 0x${op.toString(16)}`);
       if (securityFails) throw new Error(securityFails);
       if (securityRejects) return [0, Uint8Array.from([1, 5])]; // ROM_INVALID_RECV_MSG
+      if (securityStatus) return [0, Uint8Array.from(securityStatus)];
       const payload = securityInfo ?? new Uint8Array(20);
       const out = new Uint8Array(payload.length + 2);
       out.set(payload, 0);

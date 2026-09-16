@@ -111,6 +111,14 @@ export async function checkSecurity(loader, chipFamily, log, { unknownIsLocked =
     log('this chip family has neither secure boot nor flash encryption');
     return 'none';
   }
+  // ⛔ The classic ESP32 never had command 0x14 either, and we know that before we ask. esptool
+  // itself only defines `get_security_info` from the ESP32-S2 onwards; the efuses are where the
+  // answer lives for this family. Asking anyway used to cost a real device: measured 16.09.2026
+  // on an ESP32-D0WDQ6-V3, the reply came back with status 255, which is neither a payload nor
+  // the ROM's "invalid command" code (5), so it was read as unreadable and a stock, unlocked
+  // Core2 was refused with "this device is locked by its maker". A chip that cannot have the
+  // command must not be asked for it: every odd answer it gives is noise we then have to guess at.
+  if (chipFamily === 'ESP32') return fromEfuses(loader, chipFamily, log, unknownIsLocked);
   const answer = await askRom(loader);
   log('security info: ' + (answer.why ?? `${answer.payload.length} bytes`));
   // A timeout or a serial error is not an absent command. Refusing here costs a retry; guessing

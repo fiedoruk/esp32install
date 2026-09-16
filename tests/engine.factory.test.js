@@ -40,7 +40,7 @@ test('happy path: connect, detect, verify, erase (confirmed), write with MD5, re
   const names = fake.calls.map((c) => c[0]);
   // The one readFlash is the partition table, read after the security check for the record: it
   // is between 'command' and 'eraseFlash' because nothing is read off a chip whose state is unknown.
-  assert.deepEqual(names, ['transport', 'main', 'readFlashId', 'command', 'readFlash', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(names, ['transport', 'main', 'readFlashId', 'readFlash', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
   assert.deepEqual(fake.calls.find((c) => c[0] === 'readFlash').slice(1), [0x8000, 0xc00]);
   assert.ok(events.some((e) => e.type === 'layout'), 'and it is reported to the page');
   const w = fake.calls.find((c) => c[0] === 'writeFlash');
@@ -148,12 +148,15 @@ test('cancel() from inside confirmErase → serial.cancelled, no erase, no write
 /* --- the secure-boot and flash-encryption gate ------------------------------- */
 
 test('a locked device stops a factory install before anything is downloaded, erased or written', async () => {
+  // On an S3, because this is the 0x14 answer path: the classic ESP32 is never asked that question
+  // and reaches the same verdict through its efuses, which the next test covers.
   const flagged = new Uint8Array(20); flagged[0] = 0x01;
   const encrypted = new Uint8Array(20); encrypted[4] = 0x01;
+  const s3 = { chipFamily: 'ESP32-S3', parts: [{ path: 'demo.bin', offset: 0, size: 0x3000 }] };
   for (const fakeOptions of [{ securityInfo: flagged }, { securityInfo: encrypted }, { securityInfo: new Uint8Array(4) }]) {
-    const fake = makeFakeEsptool(fakeOptions);
+    const fake = makeFakeEsptool({ chipName: 'ESP32-S3', ...fakeOptions });
     const fetches = [];
-    const { inst, manifest, events } = await setup({ fake, fetch: async (u) => { fetches.push(u); throw new Error('nothing may be fetched'); } });
+    const { inst, manifest, events } = await setup({ fake, img: image(9), over: { builds: [s3] }, fetch: async (u) => { fetches.push(u); throw new Error('nothing may be fetched'); } });
     await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'device.secured');
     assert.deepEqual(fetches, []);
     assert.ok(!called(fake, 'eraseFlash'));
@@ -163,15 +166,19 @@ test('a locked device stops a factory install before anything is downloaded, era
   }
 });
 
-test('a chip whose ROM has no security-info command is not blocked from a factory install', async () => {
-  const fake = makeFakeEsptool({ securityRejects: true }); // classic ESP32, no efuses to read either
+test('a classic ESP32 is never asked a question it cannot answer, and installs', async () => {
+  // Measured on a real ESP32-D0WDQ6-V3 16.09.2026: asking command 0x14 came back with status 255,
+  // which is neither a payload nor the ROM's "invalid command" code, so a stock unlocked board was
+  // refused with "this device is locked by its maker". esptool defines the command from the S2
+  // onwards; this family answers through its efuses, so this family is not asked.
+  const fake = makeFakeEsptool({ securityRejects: true }); // no efuses on this fake either
   const { inst, manifest, events } = await setup({ fake });
   const r = await inst.run({ manifest, mode: 'first', options: {} });
   assert.equal(r.verified, true);
   assert.ok(called(fake, 'writeFlash'));
   const log = events.filter((e) => e.type === 'log').map((e) => e.line).join('\n');
-  assert.match(log, /security info:/, 'the reason is in the log, not in a stop');
-  assert.match(log, /could not be read/);
+  assert.doesNotMatch(log, /security info:/, 'the command is never sent to this family');
+  assert.match(log, /could not be read/, 'the efuse path had nothing to read, and says so');
 });
 
 test('classic ESP32: the efuses answer when the command does not, and a locked one still stops the install', async () => {
@@ -231,8 +238,10 @@ test('ESP32-S2: the 12-byte security answer is read, and an encrypted board stop
 });
 
 test('a reply too short to carry the two fields is a hard stop, not a shrug', async () => {
-  const fake = makeFakeEsptool({ securityInfo: new Uint8Array(11) });
-  const { inst, manifest } = await setup({ fake });
+  // Again on an S3: only a family that has the command can give a malformed answer to it.
+  const fake = makeFakeEsptool({ chipName: 'ESP32-S3', securityInfo: new Uint8Array(11) });
+  const s3 = { chipFamily: 'ESP32-S3', parts: [{ path: 'demo.bin', offset: 0, size: 0x3000 }] };
+  const { inst, manifest } = await setup({ fake, img: image(9), over: { builds: [s3] } });
   await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }),
     (e) => e.code === 'device.secured' && e.params.reason === 'malformed');
   assert.ok(!called(fake, 'writeFlash'));
@@ -506,7 +515,7 @@ test('own file: installs from memory with no fetch at all, the full check chain,
   assert.equal(r.verified, true);
   assert.equal(r.build, 'local');
   assert.deepEqual(fetches, [], 'nothing was fetched');
-  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'readFlash', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'readFlash', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
   const w = fake.calls.find((c) => c[0] === 'writeFlash');
   assert.deepEqual(w[1], [[0, 0x3000]]);
   assert.equal(w[2], false, 'erase is its own step, never eraseAll');
@@ -607,7 +616,7 @@ test('own file by address: a relative same-origin address is fetched once, then 
     chooseBuild: async (b) => b[0], confirmErase: async () => true, saveBackup: async () => {} });
   const r = await inst.run({ manifest, mode: 'first', options: {} });
   assert.equal(r.verified, true);
-  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'readFlash', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'readFlash', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
   assert.ok(fake.flash.subarray(0, img.length).every((b, i) => b === img[i]));
 });
 
@@ -705,6 +714,7 @@ test('own files: two parts (partition table + application) are written in one ca
   assert.equal(manifest.promptErase, false, 'nothing covers the bootloader: the one on the device stays');
   const r = await inst.run({ manifest, mode: 'first', options: {} });
   assert.equal(r.verified, true);
+  // S3 ma polecenie 0x14 i ma byc o nie pytany — inaczej niz klasyczne ESP32, ktore odpowiada efuse.
   assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'readFlash', 'writeFlash', 'after', 'disconnect']);
   assert.deepEqual(fake.calls.find((c) => c[0] === 'writeFlash')[1], [[0x8000, 0xc00], [0x10000, 0x200]]);
   assert.ok(fake.flash.subarray(0x8000, 0x8c00).every((b, i) => b === table[i]));
@@ -1054,4 +1064,27 @@ test('an identity encoding is still a length we can believe', async () => {
     arrayBuffer: async () => bytes.buffer.slice(0),
   });
   assert.deepEqual([...await fetchBytes(fetchFn, 'https://h/f.bin', 1 << 20, noWait)], [...bytes]);
+});
+
+test('a classic ESP32 that answers 0x14 with nonsense still installs: it is never asked', async () => {
+  // The exact shape measured on Tomek's M5Stack Core2 on 16.09.2026: an ESP32-D0WDQ6-V3 replied to
+  // command 0x14 with status 255, which is neither a payload nor the ROM's invalid-command code (5).
+  // The old code called that "unreadable" and refused a stock, unlocked board with
+  // "this device is locked by its maker". A family that cannot have the command is not asked for it.
+  const fake = makeFakeEsptool({ securityStatus: [255, 0], efuse: { 0: 0, 6: 0 } });
+  const { inst, manifest, events } = await setup({ fake });
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true, 'an unlocked Core2 installs');
+  assert.ok(called(fake, 'writeFlash'));
+  assert.ok(!fake.calls.some((c) => c[0] === 'command'), 'the question is never asked of this family');
+  const log = events.filter((e) => e.type === 'log').map((e) => e.line).join('\n');
+  assert.match(log, /efuses: secure boot off, flash encryption off/);
+});
+
+test('positive control: a classic ESP32 whose efuses say locked is still refused', async () => {
+  const fake = makeFakeEsptool({ securityStatus: [255, 0], efuse: { 0: 1 << 20, 6: 0 } });
+  const { inst, manifest } = await setup({ fake });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }),
+    (e) => e.code === 'device.secured' && e.params.source === 'efuse');
+  assert.ok(!called(fake, 'writeFlash'), 'nothing is written to a locked board');
 });
