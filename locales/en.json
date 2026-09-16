@@ -134,6 +134,13 @@
       "tooMuch": "Together these files are more than the installer can send at once. Remove one of them.",
       "deviceUnknown": "The installer does not know the device chosen above. Pick another one from the list.",
       "problem": "These files cannot go on this device together. Check the address of each one, and the device chosen above.",
+      "stopped": {
+        "manifest.fetch": "Could not read a file from that address ({status}). Check the address you typed and your connection, then try again.",
+        "verify.empty": "That file is empty, so there is nothing to put on the device. Choose another one.",
+        "verify.tooLarge": "{path} is larger than this installer can take. Nothing was written. Choose a smaller file.",
+        "verify.beyondFlash": "One of these files does not fit in the memory of the device you connected. Nothing was written. Check the addresses you typed, and that this is the device you meant.",
+        "verify.totalTooLarge": "Together these files are more than the installer can send at once. Nothing was written. Remove one of them."
+      },
       "kind": {
         "whole": "Looks like a complete system.",
         "app": "Looks like a program.",

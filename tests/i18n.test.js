@@ -2,6 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { detectLang, createI18n, langLinkHref } from '../app/i18n.js';
+import { ownErrorText, CATALOGUE_VOICE } from '../app/ui.js';
 
 const en = JSON.parse(readFileSync(new URL('../locales/en.json', import.meta.url), 'utf8'));
 
@@ -161,6 +162,44 @@ test('no dead error strings: every error.* key in en.json is thrown somewhere in
   }
   const dead = Object.keys(en.error).filter((c) => !thrown.has(c));
   assert.deepEqual(dead, []);
+});
+
+/* --- the own-file path speaks its own voice, whatever stops it ------------ */
+
+/**
+ * There is no release on `?own=1` and nobody published anything: the person chose the file or
+ * typed the address. So no stop on that path may reach for the catalogue's words, including the
+ * stops that only happen after a device is connected and that the pre-flight check cannot see.
+ */
+test('no error code can make the own-file path blame a release nobody published', () => {
+  for (const lang of ['en', 'pl']) {
+    const dicts = lang === 'en' ? { en } : { en, pl: readLocale('pl') };
+    const { t } = createI18n(dicts, lang);
+    const leaking = Object.keys(en.error).filter((code) => CATALOGUE_VOICE.test(ownErrorText(t, code, {})));
+    assert.deepEqual(leaking, [], lang);
+  }
+});
+
+test('positive control: the catalogued sentences really do say it, and the useful ones are kept', () => {
+  const { t } = createI18n({ en }, 'en');
+  assert.ok(CATALOGUE_VOICE.test(en.error['manifest.fetch']), 'the 404 sentence names the release');
+  assert.ok(CATALOGUE_VOICE.test(readLocale('pl').error['manifest.fetch']), 'and so does the Polish one');
+  assert.equal(ownErrorText(t, 'serial.lost', {}), en.error['serial.lost'], 'a pulled cable reads the same on both paths');
+  assert.equal(ownErrorText(t, 'device.secured', {}), en.error['device.secured']);
+  assert.notEqual(ownErrorText(t, 'manifest.fetch', {}), en.error['manifest.fetch']);
+  assert.match(ownErrorText(t, 'verify.beyondFlash', {}), /device you connected/, 'after connecting, the real memory is known');
+  assert.match(t('simple.own.tooFar'), /any device/, 'before connecting, it is not');
+});
+
+// Not in REQUIRED above: those keys are read by splitting on every dot, and a stop code is one
+// key with a dot inside it. They are pinned here instead, the way the page looks them up.
+test('both locales carry a stopped-screen sentence for every code that has one', () => {
+  const pl = readLocale('pl');
+  for (const c of ['manifest.fetch', 'verify.empty', 'verify.tooLarge', 'verify.beyondFlash', 'verify.totalTooLarge']) {
+    assert.equal(typeof en.simple.own.stopped[c], 'string', c);
+  }
+  assert.deepEqual(Object.keys(pl.simple.own.stopped), Object.keys(en.simple.own.stopped));
+  assert.ok(Object.keys(en.simple.own.stopped).every((c) => c in en.error), 'every one names a real stop code');
 });
 
 test('catalog.unknownVersion interpolates no version', () => {

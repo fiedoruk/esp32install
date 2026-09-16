@@ -241,7 +241,11 @@ test('the own-file path speaks about the visitor\'s own file, in one voice, with
   for (const code of ['verify.overlap', 'verify.wrongChip', 'verify.notAnImage', 'verify.beyondFlash', 'verify.totalTooLarge', 'verify.chipUnknown']) {
     assert.ok(map.includes(`'${code}':`), code + ' needs an own-file sentence');
   }
-  assert.match(ui, /const key = OWN_PROBLEM_KEY\[e\?\.code\];\s*return key \? t\(key, safeParams\(e\.params\)\) : t\('simple\.own\.problem'\);/, 'the fallback is an own-file sentence, never error.*');
+  assert.match(ui, /const key = OWN_PROBLEM_KEY\[e\?\.code\];\s*return key \? t\(key, safeParams\(e\?\.params\)\) : t\('simple\.own\.problem'\);/, 'the fallback is an own-file sentence, never error.*');
+  // And the stopped screen, which sees the stops the pre-flight check cannot: the wording is
+  // chosen by which path the page is on, not by which code arrived.
+  assert.match(ui, /ownPath \? ownErrorText\(t, code, params\) : t\('error\.' \+ code, params\)/, 'the stopped screen asks the path first');
+  assert.match(ui, /showOwn\(chips\) \{\s*ownPath = true;/, 'and the path is set where it is entered');
   for (const k of ['overlap', 'wrongDevice', 'notAnImage', 'tooFar', 'tooMuch', 'deviceUnknown', 'problem']) {
     assert.doesNotMatch(en.simple.own[k], /release|publish|written/i, 'simple.own.' + k + ' must not blame a publisher or claim anything was written');
   }

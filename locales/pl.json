@@ -134,6 +134,13 @@
       "tooMuch": "Razem te pliki są większe, niż instalator potrafi wysłać za jednym razem. Usuń któryś z nich.",
       "deviceUnknown": "Instalator nie zna urządzenia wybranego powyżej. Wskaż inne z listy.",
       "problem": "Tych plików nie da się zainstalować razem na tym urządzeniu. Sprawdź adres każdego z nich i urządzenie wybrane powyżej.",
+      "stopped": {
+        "manifest.fetch": "Nie udało się odczytać pliku spod tego adresu ({status}). Sprawdź wpisany adres i połączenie, a potem spróbuj jeszcze raz.",
+        "verify.empty": "Ten plik jest pusty, więc nie ma czego zapisać na urządzeniu. Wybierz inny.",
+        "verify.tooLarge": "{path} jest większy, niż instalator potrafi przyjąć. Nic nie zostało zapisane. Wybierz mniejszy plik.",
+        "verify.beyondFlash": "Jeden z tych plików nie mieści się w pamięci podłączonego urządzenia. Nic nie zostało zapisane. Sprawdź wpisane adresy i to, czy podłączyłeś urządzenie, o które ci chodziło.",
+        "verify.totalTooLarge": "Razem te pliki są większe, niż instalator potrafi wysłać za jednym razem. Nic nie zostało zapisane. Usuń któryś z nich."
+      },
       "kind": {
         "whole": "Wygląda na cały system.",
         "app": "Wygląda na program.",

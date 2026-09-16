@@ -62,6 +62,46 @@ export function translateDom(t, vars, root = document) {
   }
 }
 
+/**
+ * What the catalogued voice says that is untrue on the own-file path: there is no release here
+ * and nobody published it. The person chose the file or typed the address themselves.
+ */
+export const CATALOGUE_VOICE = /release|publish|wydan|opublikow/i;
+
+/** The problems the page already names in its own voice before the device is even opened. */
+const OWN_PROBLEM_KEY = {
+  'verify.overlap': 'simple.own.overlap',
+  'verify.wrongChip': 'simple.own.wrongDevice',
+  'verify.notAnImage': 'simple.own.notAnImage',
+  'verify.beyondFlash': 'simple.own.tooFar',
+  'verify.totalTooLarge': 'simple.own.tooMuch',
+  'verify.chipUnknown': 'simple.own.deviceUnknown',
+};
+
+/**
+ * One sentence for a stop on the own-file path, in that path's own voice.
+ *
+ * The rule, not a list of codes, is what keeps the catalogue's voice out: whatever the engine or
+ * a check raises — now or after the next change to either — the wording is chosen by where the
+ * page is, and a sentence that blames a release nobody published can never be reached from here.
+ *
+ *   1. the sentence written for this stop after a device was connected, if there is one;
+ *   2. otherwise the sentence the page already uses for the same problem before connecting;
+ *   3. otherwise the catalogued sentence — but only while it says nothing about a release,
+ *      because a pulled cable or a locked device reads the same on both paths and its own words
+ *      help more than a vague one;
+ *   4. otherwise the own-file sentence that says what is true: these files, this device.
+ */
+export function ownErrorText(t, code, params = {}) {
+  const own = 'simple.own.stopped.' + code;
+  const written = t(own, params);
+  if (written !== own) return written; // t() answers with the key when nothing is written for it
+  const before = OWN_PROBLEM_KEY[code];
+  if (before) return t(before, params);
+  const catalogued = t('error.' + code, params);
+  return CATALOGUE_VOICE.test(catalogued) ? t('simple.own.problem') : catalogued;
+}
+
 export function mountUi({ i18n, system }) {
   const t = i18n.t;
   const vars = { system };
@@ -151,18 +191,9 @@ export function mountUi({ i18n, system }) {
   // callback returns the problem, or null).
   const ownRows = []; // { id, li, title, fileText, file, address, info, remove, part, kindText }
   let ownSeq = 0, onOwnFile = null, onOwnRemove = null, onOwnChange = null, ownProblem = null;
-  // Nothing on this path was published by anyone and nothing has been written yet, so the
-  // catalogued wording ("this release", "tell whoever published it") would be wrong in both
-  // halves. Every code the checks can raise gets an own-file sentence, and anything else falls
-  // back to a generic one instead of leaking the catalogue's.
-  const OWN_PROBLEM_KEY = {
-    'verify.overlap': 'simple.own.overlap',
-    'verify.wrongChip': 'simple.own.wrongDevice',
-    'verify.notAnImage': 'simple.own.notAnImage',
-    'verify.beyondFlash': 'simple.own.tooFar',
-    'verify.totalTooLarge': 'simple.own.tooMuch',
-    'verify.chipUnknown': 'simple.own.deviceUnknown',
-  };
+  // Set once, when the own-file path is shown, and read by the stopped screen: which path the
+  // page is on is what decides the wording there, not which code happened to arrive.
+  let ownPath = false;
   const ownFilled = () => ownRows.filter((r) => r.part);
   const ownChipFamily = () => $('own-chip').value || null;
   /** Every file with a valid address and one chosen device, or null while anything is missing. */
@@ -178,9 +209,12 @@ export function mountUi({ i18n, system }) {
     }
     return { chipFamily, parts };
   };
+  // Before the device is opened. The same problem after it has been opened reads differently —
+  // the memory of a real chip is known by then — so the stopped screen has its own sentences and
+  // its own rule (`ownErrorText`); this is the pre-flight half M1 closed.
   const ownProblemText = (e) => {
     const key = OWN_PROBLEM_KEY[e?.code];
-    return key ? t(key, safeParams(e.params)) : t('simple.own.problem');
+    return key ? t(key, safeParams(e?.params)) : t('simple.own.problem');
   };
   /**
    * Why the button is off, as one sentence, or '' when it may turn on. A bad address is named
@@ -397,6 +431,7 @@ export function mountUi({ i18n, system }) {
      * is chosen and the files fit together.
      */
     showOwn(chips) {
+      ownPath = true;
       $('title').textContent = t('simple.own.title');
       $('door-update-hint').textContent = t('door.updateHintOwn');
       $('fact-release-label').textContent = t('tech.file');
@@ -558,7 +593,8 @@ export function mountUi({ i18n, system }) {
       done.classList.add('is-error');
       $('done-title').textContent = t(changed ? 'simple.stopped.during' : 'simple.stopped.safe');
       $('done-unplug').hidden = true;
-      $('done-text').textContent = t('error.' + code, safeParams(error?.params));
+      const params = safeParams(error?.params);
+      $('done-text').textContent = ownPath ? ownErrorText(t, code, params) : t('error.' + code, params);
       $('wifi').hidden = true;
       $('done-next').hidden = true;
       $('retry').hidden = false;
