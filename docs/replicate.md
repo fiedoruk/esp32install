@@ -52,10 +52,13 @@ hardware before you upload anything.
 `catalog.json` is optional. A copy of these files with no catalog, or with an
 empty `systems` list, opens straight on the own-file path: the visitor picks a
 `.bin` from their disk and installs it with the same checks a release gets.
-`?own=1` opens that path on any copy, catalog or not, and a catalogued install
-links to it under the button. `check.py` still reports a missing catalog as a
-FAIL, because a site that publishes releases is expected to have one; on a copy
-that deliberately has none, that one finding is the expected one.
+That is how the repository ships: its `catalog.json` lists no systems, so a
+fresh copy is an installer for the visitor's own files and nothing else until
+you add a release. `?own=1` opens that path on any copy, catalog or not, and a
+catalogued install links to it under the button. `check.py` reports an empty
+`systems` list as a WARN, because that is a legitimate site, and a missing
+catalog as a FAIL, because a site that publishes releases is expected to have
+one; on a copy that deliberately has none, that one finding is the expected one.
 
 The own-file path also takes an address. A relative path or a URL on the same
 origin is fetched and checked like a downloaded part. A URL on another origin

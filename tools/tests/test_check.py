@@ -9,6 +9,7 @@ import contextlib
 import hashlib
 import io
 import json
+import shutil
 import tempfile
 import unittest
 from pathlib import Path
@@ -331,6 +332,17 @@ class SiteTest(SiteFixture):
         found = self.findings()
         self.assertEqual(self.fails(found), [])
         self.assertEqual([f for f in found if f.what == 'improv'], [])
+
+    def test_an_empty_systems_list_warns_and_a_missing_one_fails(self):
+        self.write_catalog([])
+        (self.site / 'catalog.json').write_text(json.dumps({'site': 'test', 'systems': []}), encoding='utf-8')
+        found = self.findings()
+        self.assertEqual(self.fails(found), [])
+        self.assertEqual(self.levels(found, 'catalog'), [check.WARN])
+        (self.site / 'catalog.json').write_text(json.dumps({'site': 'test'}), encoding='utf-8')
+        self.assertEqual(self.levels(self.findings(), 'catalog'), [check.FAIL])
+        code, text = self.cli(self.site)
+        self.assertEqual(code, 1, text)
 
     def test_a_broken_catalog_fails(self):
         (self.site / 'catalog.json').write_text('{ not json', encoding='utf-8')
@@ -792,13 +804,37 @@ class HelperTest(unittest.TestCase):
 
 
 class ShippedDemoTest(unittest.TestCase):
-    """The installer ships a working demo; the checker has to agree it works."""
+    """The repository ships an empty catalog and a demo manifest that is not listed in it: a fresh
+    copy must offer nothing to install (the demo dummy cannot boot), and the checker has to agree
+    with both halves of that."""
 
-    def test_the_repository_itself_passes(self):
+    def test_the_repository_itself_passes_with_an_empty_catalog(self):
+        shipped = json.loads((REPO / 'catalog.json').read_text('utf-8'))
+        self.assertEqual(shipped.get('systems'), [], 'nothing to install until a publisher adds a release')
         found = check.check_site(str(REPO))
-        fails = [(f.what, f.detail) for f in found if f.level == check.FAIL]
-        self.assertEqual(fails, [])
+        self.assertEqual([(f.what, f.detail) for f in found if f.level == check.FAIL], [])
+        self.assertEqual([f.level for f in found if f.what == 'catalog'], [check.WARN])
+        self.assertEqual([f.level for f in found if f.what == 'sha256'], [], 'no release, nothing fetched')
+
+    def test_the_shipped_demo_manifest_still_verifies_when_listed(self):
+        """The demo files stay for exactly this: a manifest the checker can be pointed at."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        site = Path(tmp.name)
+        for name in ('index.html', 'vendor', 'firmware'):
+            src = REPO / name
+            if src.is_dir():
+                shutil.copytree(src, site / name)
+            else:
+                (site / name).write_bytes(src.read_bytes())
+        (site / 'catalog.json').write_text(json.dumps({'site': 'example', 'systems': [
+            {'id': 'demo', 'name': 'Demo firmware', 'device': 'Any ESP32 board',
+             'releases': [{'version': '1.0.0', 'manifest': 'firmware/demo-1-0-0.json', 'channel': 'stable'}]}]}),
+            encoding='utf-8')
+        found = check.check_site(str(site))
+        self.assertEqual([(f.what, f.detail) for f in found if f.level == check.FAIL], [])
         self.assertIn(check.OK, [f.level for f in found if f.what == 'sha256'])
+        self.assertIn(check.OK, [f.level for f in found if f.what == 'chip'])
 
     def test_the_shipped_policy_is_accepted(self):
         """The product's own index.html, not a fixture: the parser must accept what we ship."""

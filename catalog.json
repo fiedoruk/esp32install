@@ -1,2 +1,1 @@
-{ "site": "example", "systems": [ { "id": "demo", "name": "Demo firmware", "device": "Any ESP32 board",
-  "releases": [ { "version": "1.0.0", "manifest": "firmware/demo-1-0-0.json", "channel": "stable" } ] } ] }
+{ "site": "example", "systems": [] }

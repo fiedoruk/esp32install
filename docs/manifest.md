@@ -278,7 +278,9 @@ board with esptool's flash-read command, hash the resulting file with
 ## `catalog.json`
 
 The catalog is the index the page loads first. It lists the systems this site
-installs, each with its releases.
+installs, each with its releases. `site` is a free label for the publisher's own
+use; the page does not read it. The shipped file has an empty `systems` list,
+which makes a fresh copy open on the own-file path.
 
 ```json
 {

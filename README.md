@@ -104,8 +104,16 @@ wrote firmware/my-firmware-1-0-0.json: Demo firmware 1.0.0, 1 part, 4096 bytes
 `--help` lists every option, including `--profile preserve` and the compatibility
 regions that profile needs. See [docs/manifest.md](docs/manifest.md).
 
-**3. List the release and check the result.** Add the release to `catalog.json`,
-then ask the tool whether the site really serves everything the page will fetch:
+**3. List the release and check the result.** The shipped `catalog.json` lists
+no systems, so until this step a copy opens on the own-file path and offers
+nothing of its own. Add your release:
+
+```json
+{ "site": "example", "systems": [ { "id": "my-firmware", "name": "My firmware", "device": "Any ESP32 board",
+  "releases": [ { "version": "1.0.0", "manifest": "firmware/my-firmware-1-0-0.json", "channel": "stable" } ] } ] }
+```
+
+Then ask the tool whether the site really serves everything the page will fetch:
 
 ```
 python3 tools/check.py https://example.com/install/

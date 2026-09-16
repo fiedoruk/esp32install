@@ -1,8 +1,10 @@
 # `firmware/` — the demo release
 
-This directory holds one example release, so that a fresh copy of the site has
-something to show and so that `tools/check.py` has something to check. It is not
-a product.
+This directory holds one example release for the test suites and for trying
+`tools/check.py` against a manifest by hand. It is not a product, and it is
+deliberately **not listed in `catalog.json`**: a fresh copy of the site opens
+on the own-file path and offers nothing to install until you add a release of
+your own.
 
 ## The files
 
@@ -21,9 +23,15 @@ is read as a plain esp-web-tools manifest (schema 1), which keeps that path
 exercised. It declares `size` and `sha256` for the part and sets
 `new_install_prompt_erase`.
 
-`catalog.json` in the repository root lists this release as the single system
-`demo`, which is why a fresh copy opens on an installer page rather than an empty
-chooser.
+`catalog.json` in the repository root does not list it. It used to, and a
+fresh copy then showed a button that would write this dummy to a real board;
+see the next section for why that must not happen. To see the checker run over
+it, list it in a scratch catalog yourself:
+
+```json
+{ "site": "example", "systems": [ { "id": "demo", "name": "Demo firmware", "device": "Any ESP32 board",
+  "releases": [ { "version": "1.0.0", "manifest": "firmware/demo-1-0-0.json", "channel": "stable" } ] } ] }
+```
 
 ## Do not flash this to a device
 
@@ -62,6 +70,6 @@ Keeping every release's files under their own version-stamped names, rather than
 overwriting a single `firmware.bin`, is what makes an old `&v=` link keep working
 for a device in the field that needs the version it was tested with.
 
-Replacing the demo is a matter of deleting these two files, adding your own, and
-editing `catalog.json`. See [../docs/manifest.md](../docs/manifest.md) and
+Adding your own release is a matter of putting your files here, generating a
+manifest, and listing it in `catalog.json`; the two demo files can stay or go. See [../docs/manifest.md](../docs/manifest.md) and
 [../docs/replicate.md](../docs/replicate.md).

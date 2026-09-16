@@ -724,8 +724,11 @@ def allow_origins(catalog: Any) -> Tuple[List[str], List[Finding]]:
 def check_catalog(source: Source, catalog: Any) -> List[Finding]:
     ref = source.join(source.root(), CATALOG)
     systems = catalog.get('systems') if isinstance(catalog, dict) else None
-    if not isinstance(systems, list) or not systems:
-        return [Finding(FAIL, 'catalog', '%s lists no systems' % CATALOG)]
+    if not isinstance(systems, list):
+        return [Finding(FAIL, 'catalog', '%s has no systems list' % CATALOG)]
+    if not systems:
+        # A legitimate site: the page opens on the own-file path. Worth a line, not a failure.
+        return [Finding(WARN, 'catalog', '%s lists no systems; the page opens on the own-file path' % CATALOG)]
 
     findings = [Finding(OK, 'catalog', '%s lists %d system%s'
                         % (CATALOG, len(systems), '' if len(systems) == 1 else 's'))]
