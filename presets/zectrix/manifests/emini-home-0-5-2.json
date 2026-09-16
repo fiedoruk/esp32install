@@ -46,16 +46,18 @@
       },
       "parts": [
         {
-          "path": "../firmware/emini-home/0.5.2/emini-home-0.5.2-note4c.bin",
+          "path": "../firmware/emini-home/0.5.2/emini-home-0.5.2-note4c.bin?sha256=423c135b7e18c5b06cc4e948ef9d63d91ea229619c3b732dbaa921a184cb6217",
           "offset": 131072,
           "size": 3764224,
-          "sha256": "423c135b7e18c5b06cc4e948ef9d63d91ea229619c3b732dbaa921a184cb6217"
+          "sha256": "423c135b7e18c5b06cc4e948ef9d63d91ea229619c3b732dbaa921a184cb6217",
+          "md5": "3adb9a4bf7abf55657d0ee2974a93b8f"
         },
         {
-          "path": "../firmware/emini-home/0.5.2/emini-home-0.5.2-partition-table.bin",
+          "path": "../firmware/emini-home/0.5.2/emini-home-0.5.2-partition-table.bin?sha256=9375ba2d5bf131bdb991c07024cb1cdb40538e14698a602fa7d9c87f57b38946",
           "offset": 32768,
           "size": 3072,
-          "sha256": "9375ba2d5bf131bdb991c07024cb1cdb40538e14698a602fa7d9c87f57b38946"
+          "sha256": "9375ba2d5bf131bdb991c07024cb1cdb40538e14698a602fa7d9c87f57b38946",
+          "md5": "e507f1eb2ed042daf93f1300cf3542b2"
         }
       ]
     }
