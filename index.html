@@ -69,36 +69,20 @@
 
       <div class="own" id="own" hidden>
         <p class="own-hint" data-i18n="simple.own.hint"></p>
-        <label class="file" for="own-file"><span data-i18n="simple.own.choose"></span><input type="file" id="own-file" accept=".bin,application/octet-stream"></label>
+        <ul class="pick-list own-parts" id="own-parts"></ul>
+        <button type="button" class="small" id="own-add" hidden data-i18n="simple.own.addFile"></button>
         <div class="own-url">
           <label class="field" for="own-url"><span data-i18n="simple.own.url"></span><input type="text" id="own-url" spellcheck="false" autocomplete="off" autocapitalize="off"></label>
           <button type="button" class="small" id="own-url-go" data-i18n="simple.own.urlGo"></button>
         </div>
         <p class="own-hint" data-i18n="simple.own.urlHint"></p>
         <div class="own-read" id="own-read" hidden>
-          <p class="lead" id="own-summary"></p>
-          <h2 class="door-title" data-i18n="simple.own.where"></h2>
-          <div class="doors" role="radiogroup" data-i18n-attr="aria-label:simple.own.where">
-            <label class="door" for="own-whole">
-              <input type="radio" name="own-where" id="own-whole" value="whole">
-              <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="8" y="8" width="32" height="32" rx="5"/><path d="M8 19h32M8 30h32"/></svg>
-              <span><b data-i18n="simple.own.whole"></b><small data-i18n="simple.own.wholeHint"></small></span>
-            </label>
-            <label class="door" for="own-app">
-              <input type="radio" name="own-where" id="own-app" value="app">
-              <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="8" y="8" width="32" height="32" rx="5"/><path d="M8 19h32M8 30h32"/><rect x="12" y="33" width="24" height="4" rx="1" fill="currentColor" stroke="none"/></svg>
-              <span><b data-i18n="simple.own.app"></b><small data-i18n="simple.own.appHint"></small></span>
-            </label>
-          </div>
-          <div class="fields">
-            <label class="field" for="own-address"><span data-i18n="simple.own.address"></span><input type="text" id="own-address" spellcheck="false" autocomplete="off" autocapitalize="off"></label>
-            <label class="field" for="own-chip"><span data-i18n="simple.own.device"></span><select id="own-chip"></select></label>
-          </div>
+          <label class="field" for="own-chip"><span data-i18n="simple.own.device"></span><select id="own-chip"></select></label>
           <p class="hint-text" id="own-note" aria-live="polite"></p>
         </div>
       </div>
 
-      <div class="line">
+      <div class="line" id="door-line">
         <h2 class="door-title" data-i18n="door.title"></h2>
         <button class="hint" type="button" aria-expanded="false" aria-controls="hint-door" data-i18n-attr="aria-label:hint.open"><span aria-hidden="true">?</span></button>
       </div>
@@ -122,6 +106,7 @@
       </div>
       <div class="hint-text" id="hint-backup" hidden data-i18n="simple.prepare.hintBackup"></div>
 
+      <p class="note" id="connect-why" hidden aria-live="polite"></p>
       <button class="cta" id="connect" type="button">
         <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M12 3v12m0 0-4-4m4 4 4-4M5 20h14"/></svg>
         <span id="connect-label"></span>

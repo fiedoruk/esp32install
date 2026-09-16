@@ -6,6 +6,7 @@
  */
 import { InstallError } from './errors.js';
 import { createLineBuffer } from './console.js';
+import { MAX_PARTS } from './own.js';
 
 const $ = (id) => document.getElementById(id);
 const clear = (el) => { while (el.firstChild) el.removeChild(el.firstChild); };
@@ -134,34 +135,126 @@ export function mountUi({ i18n, system }) {
     if (url) { a.href = url; a.textContent = t('simple.wifi.open'); }
   };
 
-  // The own-file path: what was read, and the two choices shown before anything starts.
-  let own = null; // { name, size, sha256 } once a file has been read
-  let onOwnChange = null;
+  // The own-file path: up to MAX_PARTS rows, one file each, with the address the file suggests.
+  // Rows are built here; the bytes never enter this module. main.js keeps them and answers with what
+  // each file says about itself (setOwnPart) and whether the set fits together (the bindOwnChange
+  // callback returns the problem, or null).
+  const ownRows = []; // { id, li, title, fileText, file, address, info, remove, part }
+  let ownSeq = 0, onOwnFile = null, onOwnRemove = null, onOwnChange = null, ownProblem = null;
+  const OWN_PROBLEM_KEY = { 'verify.overlap': 'simple.own.overlap', 'verify.wrongChip': 'simple.own.wrongDevice', 'verify.notAnImage': 'simple.own.notAnImage' };
+  const ownFilled = () => ownRows.filter((r) => r.part);
+  const ownChipFamily = () => $('own-chip').value || null;
+  /** Every file with a valid address and one chosen device, or null while anything is missing. */
   const ownChoice = () => {
-    if (!own) return null;
-    const offset = parseAddress($('own-address').value);
-    const chipFamily = $('own-chip').value || null;
-    return offset !== null && chipFamily ? { offset, chipFamily } : null;
+    const filled = ownFilled();
+    const chipFamily = ownChipFamily();
+    if (filled.length === 0 || !chipFamily) return null;
+    const parts = [];
+    for (const r of filled) {
+      const offset = parseAddress(r.address.value);
+      if (offset === null) return null;
+      parts.push({ id: r.id, name: r.part.name, offset });
+    }
+    return { chipFamily, parts };
   };
-  const ownReady = () => $('own').hidden || ownChoice() !== null;
+  const ownProblemText = (e) => {
+    const key = OWN_PROBLEM_KEY[e?.code];
+    return key ? t(key, safeParams(e.params)) : t('error.' + (e?.code ?? 'engine.unexpected'), safeParams(e?.params));
+  };
+  /** Why the button is off, as one sentence, or '' when it may turn on. */
+  const ownWhy = () => {
+    const filled = ownFilled();
+    if (filled.length === 0) return t('simple.own.needFile');
+    if (filled.some((r) => parseAddress(r.address.value) === null)) return t('simple.own.badAddress');
+    if (!ownChipFamily()) return t('simple.own.unknownDevice');
+    if (ownProblem) return ownProblemText(ownProblem);
+    return '';
+  };
+  const ownReady = () => $('own').hidden || ownWhy() === '';
   const refreshOwn = () => {
-    if (!own) return;
-    const offset = parseAddress($('own-address').value);
-    const chipFamily = $('own-chip').value || null;
-    const address = offset === null ? '' : '0x' + offset.toString(16);
+    if ($('own').hidden) return;
+    const filled = ownFilled();
+    const has = filled.length > 0;
+    // Nothing to decide about until there is a file: the two doors, the copy and the details wait.
+    for (const id of ['own-read', 'door-line', 'doors', 'backup-opt']) $(id).hidden = !has;
+    if (!has) $('hint-door').hidden = true;
+    $('own-add').hidden = !has;
+    $('own-add').disabled = ownRows.length >= MAX_PARTS;
+    $('own-url-go').disabled = ownRows.every((r) => r.part) && ownRows.length >= MAX_PARTS;
+    ownRows.forEach((r, i) => {
+      r.title.textContent = t('simple.own.part', { n: i + 1 });
+      r.title.hidden = ownRows.length === 1;
+      r.remove.hidden = ownRows.length === 1 && !r.part; // the only empty row stays
+    });
+    const chipFamily = ownChipFamily();
     $('fact-board').textContent = chipFamily ?? '';
-    $('fact-release').textContent = `${own.name}, ${own.size} bytes` + (address ? `, at ${address}` : '');
-    $('own-note').textContent = offset === null ? t('simple.own.badAddress')
-      : !chipFamily ? t('simple.own.unknownDevice')
-      : t('simple.own.plan', { name: own.name, address, device: chipFamily });
+    $('fact-release').textContent = filled.map((r) => `${r.part.name}, ${r.part.size} bytes` + (parseAddress(r.address.value) === null ? '' : `, at 0x${parseAddress(r.address.value).toString(16)}`)).join('; ');
+    $('fact-checksum').textContent = filled.map((r) => r.part.sha256).join(', ');
     const choice = ownChoice();
-    $('connect').disabled = !choice;
-    onOwnChange?.(choice);
+    ownProblem = choice ? (onOwnChange?.(choice) ?? null) : null;
+    const why = ownWhy();
+    $('own-note').textContent = why || (choice.parts.length === 1
+      ? t('simple.own.plan', { name: choice.parts[0].name, address: '0x' + choice.parts[0].offset.toString(16), device: chipFamily })
+      : t('simple.own.planMany', { device: chipFamily }));
+    $('connect').disabled = why !== '';
+    $('connect-why').textContent = why;
+    $('connect-why').hidden = why === '';
   };
-  for (const r of document.querySelectorAll('input[name="own-where"]')) {
-    r.addEventListener('change', () => { $('own-address').value = r.value === 'whole' ? '0x0' : '0x10000'; refreshOwn(); });
-  }
-  $('own-address').addEventListener('input', refreshOwn);
+  /** One row: a file picker, the address, what the file looks like, and a way to drop it. */
+  const addOwnRow = () => {
+    if (ownRows.length >= MAX_PARTS) return null;
+    const id = ++ownSeq;
+    const li = document.createElement('li');
+    li.className = 'own-part';
+    const title = document.createElement('b');
+    title.className = 'own-part-title';
+    const fileLabel = document.createElement('label');
+    fileLabel.className = 'file';
+    fileLabel.htmlFor = `own-file-${id}`;
+    const fileText = document.createElement('span');
+    fileText.textContent = t('simple.own.choose');
+    const file = document.createElement('input');
+    file.type = 'file';
+    file.id = `own-file-${id}`;
+    file.accept = '.bin,application/octet-stream';
+    fileLabel.append(fileText, file);
+    const fields = document.createElement('div');
+    fields.className = 'fields';
+    const addrLabel = document.createElement('label');
+    addrLabel.className = 'field';
+    addrLabel.htmlFor = `own-address-${id}`;
+    const addrText = document.createElement('span');
+    addrText.textContent = t('simple.own.address');
+    const address = document.createElement('input');
+    address.type = 'text';
+    address.id = `own-address-${id}`;
+    address.spellcheck = false;
+    address.autocomplete = 'off';
+    address.setAttribute('autocapitalize', 'off');
+    addrLabel.append(addrText, address);
+    const info = document.createElement('p');
+    info.className = 'own-hint';
+    fields.append(addrLabel, info);
+    const remove = document.createElement('button');
+    remove.type = 'button';
+    remove.className = 'small';
+    remove.textContent = t('simple.own.remove');
+    li.append(title, fileLabel, fields, remove);
+    const row = { id, li, title, fileText, file, address, info, remove, part: null };
+    file.addEventListener('change', () => { const f = file.files?.[0]; if (f) onOwnFile?.(id, f); });
+    address.addEventListener('input', refreshOwn);
+    remove.addEventListener('click', () => {
+      ownRows.splice(ownRows.indexOf(row), 1);
+      li.remove();
+      onOwnRemove?.(id);
+      if (ownRows.length === 0) addOwnRow();
+      refreshOwn();
+    });
+    ownRows.push(row);
+    $('own-parts').append(li);
+    return row;
+  };
+  $('own-add').addEventListener('click', () => { addOwnRow(); refreshOwn(); });
   $('own-chip').addEventListener('change', refreshOwn);
 
   const ui = {
@@ -198,8 +291,9 @@ export function mountUi({ i18n, system }) {
     /** Catalogued install: the quiet way out to the own-file path. */
     setOwnLink(href) { $('own-instead').href = href; $('own-instead').hidden = false; },
     /**
-     * The own-file path on the prepare screen. `chips` fills the device list; the button stays
-     * off until a file has been read and both choices are valid.
+     * The own-file path on the prepare screen. `chips` fills the device list; one empty row waits
+     * for the first file, and the button stays off until every row has a valid address, a device
+     * is chosen and the files fit together.
      */
     showOwn(chips) {
       $('title').textContent = t('simple.own.title');
@@ -218,31 +312,47 @@ export function mountUi({ i18n, system }) {
         sel.append(o);
       }
       $('own').hidden = false;
-      $('connect').disabled = true;
+      if (ownRows.length === 0) addOwnRow();
+      refreshOwn();
       showScreen('prepare');
     },
-    bindOwnFile(fn) {
-      $('own-file').addEventListener('change', () => { const f = $('own-file').files?.[0]; if (f) fn(f); });
-    },
+    /** `fn(rowId, file)` for a file picked in a row; main.js reads it and answers with setOwnPart. */
+    bindOwnFile(fn) { onOwnFile = fn; },
+    /** `fn(rowId)` when a row is dropped, so the bytes can go too. */
+    bindOwnRemove(fn) { onOwnRemove = fn; },
     /** The address field: its button, or Enter inside it. */
     bindOwnUrl(fn) {
-      const go = () => fn($('own-url').value);
+      const go = () => { if (!$('own-url-go').disabled) fn($('own-url').value); };
       $('own-url-go').addEventListener('click', go);
       $('own-url').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
     },
     /** While an address is being read: no second read, no other file. */
-    setOwnReading(on) { for (const id of ['own-url', 'own-url-go', 'own-file']) $(id).disabled = on; },
+    setOwnReading(on) {
+      for (const id of ['own-url', 'own-url-go']) $(id).disabled = on;
+      for (const r of ownRows) r.file.disabled = on;
+    },
+    /** `fn(choice)` runs on every change and returns the problem with the set, or null. */
     bindOwnChange(fn) { onOwnChange = fn; },
-    /** What was read, and the defaults the file itself suggests. Both stay editable and visible. */
-    setOwnFile({ name, size, sha256, chipFamily, whole }) {
-      own = { name, size, sha256 };
-      $('own-read').hidden = false;
-      $('own-summary').textContent = t('simple.own.read', { name, size: formatSize(size) });
-      $(whole ? 'own-whole' : 'own-app').checked = true;
-      $('own-address').value = whole ? '0x0' : '0x10000';
-      $('own-chip').value = chipFamily ?? '';
-      $('title').textContent = t('app.title', { system: name });
-      $('fact-checksum').textContent = sha256;
+    ownChipFamily,
+    /** A row for a file that arrived without a picker (by address): the first empty row, or a new one. Null when full. */
+    addOwnPart() {
+      const row = ownRows.find((r) => !r.part) ?? addOwnRow();
+      return row ? row.id : null;
+    },
+    /**
+     * What one file says about itself, from main.js: its size and checksum, the family its header
+     * names, what it looks like and the address a build tool would have given it. All of it stays
+     * editable and visible; the first header to name a family fills the device list.
+     */
+    setOwnPart(id, { name, size, sha256, chipFamily, kind, offset }) {
+      const row = ownRows.find((r) => r.id === id);
+      if (!row) return;
+      row.part = { name, size, sha256 };
+      row.fileText.textContent = t('simple.own.read', { name, size: formatSize(size) });
+      row.address.value = offset === null || offset === undefined ? '' : '0x' + offset.toString(16);
+      row.info.textContent = t('simple.own.kind.' + kind) + (chipFamily ? ' ' + chipFamily + '.' : '');
+      if (chipFamily && !$('own-chip').value) $('own-chip').value = chipFamily;
+      $('title').textContent = t('app.title', { system: ownFilled().map((r) => r.part.name).join(', ') });
       refreshOwn();
     },
     ownChoice,
@@ -254,8 +364,10 @@ export function mountUi({ i18n, system }) {
     setBusy(on) {
       $('connect').disabled = on || !ownReady();
       $('connect-label').textContent = on ? t('action.connecting') : t('action.connect');
-      for (const r of document.querySelectorAll('input[name="mode"], input[name="own-where"]')) r.disabled = on;
-      for (const id of ['backup', 'own-file', 'own-url', 'own-url-go', 'own-address', 'own-chip']) $(id).disabled = on;
+      for (const r of document.querySelectorAll('input[name="mode"]')) r.disabled = on;
+      for (const id of ['backup', 'own-url', 'own-url-go', 'own-chip', 'own-add']) $(id).disabled = on;
+      for (const r of ownRows) { r.file.disabled = on; r.address.disabled = on; r.remove.disabled = on; }
+      if (!on) refreshOwn();
     },
     /** Resets screen 2 and shows it. */
     startInstall() {

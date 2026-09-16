@@ -17,9 +17,31 @@ paste the address of one (a path on the same site such as
 *Read it*. Nothing is uploaded: the bytes are read into the browser, the header
 is inspected, and they go through the same checks as a catalogued release: not
 empty, within the size limits, held to the size and SHA-256 measured when they
-were read, nothing past the end of the flash the chip reports, and the image
-chip id must be the chip that is plugged in. Then they are written with
-esptool-js's MD5 read-back and the device is reset.
+were read, no two files on the same place, nothing past the end of the flash the
+chip reports, and the image chip id must be the chip that is plugged in. Then
+they are written with esptool-js's MD5 read-back and the device is reset.
+
+**Several files.** A PlatformIO or Arduino build does not produce one file but
+three or four: the bootloader, the partition table, on the classic ESP32 also
+`boot_app0.bin`, and the application. *Add another file* opens a row per file,
+up to six, each with its own address. The page suggests the address a build
+tool would have used, from what the file says about itself: a merged image
+(bootloader at the chip's offset, `0xff` before it, partition table at `0x8000`)
+goes to `0x0`; a partition table, recognised by its magic, to `0x8000`; a file
+called `boot_app0` to `0xE000`; an image called `bootloader` to the chip's
+bootloader offset (`0x1000` on ESP32 and ESP32-S2, `0x0` on ESP32-S3, C3, C6
+and H2, `0x2000` on C5 and P4); any other image to `0x10000`. A file that looks
+like none of those, a SPIFFS or LittleFS image say, gets no suggestion and the
+address has to be typed. Every suggestion stays editable, and the button turns
+on only once every row has a valid address, the device is chosen, and the set
+passes the same overlap and chip-id checks the engine runs after connecting. A
+set that brings its own bootloader is offered the same erase prompt as a
+release with `new_install_prompt_erase`; a set without one never erases,
+because the bootloader on the device is what it relies on.
+
+The alternative to several rows is one file: `esptool merge_bin` glues a build
+into a single merged image that the page recognises and writes at `0x0`. See
+[docs/manifest.md](docs/manifest.md#files-from-a-build-tool).
 
 An address on this site always works. An address on another site is usually
 refused by the page's own policy (`connect-src 'self'`) or by that site's CORS
@@ -29,17 +51,9 @@ it from disk. A host that wants any `https:` address to work can widen
 [docs/replicate.md](docs/replicate.md). A typed address is the visitor's own
 decision and is not held to the catalog's `allowOrigins`; a manifest still is.
 
-Two things a file cannot decide for itself are shown before the install starts,
-with the defaults the file suggests. **Where it goes:** a merged image
-(bootloader at the chip's offset, `0xff` before it, partition table at `0x8000`)
-defaults to *The whole system* at `0x0`; anything else defaults to *Only the
-application* at `0x10000`, and the address field takes any sector-aligned `0x`
-value. **Which chip it is for:** read from the image header when there is one;
-when there is not, you pick it from the list, and the device-side check refuses
-if the plugged-in chip disagrees. A file written at `0x0` is offered the same
-erase prompt as a release with `new_install_prompt_erase`; a file written
-anywhere else never erases, because the bootloader and partition table it
-relies on are already on the device.
+**Which chip it is for** is read from the first image header that names one;
+when none does, you pick it from the list, and the device-side check refuses if
+the plugged-in chip disagrees.
 
 The own-file path is always the `factory` profile and needs no `catalog.json`:
 a copy of these files with no catalog opens on it directly.

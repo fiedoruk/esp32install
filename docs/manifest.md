@@ -11,10 +11,44 @@ file without a `schema` key is read as schema 1.
 A file chosen from disk needs no manifest at all. The page builds the same
 normalized shape in memory (`localManifest` in `app/manifest.js`): profile
 `factory`, one build called `local` with the chip family the user confirmed, one
-part at the address the user confirmed, with `size` and `sha256` measured from
-the bytes. The part carries the bytes instead of a `path`, is never fetched,
-and is held to the same checks as a downloaded one. `preserve` is refused for
-it, because a local file carries no `compatibility` data to hold the device to.
+part per file at the address the user confirmed, with `size` and `sha256`
+measured from the bytes. Each part carries the bytes instead of a `path`, is
+never fetched, and is held to the same checks as a downloaded one. `preserve`
+is refused for it, because a local file carries no `compatibility` data to hold
+the device to.
+
+## Files from a build tool
+
+PlatformIO and the Arduino IDE do not produce one file. `pio run` leaves three
+or four in `.pio/build/<env>/`, and the Arduino IDE's *Export compiled binary*
+does the same next to the sketch. They go at fixed addresses, and the page
+suggests exactly these when it recognises the files:
+
+| File | Address | How the page recognises it |
+|---|---|---|
+| `bootloader.bin` | `0x1000` on ESP32 and ESP32-S2; `0x0` on ESP32-S3, C2, C3, C6, H2; `0x2000` on C5 and P4 | an ESP image whose name contains `bootloader` |
+| `partitions.bin` | `0x8000` | the partition-table magic `0xAA 0x50` in its first two bytes |
+| `boot_app0.bin` | `0xE000` | its name (the classic ESP32 Arduino core ships it; ESP-IDF builds do not need it) |
+| `firmware.bin`, `<sketch>.ino.bin` | `0x10000` | any other ESP image |
+| a SPIFFS or LittleFS image | wherever your partition table puts it | not recognised; the address is typed by hand |
+
+The table is the same for a manifest: list each file as a part at that offset,
+in rising order. `tools/manifest.py` takes them as
+`bootloader.bin@0x1000 partitions.bin@0x8000 boot_app0.bin@0xe000 firmware.bin@0x10000`.
+
+The alternative is one file. esptool can glue a build into a single image
+padded with `0xff` between the parts:
+
+```
+python -m esptool --chip esp32 merge_bin -o merged.bin \
+  0x1000 bootloader.bin 0x8000 partitions.bin 0xe000 boot_app0.bin 0x10000 firmware.bin
+```
+
+The result starts with `0xff` up to the bootloader offset and carries the
+partition table at `0x8000`, which is what the page recognises as a merged
+image and writes at `0x0`, on the own-file path and from a manifest alike. One
+part is easier to publish and to check; the individual files are what a
+developer has to hand. Both work.
 
 ## Schema
 

@@ -103,23 +103,34 @@
     "own": {
       "title": "Install your own file",
       "instead": "Install your own file instead",
-      "hint": "Choose a file from this computer. Nothing is uploaded anywhere.",
+      "hint": "Choose the file from this computer, or several if your build tool made more than one. Nothing is uploaded anywhere.",
       "choose": "Choose the file",
       "url": "Or give the address of a file",
       "urlHint": "Paste a link to a file on this site, or anywhere that allows it.",
       "urlGo": "Read it",
       "read": "{name}, {size}.",
-      "where": "What is in the file?",
-      "whole": "The whole system",
-      "wholeHint": "Replaces everything on the device.",
-      "app": "Only the application",
-      "appHint": "Keeps what is on the device and updates the program.",
       "address": "Where on the device it goes",
       "device": "Which device it is for",
       "pickDevice": "Choose the device",
       "plan": "{name} goes to {address} on {device}. The installer stops if the connected device turns out to be a different one.",
       "unknownDevice": "The file does not say which device it is for. Choose it above. The installer stops if the connected device turns out to be a different one.",
-      "badAddress": "The address has to start with 0x and be a multiple of 0x1000, for example 0x10000."
+      "badAddress": "The address has to start with 0x and be a multiple of 0x1000, for example 0x10000.",
+      "addFile": "Add another file",
+      "part": "File {n}",
+      "remove": "Remove",
+      "needFile": "Choose a file first.",
+      "planMany": "All the files go on {device}. The installer stops if the connected device turns out to be a different one.",
+      "overlap": "Two of these files would land on the same place on the device. Change one of the addresses.",
+      "wrongDevice": "{name} is made for a different device than the others. Check that every file is for the same device.",
+      "notAnImage": "The file at the start of the device is not a program the device can start from. Check the address of each file.",
+      "kind": {
+        "whole": "Looks like a complete system.",
+        "app": "Looks like a program.",
+        "table": "Looks like the map of the device's memory.",
+        "boot": "Looks like the start-up program.",
+        "otadata": "Looks like start-up settings.",
+        "data": "Does not look like a program. Type the address yourself."
+      }
     }
   },
   "pick": {

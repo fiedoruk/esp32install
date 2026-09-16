@@ -1,5 +1,5 @@
 import { InstallError } from './errors.js';
-import { sha256Hex } from './verify.js';
+import { sha256Hex, CHIPS } from './verify.js';
 
 export const CHIP_FAMILIES = new Set(['ESP8266', 'ESP32', 'ESP32-S2', 'ESP32-S3', 'ESP32-C2', 'ESP32-C3',
   'ESP32-C5', 'ESP32-C6', 'ESP32-C61', 'ESP32-H2', 'ESP32-P4']);
@@ -160,13 +160,18 @@ export function normalizeManifest(raw, manifestUrl, policy = {}) {
 
 const PART_MAX = 32 * 1024 * 1024;
 const SECTOR = 0x1000;
+const coversBootloader = (p, chipFamily) => {
+  const at = CHIPS[chipFamily]?.bootloaderOffset;
+  return at !== null && at !== undefined && p.offset <= at && at < p.offset + p.size;
+};
 
 /**
  * The own-file path: a file the user picked, held in memory, with no manifest, no server and no
  * download. Returns the shape `normalizeManifest` returns, always the `factory` profile with one
  * build called `local`, and `size` and `sha256` measured from the bytes so the engine holds the
  * part to them with the same checks a release gets. Each part carries `bytes` and no `url`.
- * A part written at 0 replaces the whole system and asks about erasing like a release with
+ * A set that brings its own bootloader (a part at 0, or one covering the family's bootloader
+ * offset) replaces the whole system and asks about erasing like a release with
  * `new_install_prompt_erase`; anything written elsewhere never erases, because the bootloader
  * and partition table it relies on are already on the device. `preserve` is refused: a local file
  * carries no compatibility data to hold the device to.
@@ -189,7 +194,7 @@ export async function localManifest({ name, chipFamily, parts, profile = 'factor
   return {
     name, version: out[0].sha256.slice(0, 8), schema: 2,
     profile: 'factory',
-    promptErase: out.some((p) => p.offset === 0),
+    promptErase: out.some((p) => p.offset === 0 || coversBootloader(p, chipFamily)),
     eraseAll: false,
     builds: [{
       boardKey: 'local', board: chipFamily, chipFamily,

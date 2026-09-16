@@ -9,7 +9,8 @@ import { detectLang, createI18n } from './i18n.js';
 import { pickRelease } from './catalog.js';
 import { CHIP_FAMILIES, normalizeManifest, localManifest } from './manifest.js';
 import { createInstaller, fetchBytes, fetchOwnFile } from './engine.js';
-import { esptoolCommand, inspectImage, sha256Hex } from './verify.js';
+import { esptoolCommand, sha256Hex } from './verify.js';
+import { describePart, ownProblem } from './own.js';
 import { saveBlob, saveBackupWithHandle } from './backup.js';
 import { mountUi, translateDom, fileNameOf, hideHatches } from './ui.js';
 import { mountThemeToggle } from './theme.js';
@@ -197,10 +198,11 @@ function makeInstaller({ esptool, ui, fw, guide, nameOf }) {
 }
 
 /**
- * Install a file from this computer. Nothing is uploaded and no manifest is read: the file is
- * inspected for its header, the defaults it suggests are shown, and the user's two choices
- * (where it goes, which device it is for) become a local manifest that runs through the same
- * engine and the same checks as a catalogued release.
+ * Install files from this computer. Nothing is uploaded and no manifest is read: each file is
+ * inspected for its header, the address a build tool would have given it is suggested, and the
+ * user's choices (where each file goes, which device they are for) become a local manifest that
+ * runs through the same engine and the same checks as a catalogued release. One merged image is
+ * the common case; a PlatformIO or Arduino build brings its three or four files, one per row.
  */
 async function startOwn(lang) {
   const ui = mountUi({ i18n, system: '' });
@@ -209,39 +211,51 @@ async function startOwn(lang) {
   ui.setBackupAvailable(true); // the own-file path is always the factory profile
   const esptool = await loadEngine(ui);
   if (!esptool) return;
-  let picked = null; // { name, bytes, sha256, url? }
-  const run = makeInstaller({ esptool, ui, fw: 'local', nameOf: () => picked?.name ?? '' });
+  const picked = new Map(); // row id → { name, bytes, sha256, url? }
+  const names = () => [...picked.values()].map((p) => p.name).join(', ');
+  const run = makeInstaller({ esptool, ui, fw: 'local', nameOf: names });
   const report = (e) => ui.setError(e instanceof InstallError ? e : new InstallError('engine.unexpected', { detail: String(e?.message ?? e) }, e));
   // Both ways in end here: bytes in memory, inspected, shown with the defaults they suggest.
-  const accept = async (name, bytes, url) => {
+  const accept = async (rowId, name, bytes, url) => {
     if (bytes.length === 0) throw new InstallError('verify.empty', { path: name });
     if (bytes.length > PART_MAX) throw new InstallError('verify.tooLarge', { path: name, bytes: bytes.length, max: PART_MAX });
-    const { chipFamily, whole } = inspectImage(bytes);
-    picked = { name, bytes, sha256: await sha256Hex(bytes), url };
-    document.title = i18n.t('app.title', { system: name });
-    ui.setOwnFile({ name, size: bytes.length, sha256: picked.sha256, chipFamily, whole });
+    const facts = describePart(name, bytes, ui.ownChipFamily());
+    const sha256 = await sha256Hex(bytes);
+    const id = rowId ?? ui.addOwnPart();
+    if (id === null) return; // every row is taken; the page has already switched the button off
+    picked.set(id, { name, bytes, sha256, url });
+    ui.setOwnPart(id, { name, size: bytes.length, sha256, ...facts });
+    document.title = i18n.t('app.title', { system: names() });
   };
-  ui.bindOwnFile(async (file) => {
-    try { await accept(file.name, new Uint8Array(await file.arrayBuffer())); } catch (e) { report(e); }
+  ui.bindOwnFile(async (rowId, file) => {
+    try { await accept(rowId, file.name, new Uint8Array(await file.arrayBuffer())); } catch (e) { report(e); }
   });
+  ui.bindOwnRemove((rowId) => { picked.delete(rowId); });
   ui.bindOwnUrl(async (address) => {
     if (!String(address ?? '').trim()) return;
     ui.setOwnReading(true);
     try {
       const { name, url, bytes } = await fetchOwnFile(fetch.bind(window), address, document.baseURI);
-      await accept(name, bytes, url);
+      await accept(null, name, bytes, url);
     } catch (e) { report(e); } finally { ui.setOwnReading(false); }
   });
+  // Every change: the same checks the engine will run, and the alternative route for this set.
   ui.bindOwnChange((choice) => {
-    if (!choice || !picked) return;
-    ui.setAltRoute({ cmd: esptoolCommand(choice.chipFamily, [{ offset: choice.offset }], [picked.name]), files: [{ name: picked.name, url: picked.url, sha256: picked.sha256 }] });
+    const parts = choice.parts.map((p) => ({ name: p.name, offset: p.offset, bytes: picked.get(p.id).bytes }));
+    ui.setAltRoute({
+      cmd: esptoolCommand(choice.chipFamily, parts, parts.map((p) => p.name)),
+      files: choice.parts.map((p) => ({ name: p.name, url: picked.get(p.id).url, sha256: picked.get(p.id).sha256 })),
+    });
+    return ownProblem(parts, choice.chipFamily);
   });
   ui.bindConnect(async () => {
     const choice = ui.ownChoice();
-    if (!picked || !choice) return;
+    if (!choice) return;
     let manifest;
-    try { manifest = await localManifest({ name: picked.name, chipFamily: choice.chipFamily, parts: [{ path: picked.name, offset: choice.offset, bytes: picked.bytes }] }); }
-    catch (e) { report(e); return; }
+    try {
+      const parts = choice.parts.slice().sort((a, b) => a.offset - b.offset).map((p) => ({ path: p.name, offset: p.offset, bytes: picked.get(p.id).bytes }));
+      manifest = await localManifest({ name: names(), chipFamily: choice.chipFamily, parts });
+    } catch (e) { report(e); return; }
     await run.run(manifest, ui.mode(), { backup: ui.wantsBackup() });
   });
   ui.bindRetry(() => ui.showScreen('prepare'));

@@ -472,3 +472,71 @@ test('an error before any erase or write reports changed: false; once the erase 
   await assert.rejects(cancelled.inst.run({ manifest: cancelled.manifest, mode: 'first', options: {} }), (e) => e.code === 'engine.unexpected');
   assert.equal(cancelled.events.at(-1).changed, false);
 });
+
+/* --- the own-file path with several parts: a PlatformIO or Arduino build ------------------ */
+
+const partImage = (chipId, length = 0x200) => { const d = new Uint8Array(length).fill(0xff); d[0] = 0xe9; d[12] = chipId; d[13] = 0; return d; };
+const partTable = () => { const d = new Uint8Array(0xc00).fill(0xff); d[0] = 0xaa; d[1] = 0x50; return d; };
+
+async function setupLocalSet(parts, { fake = makeFakeEsptool({ chipName: 'ESP32-S3' }), chipFamily = 'ESP32-S3', confirm = true } = {}) {
+  const manifest = await localManifest({ name: parts.map((p) => p.path).join(', '), chipFamily, parts });
+  const events = [];
+  const inst = createInstaller({
+    esptool: fake, requestPort: async () => ({ getInfo: () => ({}) }),
+    fetchFn: async () => { throw new Error('fetchFn must not be called for a local file'); },
+    onEvent: (e) => events.push(e), chooseBuild: async (b) => b[0], confirmErase: async () => confirm, saveBackup: async () => {},
+  });
+  return { inst, manifest, events, fake };
+}
+
+test('own files: two parts (partition table + application) are written in one call, in order, without an erase prompt', async () => {
+  const table = partTable(), app = partImage(9);
+  const { inst, manifest, fake, events } = await setupLocalSet([{ path: 'partitions.bin', offset: 0x8000, bytes: table }, { path: 'firmware.bin', offset: 0x10000, bytes: app }]);
+  assert.equal(manifest.promptErase, false, 'nothing covers the bootloader: the one on the device stays');
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.find((c) => c[0] === 'writeFlash')[1], [[0x8000, 0xc00], [0x10000, 0x200]]);
+  assert.ok(fake.flash.subarray(0x8000, 0x8c00).every((b, i) => b === table[i]));
+  assert.ok(fake.flash.subarray(0x10000, 0x10200).every((b, i) => b === app[i]));
+  assert.equal(r.parts.length, 2);
+  assert.equal(events.at(-1).type, 'done');
+});
+
+test('own files: three parts with the bootloader at 0 on an S3 ask about erasing, and all three land', async () => {
+  const boot = partImage(9, 0x5000);
+  const { inst, manifest, fake } = await setupLocalSet([{ path: 'bootloader.bin', offset: 0x0, bytes: boot }, { path: 'partitions.bin', offset: 0x8000, bytes: partTable() }, { path: 'firmware.bin', offset: 0x10000, bytes: partImage(9) }]);
+  assert.equal(manifest.promptErase, true);
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.find((c) => c[0] === 'writeFlash')[1], [[0x0, 0x5000], [0x8000, 0xc00], [0x10000, 0x200]]);
+  assert.ok(fake.flash.subarray(0, 0x5000).every((b, i) => b === boot[i]));
+});
+
+test('own files: the classic four-file ESP32 build (bootloader at 0x1000) asks about erasing because it brings its own bootloader', async () => {
+  const fake = makeFakeEsptool({ chipName: 'ESP32' });
+  const parts = [{ path: 'bootloader.bin', offset: 0x1000, bytes: partImage(0, 0x5000) }, { path: 'partitions.bin', offset: 0x8000, bytes: partTable() }, { path: 'boot_app0.bin', offset: 0xe000, bytes: new Uint8Array(0x2000).fill(0xff) }, { path: 'firmware.bin', offset: 0x10000, bytes: partImage(0) }];
+  const { inst, manifest } = await setupLocalSet(parts, { fake, chipFamily: 'ESP32' });
+  assert.equal(manifest.promptErase, true);
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
+  assert.deepEqual(fake.calls.find((c) => c[0] === 'writeFlash')[1], [[0x1000, 0x5000], [0x8000, 0xc00], [0xe000, 0x2000], [0x10000, 0x200]]);
+  assert.equal(r.parts.length, 4);
+  assert.ok(called(fake, 'eraseFlash'));
+});
+
+test('own files: two parts on the same place stop at the layout check, nothing erased or written', async () => {
+  const { inst, manifest, fake } = await setupLocalSet([{ path: 'a.bin', offset: 0x10000, bytes: partImage(9, 0x2000) }, { path: 'b.bin', offset: 0x11000, bytes: partImage(9) }]);
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'verify.overlap');
+  assert.ok(!called(fake, 'eraseFlash'));
+  assert.ok(!called(fake, 'writeFlash'));
+});
+
+test('own files: one part whose chip id contradicts the others stops before any write, wherever it is written', async () => {
+  const { inst, manifest, fake } = await setupLocalSet([{ path: 'bootloader.bin', offset: 0x0, bytes: partImage(9, 0x5000) }, { path: 'partitions.bin', offset: 0x8000, bytes: partTable() }, { path: 'firmware.bin', offset: 0x10000, bytes: partImage(0) }]);
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'verify.wrongChip' && e.params.found === 'ESP32' && e.params.offset === 0x10000);
+  assert.ok(!called(fake, 'eraseFlash'));
+  assert.ok(!called(fake, 'writeFlash'));
+  assert.ok(called(fake, 'disconnect'));
+});

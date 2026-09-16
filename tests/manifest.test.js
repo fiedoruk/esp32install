@@ -345,3 +345,15 @@ test('improv: absent stays undefined, a boolean is kept, anything else is manife
     assert.throws(() => normalizeManifest(raw, URL_M), (e) => e instanceof InstallError && e.code === 'manifest.improv' && e.params.boardKey === 'build-1');
   }
 });
+
+test('localManifest: a set that brings its own bootloader asks about erasing, even when nothing is written at 0', async () => {
+  const boot = localImage(0);
+  const table = new Uint8Array(0xc00).fill(0xff); table[0] = 0xaa; table[1] = 0x50;
+  const classic = await localManifest({ name: 'set', chipFamily: 'ESP32', parts: [{ path: 'bootloader.bin', offset: 0x1000, bytes: boot }, { path: 'partitions.bin', offset: 0x8000, bytes: table }, { path: 'app.bin', offset: 0x10000, bytes: localImage(0) }] });
+  assert.equal(classic.promptErase, true, 'the ESP32 bootloader lives at 0x1000');
+  assert.equal(classic.builds[0].parts.length, 3);
+  const noBoot = await localManifest({ name: 'set', chipFamily: 'ESP32', parts: [{ path: 'partitions.bin', offset: 0x8000, bytes: table }, { path: 'app.bin', offset: 0x10000, bytes: localImage(0) }] });
+  assert.equal(noBoot.promptErase, false, 'the bootloader on the device stays');
+  const c61 = await localManifest({ name: 'set', chipFamily: 'ESP32-C61', parts: [{ path: 'x.bin', offset: 0x2000, bytes: localImage(20) }] });
+  assert.equal(c61.promptErase, false, 'no declared bootloader offset: only a part at 0 asks');
+});

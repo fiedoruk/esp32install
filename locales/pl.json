@@ -103,23 +103,34 @@
     "own": {
       "title": "Zainstaluj własny plik",
       "instead": "Albo zainstaluj własny plik",
-      "hint": "Wskaż plik z tego komputera. Nic nigdzie nie jest wysyłane.",
+      "hint": "Wskaż plik z tego komputera, albo kilka, jeśli narzędzie do budowania zrobiło ich więcej. Nic nigdzie nie jest wysyłane.",
       "choose": "Wybierz plik",
       "url": "Albo podaj adres pliku",
       "urlHint": "Wklej odnośnik do pliku na tej stronie albo w innym miejscu, które na to pozwala.",
       "urlGo": "Wczytaj",
       "read": "{name}, {size}.",
-      "where": "Co jest w pliku?",
-      "whole": "Cały system",
-      "wholeHint": "Zastępuje wszystko, co jest na urządzeniu.",
-      "app": "Tylko program",
-      "appHint": "Zostawia to, co jest na urządzeniu, i podmienia sam program.",
       "address": "Gdzie na urządzeniu ma trafić",
       "device": "Do jakiego urządzenia jest przeznaczony",
       "pickDevice": "Wybierz urządzenie",
       "plan": "{name} trafi pod {address} na {device}. Instalator zatrzyma się, jeśli podłączone urządzenie okaże się inne.",
       "unknownDevice": "Plik nie mówi, do jakiego urządzenia jest przeznaczony. Wybierz je powyżej. Instalator zatrzyma się, jeśli podłączone urządzenie okaże się inne.",
-      "badAddress": "Adres musi zaczynać się od 0x i być wielokrotnością 0x1000, na przykład 0x10000."
+      "badAddress": "Adres musi zaczynać się od 0x i być wielokrotnością 0x1000, na przykład 0x10000.",
+      "addFile": "Dodaj kolejny plik",
+      "part": "Plik {n}",
+      "remove": "Usuń",
+      "needFile": "Najpierw wskaż plik.",
+      "planMany": "Wszystkie pliki trafią na {device}. Instalator zatrzyma się, jeśli podłączone urządzenie okaże się inne.",
+      "overlap": "Dwa z tych plików trafiłyby w to samo miejsce na urządzeniu. Zmień jeden z adresów.",
+      "wrongDevice": "{name} jest przeznaczony do innego urządzenia niż pozostałe pliki. Sprawdź, czy wszystkie pliki są do tego samego urządzenia.",
+      "notAnImage": "Plik na początku urządzenia nie jest programem, od którego urządzenie potrafi wystartować. Sprawdź adresy plików.",
+      "kind": {
+        "whole": "Wygląda na cały system.",
+        "app": "Wygląda na program.",
+        "table": "Wygląda na mapę pamięci urządzenia.",
+        "boot": "Wygląda na program rozruchowy.",
+        "otadata": "Wygląda na ustawienia rozruchu.",
+        "data": "Nie wygląda na program. Sam podaj adres."
+      }
     }
   },
   "pick": {

@@ -160,35 +160,43 @@ test('the save button lives on the install screen, is hidden until the copy is r
   assert.match(read('app/preserve.js'), /readBackHandle\(saved\.handle\)/);
 });
 
-test('the own-file path: an entry under the list, a block on the prepare screen with labelled controls, and a way back from a catalogued install', () => {
+test('the own-file path: an entry under the list, a row list on the prepare screen, the address field beside it, and a way back from a catalogued install', () => {
   assert.match(html, /<a class="own-card" id="own-entry">\s*<b data-i18n="simple\.own\.title"><\/b>\s*<small data-i18n="simple\.own\.hint"><\/small>\s*<\/a>/);
   assert.match(html, /<section class="screen" id="screen-prepare"[\s\S]*?<div class="own" id="own" hidden>[\s\S]*?<\/section>/, 'the block lives on the prepare screen');
-  assert.match(html, /<label class="file" for="own-file"><span data-i18n="simple\.own\.choose"><\/span><input type="file" id="own-file" accept="\.bin,application\/octet-stream"><\/label>/);
-  assert.match(html, /<div class="own-read" id="own-read" hidden>/, 'what was read stays hidden until a file is chosen');
-  assert.match(html, /<div class="own-url">\s*<label class="field" for="own-url"><span data-i18n="simple\.own\.url"><\/span><input type="text" id="own-url" spellcheck="false" autocomplete="off" autocapitalize="off"><\/label>\s*<button type="button" class="small" id="own-url-go" data-i18n="simple\.own\.urlGo"><\/button>\s*<\/div>\s*<p class="own-hint" data-i18n="simple\.own\.urlHint"><\/p>/, 'the address field sits beside the file input');
-  assert.match(read('app/main.js'), /fetchOwnFile\(fetch\.bind\(window\), address, document\.baseURI\)/, 'a typed address is fetched by the page, never by a manifest');
-  assert.doesNotMatch(read('app/manifest.js'), /own\.blocked|fetchOwnFile/, 'the manifest layer keeps its origin policy');
-  assert.match(html, /<div class="doors" role="radiogroup" data-i18n-attr="aria-label:simple\.own\.where">/);
-  for (const [id, key] of [['own-whole', 'whole'], ['own-app', 'app']]) {
-    assert.match(html, new RegExp(`<label class="door" for="${id}">\\s*<input type="radio" name="own-where" id="${id}" value="${key}">[\\s\\S]*?<b data-i18n="simple\\.own\\.${key}"><\\/b><small data-i18n="simple\\.own\\.${key}Hint">`), id);
-  }
-  assert.match(html, /<label class="field" for="own-address"><span data-i18n="simple\.own\.address"><\/span><input type="text" id="own-address" spellcheck="false" autocomplete="off" autocapitalize="off"><\/label>/);
-  assert.match(html, /<label class="field" for="own-chip"><span data-i18n="simple\.own\.device"><\/span><select id="own-chip"><\/select><\/label>/);
-  assert.match(html, /<p class="hint-text" id="own-note" aria-live="polite"><\/p>/, 'the plan is spoken before the button');
+  assert.match(html, /<ul class="pick-list own-parts" id="own-parts"><\/ul>\s*<button type="button" class="small" id="own-add" hidden data-i18n="simple\.own\.addFile"><\/button>/, 'rows are built by ui.js; the add button waits for the first file');
+  assert.match(html, /<div class="own-url">\s*<label class="field" for="own-url"><span data-i18n="simple\.own\.url"><\/span><input type="text" id="own-url" spellcheck="false" autocomplete="off" autocapitalize="off"><\/label>\s*<button type="button" class="small" id="own-url-go" data-i18n="simple\.own\.urlGo"><\/button>\s*<\/div>\s*<p class="own-hint" data-i18n="simple\.own\.urlHint"><\/p>/, 'the address field sits under the rows');
+  assert.match(html, /<div class="own-read" id="own-read" hidden>\s*<label class="field" for="own-chip"><span data-i18n="simple\.own\.device"><\/span><select id="own-chip"><\/select><\/label>\s*<p class="hint-text" id="own-note" aria-live="polite"><\/p>\s*<\/div>/, 'one device for the whole set, and the plan spoken before the button');
+  assert.match(html, /<div class="line" id="door-line">/, 'the doors can be hidden until a file exists');
+  assert.match(html, /<p class="note" id="connect-why" hidden aria-live="polite"><\/p>\s*<button class="cta" id="connect" type="button">/, 'the disabled button says why, right above it');
   assert.match(html, /<a class="quiet" id="own-instead" hidden data-i18n="simple\.own\.instead"><\/a>/);
   assert.match(html, /<dt id="fact-release-label" data-i18n="tech\.release"><\/dt>/);
+  assert.doesNotMatch(html, /own-where|own-whole|own-app|simple\.own\.where/, 'the whole/app doors are gone: every row carries its own address');
   const main = read('app/main.js');
+  assert.match(main, /fetchOwnFile\(fetch\.bind\(window\), address, document\.baseURI\)/, 'a typed address is fetched by the page, never by a manifest');
+  assert.doesNotMatch(read('app/manifest.js'), /own\.blocked|fetchOwnFile/, 'the manifest layer keeps its origin policy');
   assert.match(main, /q\.get\('own'\) === '1'\) return startOwn\(lang\)/, '?own=1 opens the path on any copy');
   assert.match(main, /if \(systems\.length === 0\) return startOwn\(lang\)/, 'no catalog, or an empty one, opens it too');
-  assert.match(main, /localManifest\(\{ name: picked\.name, chipFamily: choice\.chipFamily, parts: \[\{ path: picked\.name, offset: choice\.offset, bytes: picked\.bytes \}\] \}\)/);
+  assert.match(main, /describePart\(name, bytes, ui\.ownChipFamily\(\)\)/, 'every file is described, with the chosen device as the hint for a bootloader');
+  assert.match(main, /return ownProblem\(parts, choice\.chipFamily\);/, 'the set is checked on every change with the engine\'s own checks');
+  assert.match(main, /\.sort\(\(a, b\) => a\.offset - b\.offset\)\.map\(\(p\) => \(\{ path: p\.name, offset: p\.offset, bytes: picked\.get\(p\.id\)\.bytes \}\)\);\s*manifest = await localManifest\(\{ name: names\(\), chipFamily: choice\.chipFamily, parts \}\)/, 'every part goes into one local manifest');
   const ui = read('app/ui.js');
-  assert.match(ui, /\$\('connect'\)\.disabled = !choice/, 'no install without both choices');
-  assert.match(ui, /t\('simple\.own\.plan', \{ name: own\.name, address, device: chipFamily \}\)/, 'the address and the chip are shown before the install');
+  assert.match(ui, /import \{ MAX_PARTS \} from '\.\/own\.js';/);
+  assert.match(ui, /if \(ownRows\.length >= MAX_PARTS\) return null;/, 'no seventh row');
+  assert.match(ui, /\$\('own-add'\)\.disabled = ownRows\.length >= MAX_PARTS;/);
+  assert.match(ui, /for \(const id of \['own-read', 'door-line', 'doors', 'backup-opt'\]\) \$\(id\)\.hidden = !has;/, 'doors, copy and details wait for the first file');
+  assert.match(ui, /\$\('door-update-hint'\)\.textContent = t\('door\.updateHintOwn'\);/, 'the update door never shows an empty system name');
+  assert.match(ui, /\$\('connect'\)\.disabled = why !== '';\s*\$\('connect-why'\)\.textContent = why;/, 'the button is off exactly when there is a reason, and the reason is shown');
+  assert.match(ui, /if \(filled\.length === 0\) return t\('simple\.own\.needFile'\);/);
+  assert.match(ui, /t\('simple\.own\.plan', \{ name: choice\.parts\[0\]\.name, address: '0x' \+ choice\.parts\[0\]\.offset\.toString\(16\), device: chipFamily \}\)/, 'the address and the chip are shown before the install');
+  assert.match(ui, /file\.accept = '\.bin,application\/octet-stream';/);
+  assert.match(ui, /addrLabel\.htmlFor = `own-address-\$\{id\}`;[\s\S]*?address\.id = `own-address-\$\{id\}`;/, 'every generated input has a label');
+  assert.doesNotMatch(ui, /innerHTML/);
 });
 
 test('the simple layer of the own-file path never says .bin; only the file input and the technical layer may', () => {
-  for (const [k, v] of Object.entries(en.simple.own)) assert.doesNotMatch(v, /\.bin/i, k);
-  assert.equal((html.match(/\.bin/g) ?? []).length, 2, 'the two accept attributes');
+  const flatOwn = (o, p = '') => Object.entries(o).flatMap(([k, v]) => (typeof v === 'object' ? flatOwn(v, p + k + '.') : [[p + k, v]]));
+  for (const [k, v] of flatOwn(en.simple.own)) assert.doesNotMatch(v, /\.bin/i, k);
+  assert.equal((html.match(/\.bin/g) ?? []).length, 1, 'the backup dialog\'s accept attribute; the row pickers get theirs from ui.js');
 });
 
 test('the Wi-Fi step lives on the done screen, hidden until the device asks for it, with labelled fields and a masked password', () => {
