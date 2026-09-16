@@ -86,7 +86,7 @@ developer has to hand. Both work.
 | Field | Schema | Type | Meaning |
 |---|---|---|---|
 | `path` | 1 | string | Resolved against the manifest's own URL. |
-| `offset` | 1 | integer ≥ 0 | Where the file goes in flash. |
+| `offset` | 1 | integer ≥ 0 | Where the file goes in flash. `preserve` requires a multiple of 4096: the chip erases whole 4 KiB sectors, so a part that starts mid-sector would blank the user data in front of it. |
 | `size` | 2 | integer > 0 | Exact byte count. Required by `preserve`. |
 | `sha256` | 2 | 64 hex characters | Accepted in either case and compared lower-cased; the generator emits lowercase. Required by `preserve`. Without it the installer hashes the download anyway and writes the hash to the log. |
 
@@ -104,7 +104,8 @@ and each failure is `manifest.compatibility`: a region without `sha256` makes a
 claim the installer cannot check; a missing `update.tableOffset`, or one that no
 part is written at, leaves update mode with nothing to compare. The `preserve`
 profile also needs at least one region between `regions` and
-`firstInstall.regions`, and it may not set `eraseAll`. `tools/manifest.py`
+`firstInstall.regions`, it may not set `eraseAll`, and every one of its parts has
+to start on a 4 KiB boundary (`manifest.alignment` otherwise). `tools/manifest.py`
 refuses to write a `preserve` manifest that breaks any of these rules, and
 `tools/check.py` reports one that does.
 

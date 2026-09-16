@@ -5,6 +5,8 @@ export const CHIP_FAMILIES = new Set(['ESP8266', 'ESP32', 'ESP32-S2', 'ESP32-S3'
   'ESP32-C5', 'ESP32-C6', 'ESP32-C61', 'ESP32-H2', 'ESP32-P4']);
 const HEX64 = /^[0-9a-f]{64}$/;
 const KEY = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
+/** One flash sector. The chip erases whole sectors, so it is also the alignment `preserve` needs. */
+const SECTOR = 0x1000;
 
 const isInt = (v) => Number.isSafeInteger(v);
 const fail = (code, params) => { throw new InstallError(code, params); };
@@ -74,6 +76,13 @@ function normalizePart(p, i, boardKey, base, allowOrigins, profile) {
   }
   if (profile === 'preserve' && (part.size === undefined || part.sha256 === undefined)) {
     fail('manifest.preserveNeedsSize', { boardKey, index: i + 1 });
+  }
+  // The chip erases every whole sector a write touches. A `preserve` part that does not start on
+  // a sector boundary therefore blanks up to 4095 bytes of whatever sits in front of it — user
+  // data this profile exists to keep — and the read-back cannot tell the difference outside the
+  // header span. Refused here, before the device is opened.
+  if (profile === 'preserve' && part.offset % SECTOR !== 0) {
+    fail('manifest.alignment', { boardKey, index: i + 1, offset: part.offset, sector: SECTOR });
   }
   return part;
 }
@@ -159,7 +168,6 @@ export function normalizeManifest(raw, manifestUrl, policy = {}) {
 }
 
 const PART_MAX = 32 * 1024 * 1024;
-const SECTOR = 0x1000;
 const coversBootloader = (p, chipFamily) => {
   const at = CHIPS[chipFamily]?.bootloaderOffset;
   return at !== null && at !== undefined && p.offset <= at && at < p.offset + p.size;

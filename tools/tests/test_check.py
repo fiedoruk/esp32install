@@ -664,6 +664,41 @@ class ShapeTest(SiteFixture):
         self.write_raw_manifest(data)
         self.assertEqual(self.fails(self.findings()), [])
 
+    def test_preserve_with_a_part_off_a_sector_boundary_fails(self):
+        app = self.firmware / 'app.bin'
+        app.write_bytes(b'\x00' * 1024)
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['profile'] = 'preserve'
+        data['builds'][0]['compatibility'] = self.preserve_compat()
+        data['builds'][0]['parts'].insert(0, {
+            'path': 'app.bin', 'offset': 0x10800, 'size': 1024,
+            'sha256': hashlib.sha256(app.read_bytes()).hexdigest()})
+        self.write_raw_manifest(data)
+        found = self.findings()
+        self.assertEqual(self.levels(found, 'align'), [check.FAIL])
+        self.assertTrue(any('0x10800' in detail for what, detail in self.fails(found) if what == 'align'))
+        self.assertEqual(self.cli(self.site)[0], 1)
+
+    def test_a_preserve_manifest_aligned_everywhere_reports_nothing_about_alignment(self):
+        """Positive control for the alignment rule."""
+        app = self.firmware / 'app.bin'
+        app.write_bytes(b'\x00' * 1024)
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['profile'] = 'preserve'
+        data['builds'][0]['compatibility'] = self.preserve_compat()
+        data['builds'][0]['parts'].insert(0, {
+            'path': 'app.bin', 'offset': 0x10000, 'size': 1024,
+            'sha256': hashlib.sha256(app.read_bytes()).hexdigest()})
+        self.write_raw_manifest(data)
+        found = self.findings()
+        self.assertEqual(self.levels(found, 'align'), [])
+        self.assertEqual(self.fails(found), [])
+
+    def test_a_factory_part_off_a_sector_boundary_is_not_an_alignment_failure(self):
+        self.write_one_part_manifest(0x10800)
+        found = self.findings()
+        self.assertEqual(self.levels(found, 'align'), [])
+
     def test_preserve_with_a_region_without_a_checksum_fails(self):
         for where in ('regions', 'first'):
             with self.subTest(where=where):

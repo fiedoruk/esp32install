@@ -143,6 +143,14 @@ This is why a partition table declared through `update.tableOffset` is checked a
 a full page: the table itself against the part's `sha256`, and the remainder of
 the page against `0xff`.
 
+It is also why every `preserve` part has to *start* on a 4 KiB boundary. A part at
+`0x10800` would take the sector from `0x10000` with it and blank the 2 048 bytes in
+front of it — user data this profile exists to keep, and outside the header span
+nothing would notice. All three layers refuse such a release: the page with
+`manifest.alignment` before the device is opened, `tools/manifest.py` before it
+writes the manifest, and `tools/check.py` with `FAIL align`. The `factory` profile
+is not held to this: it writes a whole layout and keeps nothing.
+
 ### Where you can still cancel
 
 Up to step 8. Besides the checks shared with `factory` up to the download, the
@@ -198,6 +206,7 @@ or its sentence drifts from the file.
 | `manifest.size` | Build {boardKey}, file {index} has an invalid size. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.sha256` | Build {boardKey}, file {index} has an invalid checksum. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.preserveNeedsSize` | Build {boardKey}, file {index} needs both a size and a checksum. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.alignment` | Build {boardKey}, file {index} is written to an address this way of installing cannot use, because writing there would wipe out part of what is being kept. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.duplicateBoardKey` | Two builds in the release file share the name {boardKey}. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.improv` | Build {boardKey} has an invalid Wi-Fi setup flag. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.fetch` | Could not download the release file ({status}). Check your connection and try again. If it keeps failing, the release itself is broken, not your device. Tell whoever published it. |
@@ -205,9 +214,10 @@ or its sentence drifts from the file.
 | `catalog.unknownSystem` | There is no system called {fw} on this site. Check the address you were given, or choose from the list of systems. |
 | `catalog.unknownVersion` | This version of {fw} is not available on this site. Check the address you were given, or choose from the list of systems. |
 
-`manifest.compatibility` is what a `preserve` release gets when a region carries
-no checksum, when it declares no region at all, when `update.tableOffset` is
-missing, or when it names an offset no part is written at. All of that is
+`manifest.alignment` is what a `preserve` release gets when a part is written to
+an offset that is not a multiple of 4096. `manifest.compatibility` is what it gets
+when a region carries no checksum, when it declares no region at all, when
+`update.tableOffset` is missing, or when it names an offset no part is written at. All of that is
 decided when the manifest is read, before the device is opened. `manifest.profile`
 also covers a build whose `profile` differs from the manifest's: the page installs
 by the manifest's profile and refuses a build that says otherwise.

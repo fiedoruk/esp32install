@@ -44,6 +44,8 @@ HEX64 = re.compile(r'[0-9a-fA-F]{64}')
 BOARD_KEY = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}')
 MAX_FLASH_MB = 1024
 READ_CHUNK = 1 << 20
+# One flash sector, the unit the chip erases in. Mirrors SECTOR in app/manifest.js.
+SECTOR = 0x1000
 
 
 @dataclass(frozen=True)
@@ -381,6 +383,16 @@ def build_manifest(parts: Sequence[Part], opts: Any) -> Dict[str, Any]:
         problem = image_part_problem(options.chip, m['head'], m['size'])
         if problem is not None:
             raise ManifestError('%s at 0x%x: %s' % (m['file'].name, m['offset'], problem))
+    if options.profile == 'preserve':
+        # The chip erases whole sectors. A part that starts mid-sector blanks up to SECTOR-1 bytes
+        # of the user data this profile exists to keep, so the manifest is never written at all.
+        crooked = [m for m in measured if m['offset'] % SECTOR]
+        if crooked:
+            raise UsageError('the preserve profile needs every part on a %d-byte boundary, and %s '
+                             'is at 0x%x: the chip erases whole sectors, so writing there would '
+                             'also blank the %d bytes in front of it'
+                             % (SECTOR, crooked[0]['file'].name, crooked[0]['offset'],
+                                crooked[0]['offset'] % SECTOR))
     if options.profile == 'preserve' and all(m['offset'] != options.update_table for m in measured):
         raise UsageError('--update-table 0x%x names an offset no part is written at; the preserve '
                          'profile needs the partition table among the parts' % options.update_table)

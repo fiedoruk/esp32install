@@ -148,6 +148,26 @@ test('filter lists are copied, so mutating the raw manifest cannot reach the nor
   assert.deepEqual(b.featuresAll, ['WiFi']);
 });
 
+test('preserve refuses a part that does not start on a 4 KiB boundary, and accepts every aligned one', () => {
+  for (const offset of [0x10800, 0x8001, 0xfff, 0x20000 + 1]) {
+    const raw = load('manifest-v2-preserve.json');
+    raw.builds[0].parts[0].offset = offset;
+    assert.throws(() => normalizeManifest(raw, URL_M), (e) => e.code === 'manifest.alignment' && e.params.offset === offset,
+      `offset 0x${offset.toString(16)} must be refused`);
+  }
+  // Positive control: the shipped fixture is aligned everywhere and still passes.
+  const ok = normalizeManifest(load('manifest-v2-preserve.json'), URL_M).builds[0];
+  assert.deepEqual(ok.parts.map((p) => p.offset), [0x20000, 0x8000]);
+  assert.ok(ok.parts.every((p) => p.offset % 0x1000 === 0));
+});
+
+test('an unaligned offset is only a preserve rule: a factory release may write anywhere', () => {
+  const raw = load('manifest-v2-factory.json');
+  raw.builds[1].parts[0].sha256 = 'a'.repeat(64);
+  raw.builds[0].parts[0].offset = 0x10800;
+  assert.equal(normalizeManifest(raw, URL_M).builds[0].parts[0].offset, 0x10800);
+});
+
 test('compatibility must be a plain object, and preserve needs at least one region', () => {
   assert.throws(() => normalizeManifest(oneBuild({ compatibility: [] }), URL_M), code('manifest.compatibility'));
   assert.throws(() => normalizeManifest(oneBuild({ compatibility: 'x' }), URL_M), code('manifest.compatibility'));

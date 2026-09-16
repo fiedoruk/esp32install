@@ -201,6 +201,7 @@
     "manifest.size": "Build {boardKey}, file {index} has an invalid size. This is a problem with the release itself, not with your device. Tell whoever published it.",
     "manifest.sha256": "Build {boardKey}, file {index} has an invalid checksum. This is a problem with the release itself, not with your device. Tell whoever published it.",
     "manifest.preserveNeedsSize": "Build {boardKey}, file {index} needs both a size and a checksum. This is a problem with the release itself, not with your device. Tell whoever published it.",
+    "manifest.alignment": "Build {boardKey}, file {index} is written to an address this way of installing cannot use, because writing there would wipe out part of what is being kept. This is a problem with the release itself, not with your device. Tell whoever published it.",
     "manifest.duplicateBoardKey": "Two builds in the release file share the name {boardKey}. This is a problem with the release itself, not with your device. Tell whoever published it.",
     "manifest.improv": "Build {boardKey} has an invalid Wi-Fi setup flag. This is a problem with the release itself, not with your device. Tell whoever published it.",
     "improv.timeout": "The device did not answer in time. Check that it is still connected, then try again.",

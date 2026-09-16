@@ -31,9 +31,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 if __package__:
-    from .manifest import CHIPS, HEAD_SAMPLE, boot_image_problem, covering, image_part_problem, overlaps
+    from .manifest import CHIPS, HEAD_SAMPLE, SECTOR, boot_image_problem, covering, image_part_problem, overlaps
 else:  # run as a script: tools/ is already on sys.path
-    from manifest import CHIPS, HEAD_SAMPLE, boot_image_problem, covering, image_part_problem, overlaps
+    from manifest import CHIPS, HEAD_SAMPLE, SECTOR, boot_image_problem, covering, image_part_problem, overlaps
 
 OK = 'OK'
 WARN = 'WARN'
@@ -546,6 +546,14 @@ def preserve_problems(build: Dict[str, Any], parts: Sequence[Any], board: str) -
         if absent:
             findings.append(Finding(FAIL, 'manifest', '%s: %s declares no %s; the preserve profile needs both'
                                     % (board, part.get('path', 'a part'), ' or '.join(absent))))
+        # The chip erases whole sectors, so a part that starts mid-sector blanks the user data in
+        # front of it. The page refuses such a manifest with manifest.alignment, so this is a FAIL.
+        if is_offset(part.get('offset')) and part['offset'] % SECTOR:
+            findings.append(Finding(FAIL, 'align', '%s: %s is written at 0x%x, which is not a multiple of '
+                                    '%d; the chip erases whole sectors, so this would also blank the %d '
+                                    'bytes before it, and the page refuses the release'
+                                    % (board, part.get('path', 'a part'), part['offset'], SECTOR,
+                                       part['offset'] % SECTOR)))
     return findings
 
 

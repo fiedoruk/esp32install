@@ -368,6 +368,34 @@ class GeneratorTest(unittest.TestCase):
         self.assertEqual([p['offset'] for p in json.loads(self.out.read_text('utf-8'))['builds'][0]['parts']],
                          [0x10000, 0x8000], 'nothing is reordered')
 
+    def test_preserve_refuses_a_part_that_does_not_start_on_a_sector_boundary(self):
+        table = self.firmware / 'table.bin'
+        table.write_bytes(b'\x00' * 3072)
+        common = ['--chip', 'ESP32', '--name', 'D', '--version', '1', '--out', self.out, '--profile', 'preserve',
+                  '--compat-region', '0x0:0x8000:' + 'a' * 64, '--update-table', '0x8000']
+        code, text = self.cli(f'{self.bin}@0x10800', f'{table}@0x8000', *common)
+        self.assertEqual(code, 2, text)
+        self.assertIn('boundary', text)
+        self.assertIn('0x10800', text)
+        self.assertFalse(self.out.exists(), 'nothing is written when a part is misaligned')
+        # The table itself is held to the same rule.
+        code, text = self.cli(f'{self.bin}@0x10000', f'{table}@0x8800',
+                              *[a if a != '0x8000' else '0x8800' for a in common])
+        self.assertEqual(code, 2, text)
+        self.assertFalse(self.out.exists())
+        # Positive control: the same command with aligned offsets writes the manifest.
+        code, text = self.cli(f'{self.bin}@0x10000', f'{table}@0x8000', *common)
+        self.assertEqual(code, 0, text)
+        self.assertEqual([p['offset'] for p in json.loads(self.out.read_text('utf-8'))['builds'][0]['parts']],
+                         [0x10000, 0x8000])
+
+    def test_a_factory_manifest_may_be_written_at_an_unaligned_offset(self):
+        """The rule belongs to preserve: factory writes a whole layout and keeps nothing."""
+        code, text = self.cli(f'{self.bin}@0x10800', '--chip', 'ESP32', '--name', 'D', '--version', '1',
+                              '--out', self.out)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(json.loads(self.out.read_text('utf-8'))['builds'][0]['parts'][0]['offset'], 0x10800)
+
     def test_a_region_checksum_is_lower_cased(self):
         digest = 'A' * 64
         code, text = self.generate('--profile', 'preserve', '--compat-region', f'0x0:0x8000:{digest}',

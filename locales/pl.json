@@ -201,6 +201,7 @@
     "manifest.size": "Wersja {boardKey}, plik {index} ma nieprawidłowy rozmiar. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
     "manifest.sha256": "Wersja {boardKey}, plik {index} ma nieprawidłową sumę kontrolną. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
     "manifest.preserveNeedsSize": "Wersja {boardKey}, plik {index} potrzebuje i rozmiaru, i sumy kontrolnej. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.alignment": "Wersja {boardKey}, plik {index} ma trafić pod adres, którego ten sposób instalacji nie może użyć, bo zapis w tym miejscu skasowałby część tego, co ma zostać zachowane. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
     "manifest.duplicateBoardKey": "Dwie wersje w pliku wydania mają tę samą nazwę {boardKey}. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
     "manifest.improv": "Wersja {boardKey} ma nieprawidłowe oznaczenie ustawiania Wi-Fi. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
     "improv.timeout": "Urządzenie nie odpowiedziało na czas. Sprawdź, czy jest nadal podłączone, i spróbuj jeszcze raz.",
