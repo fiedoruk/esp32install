@@ -29,7 +29,16 @@ const read = (p) => readFileSync(new URL('../' + p, import.meta.url), 'utf8');
  * control the platform was painting for us in its own colours. Reason for the round and the list
  * of moves: docs/design/2026-09-16-tozsamosc-i-stopka.md.
  */
-const CEILING = { 'style.css': 35000, 'theme.css': 5200 };
+/*
+ * Raised once more 2026-09-16, 35 000 to 36 500 (style stood at 34 474 B before this round). The
+ * round before publication spent it on three things, all of them removals of a difference rather
+ * than additions of decoration: the blocking message became one component instead of three
+ * appearances (that rule replaced two others, so it nearly paid for itself), a test release got
+ * the tag it already wears on the install screen repeated in the row that offers it, and the
+ * erase key became filled amber with a hover of its own so the heavy answer in that dialog no
+ * longer weighs the same as the harmless one. Reason for the round: docs/qc/2026-09-16-design-qc-2.md.
+ */
+const CEILING = { 'style.css': 36500, 'theme.css': 5200 };
 
 test('neither stylesheet has grown past its ceiling', () => {
   const over = Object.entries(CEILING)
