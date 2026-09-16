@@ -148,6 +148,7 @@
     "title": "Wyczyścić całe urządzenie?",
     "textFirst": "Z urządzenia {board} zniknie wszystko, razem z zapisaną siecią Wi-Fi i ustawieniami, a system zostanie zainstalowany od nowa.",
     "textUpdate": "Jeśli wyczyścisz urządzenie, znikną też zapisane ustawienia. Możesz je zachować.",
+    "textAlways": "Ten system zawsze zaczyna od czystego urządzenia, więc z {board} zniknie wszystko, razem z zapisaną siecią Wi-Fi i ustawieniami. Tym razem nie da się ich zachować.",
     "yes": "Wyczyść i zainstaluj",
     "no": "Zachowaj ustawienia",
     "hint": "Czyszczenie usuwa z urządzenia zapisaną sieć Wi-Fi i ustawienia. System instaluje się wtedy od zera. Kopia z poprzedniego kroku, jeśli ją masz, zostaje nietknięta."

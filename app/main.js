@@ -167,7 +167,7 @@ function makeInstaller({ esptool, ui, fw, guide, nameOf }) {
       }
     },
     chooseBuild: (builds, hw) => ui.chooseBuild(builds, hw),
-    confirmErase: (build, mode) => ui.confirmErase(build, mode),
+    confirmErase: (build, mode, options) => ui.confirmErase(build, mode, options),
     // The save waits for a click: the browser's save picker needs a user gesture. With a picker
     // the copy goes where the user chooses and the engine reads it back through the same handle;
     // without one (Firefox, Brave, Safari) the click downloads the file and the engine asks for it.

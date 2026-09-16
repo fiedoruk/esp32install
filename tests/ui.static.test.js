@@ -290,6 +290,17 @@ test('the stopped title depends on whether the engine had begun erasing or writi
   assert.match(en.simple.stopped.during, /Keep the cable in/);
 });
 
+test('the erase dialog of a release that always clears offers no way to keep anything', () => {
+  const ui = read('app/ui.js');
+  assert.match(ui, /confirmErase\(build, mode, \{ required = false \} = \{\}\)/);
+  assert.match(ui, /const key = required \? 'erase\.textAlways' : mode === 'update' \? 'erase\.textUpdate' : 'erase\.textFirst';/);
+  assert.match(ui, /t\(!required && mode === 'update' \? 'erase\.no' : 'action\.cancel'\)/, 'the second button cancels, it does not promise to keep settings');
+  assert.match(en.erase.textAlways, /\{board\}/);
+  assert.match(en.erase.textAlways, /cannot be kept/i, 'the dialog says what is about to happen');
+  const engine = read('app/engine.js');
+  assert.match(engine, /if \(!await confirmErase\(build, mode, \{ required: true \}\)\) throw new InstallError\('serial\.cancelled'\);/);
+});
+
 test('the first screen names the version, labels a pre-release, and warns before a preserve install that a copy comes first', () => {
   assert.match(html, /<p class="kicker" id="title"><\/p>\s*<p class="pre-label" id="pre-label" hidden><\/p>/, 'the label sits next to the system name');
   assert.match(html, /<p class="lead" id="backup-first" hidden data-i18n="simple\.prepare\.backupFirst"><\/p>\s*<div class="opt-row" id="backup-opt" hidden>/);

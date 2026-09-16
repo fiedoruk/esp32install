@@ -148,6 +148,7 @@
     "title": "Erase everything on the device?",
     "textFirst": "This will erase everything on {board}, including saved Wi-Fi and settings, and install a fresh copy.",
     "textUpdate": "Erasing also removes saved settings. You can keep them.",
+    "textAlways": "This system always starts from a clean device, so everything on {board} goes, including the saved Wi-Fi network and any settings. They cannot be kept this time.",
     "yes": "Erase and install",
     "no": "Keep settings",
     "hint": "Erasing removes saved Wi-Fi and settings from the device. The system you are installing goes on fresh. Your copy from the previous step, if you made one, is not affected."

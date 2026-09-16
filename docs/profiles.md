@@ -46,14 +46,24 @@ already on the device. `preserve` cannot be chosen for it: there is no
    click opens it, suggesting `<name>-backup-<8 hex>.bin`; elsewhere the click
    downloads the file under that name. It is a keepsake: it is not read back,
    not re-verified, and never blocks the install.
-8. **The erase prompt.** If the build sets `eraseAll`, the chip is erased without
-   asking. Otherwise, if the manifest sets `new_install_prompt_erase`, a dialog
-   asks. In *first installation* mode it reads *"This will erase everything on
-   {board}, including saved Wi-Fi and settings, and install a fresh copy."* with
+8. **The erase prompt.** Nothing is erased without a dialog, whichever door the
+   person came through. If the manifest sets `new_install_prompt_erase`, the
+   dialog asks. In *first installation* mode it reads *"This will erase everything
+   on {board}, including saved Wi-Fi and settings, and install a fresh copy."* with
    **Erase and install** and **Cancel**. In *update* mode it reads *"Erasing also
    removes saved settings. You can keep them."* with **Erase and install** and
    **Keep settings**. Both second buttons mean the same thing to the engine: do
    not erase, carry on installing.
+
+   A build that sets `eraseAll` is the third case. It erases in *update* mode too,
+   where the door said the system *"is already on this device"*, so it may not be
+   offered a way to keep anything that will not survive. Its dialog reads *"This
+   system always starts from a clean device, so everything on {board} goes,
+   including the saved Wi-Fi network and any settings. They cannot be kept this
+   time."* with **Erase and install** and **Cancel**, and Cancel stops the install
+   with `serial.cancelled` — the release asked for the erase, so installing
+   without it is not on offer. `tools/manifest.py` cannot emit `eraseAll`; a
+   manifest that carries it was written by hand.
 9. **Erase, if that was the answer.** This is the point of no return. Once the
    erase starts the flash is blank, so cancelling would leave a dead device.
 10. **Write.** All parts go in one `writeFlash` call, compressed, with

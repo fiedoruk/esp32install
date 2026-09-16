@@ -7,9 +7,9 @@ import { sha256Hex } from '../app/verify.js';
 
 function image(chipId) { const d = new Uint8Array(0x3000).fill(0xff); d[0x1000] = 0xe9; d[0x1000 + 12] = chipId; d[0x1000 + 13] = 0; return d; }
 
-async function setup({ fake = makeFakeEsptool(), img = image(0), sha, confirm = true, choose, fetch, confirmFn, saveBackup, now } = {}) {
+async function setup({ fake = makeFakeEsptool(), img = image(0), sha, confirm = true, choose, fetch, confirmFn, saveBackup, now, over = {} } = {}) {
   const manifest = normalizeManifest({ name: 'Demo', version: '1.0', new_install_prompt_erase: true,
-    builds: [{ chipFamily: 'ESP32', parts: [{ path: 'demo.bin', offset: 0, size: img.length, ...(sha ? { sha256: sha } : {}) }] }] },
+    builds: [{ chipFamily: 'ESP32', parts: [{ path: 'demo.bin', offset: 0, size: img.length, ...(sha ? { sha256: sha } : {}) }] }], ...over },
     'https://h/install/manifests/demo.json');
   const events = [];
   const port = { getInfo: () => ({ usbVendorId: 0x1a86, usbProductId: 0x55d4 }) };
@@ -135,6 +135,55 @@ test('cancel() from inside confirmErase → serial.cancelled, no erase, no write
   assert.ok(!called(s.fake, 'writeFlash'));
   assert.ok(called(s.fake, 'disconnect'));
   assert.equal(s.events.at(-1).type, 'error');
+});
+
+/* --- a build that always erases still asks, and tells the truth --------------- */
+
+test('eraseAll asks before erasing, in update mode too, and says the settings cannot be kept', async () => {
+  for (const mode of ['update', 'first']) {
+    const asked = [];
+    const { inst, manifest, fake } = await setup({
+      over: { eraseAll: true, new_install_prompt_erase: false },
+      confirmFn: async (build, m, options) => { asked.push({ mode: m, options }); return true; },
+    });
+    assert.equal(manifest.builds[0].eraseAll, true);
+    await inst.run({ manifest, mode, options: {} });
+    assert.deepEqual(asked, [{ mode, options: { required: true } }], `the ${mode} door still gets the dialog`);
+    assert.ok(called(fake, 'eraseFlash'));
+    assert.ok(called(fake, 'writeFlash'));
+  }
+});
+
+test('declining that dialog stops the install: nothing is erased and nothing is written', async () => {
+  const { inst, manifest, fake, events } = await setup({
+    over: { eraseAll: true, new_install_prompt_erase: false },
+    confirmFn: async () => false,
+  });
+  await assert.rejects(inst.run({ manifest, mode: 'update', options: {} }), (e) => e.code === 'serial.cancelled');
+  assert.ok(!called(fake, 'eraseFlash'));
+  assert.ok(!called(fake, 'writeFlash'));
+  assert.equal(events.at(-1).type, 'error');
+  assert.equal(events.at(-1).changed, false, 'the device is untouched, and the page may say so');
+});
+
+test('a build with eraseAll and new_install_prompt_erase asks exactly once', async () => {
+  const asked = [];
+  const { inst, manifest, fake } = await setup({
+    over: { eraseAll: true, new_install_prompt_erase: true },
+    confirmFn: async (build, mode, options) => { asked.push(options); return true; },
+  });
+  await inst.run({ manifest, mode: 'update', options: {} });
+  assert.deepEqual(asked, [{ required: true }]);
+  assert.equal(fake.calls.filter((c) => c[0] === 'eraseFlash').length, 1);
+});
+
+test('positive control: without eraseAll the update door may still keep the settings', async () => {
+  const asked = [];
+  const { inst, manifest, fake } = await setup({ confirmFn: async (build, mode, options) => { asked.push(options); return false; } });
+  await inst.run({ manifest, mode: 'update', options: {} });
+  assert.deepEqual(asked, [{ required: false }]);
+  assert.ok(!called(fake, 'eraseFlash'), 'declining keeps the settings and installs anyway');
+  assert.ok(called(fake, 'writeFlash'));
 });
 
 test('fetchFn rejecting (network) → manifest.fetch with status 0, nothing erased or written', async () => {

@@ -585,13 +585,18 @@ export function mountUi({ i18n, system }) {
         d.showModal();
       });
     },
-    confirmErase(build, mode) {
+    /**
+     * `required` is a release that always clears the device. Then the dialog may not offer to
+     * keep anything, because nothing can be kept: it says so, and its second button cancels.
+     */
+    confirmErase(build, mode, { required = false } = {}) {
       return new Promise((resolve) => {
         const d = $('erase-dialog');
+        const key = required ? 'erase.textAlways' : mode === 'update' ? 'erase.textUpdate' : 'erase.textFirst';
         $('erase-title').textContent = t('erase.title');
-        $('erase-text').textContent = t(mode === 'update' ? 'erase.textUpdate' : 'erase.textFirst', { board: build.board });
+        $('erase-text').textContent = t(key, { board: build.board });
         $('erase-yes').textContent = t('erase.yes');
-        $('erase-no').textContent = t(mode === 'update' ? 'erase.no' : 'action.cancel');
+        $('erase-no').textContent = t(!required && mode === 'update' ? 'erase.no' : 'action.cancel');
         let settled = false;
         const finish = (v) => { if (settled) return; settled = true; d.close(); resolve(v); };
         $('erase-yes').onclick = () => finish(true);

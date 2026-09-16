@@ -238,8 +238,17 @@ export function createInstaller(deps) {
       await saveBackup(bytes, backupFilename(manifest.name, await sha256Hex(bytes)));
       check();
     }
-    let eraseFirst = build.eraseAll;
-    if (!eraseFirst && manifest.promptErase) eraseFirst = await confirmErase(build, mode);
+    // Nothing is erased without the dialog. A build with `eraseAll` erases whatever door the
+    // person came through, including Update, where the door promised the settings could stay;
+    // so that build gets a dialog that says the settings cannot be kept, and a No stops the
+    // install rather than quietly installing without the erase the release asked for.
+    let eraseFirst = false;
+    if (build.eraseAll) {
+      if (!await confirmErase(build, mode, { required: true })) throw new InstallError('serial.cancelled');
+      eraseFirst = true;
+    } else if (manifest.promptErase) {
+      eraseFirst = await confirmErase(build, mode, { required: false });
+    }
     check();
     // Last cancellation point. Once the erase has started the flash is already blank, so
     // stopping here would leave a dead device; the write runs to completion regardless.

@@ -62,7 +62,7 @@ developer has to hand. Both work.
 | `builds` | 1 | array | At least one entry. Each entry is one board. |
 | `new_install_prompt_erase` | 1 | boolean | Offer a full erase before installing. `factory` only. |
 | `profile` | 2 | `"factory"` or `"preserve"` | The profile for the whole release. Absent means `factory`. |
-| `eraseAll` | 2 | boolean | Default for every build. Erase the whole chip without asking. |
+| `eraseAll` | 2 | boolean | Default for every build. The whole chip is erased before the write, in *update* mode as well; the page still shows the erase dialog first, and it says that nothing can be kept. Refused by `preserve`. |
 
 ### A build
 
