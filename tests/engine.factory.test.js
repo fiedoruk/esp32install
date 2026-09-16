@@ -448,3 +448,27 @@ test('own file by address: only http(s) addresses are tried, credentials are str
   const hostOnly = await fetchOwnFile(okResponse(img), 'https://other.example', 'https://h/');
   assert.equal(hostOnly.name, 'other.example', 'no path segment: the host names the file');
 });
+
+/* --- the point of no return: the error event says whether the flash was touched -------- */
+
+test('an error before any erase or write reports changed: false; once the erase or the write has begun it reports changed: true', async () => {
+  const before = await setup({ sha: 'f'.repeat(64) });
+  await assert.rejects(before.inst.run({ manifest: before.manifest, mode: 'first', options: {} }), (e) => e.code === 'verify.sha256');
+  assert.equal(before.events.at(-1).type, 'error');
+  assert.equal(before.events.at(-1).changed, false, 'nothing was erased or written');
+
+  const erase = await setup({ fake: makeFakeEsptool({ failErase: true }) });
+  await assert.rejects(erase.inst.run({ manifest: erase.manifest, mode: 'first', options: {} }), (e) => e.code === 'flash.erase');
+  assert.equal(erase.events.at(-1).changed, true, 'the erase had begun');
+
+  const write = await setup({ fake: makeFakeEsptool({ md5Mismatch: true }) });
+  await assert.rejects(write.inst.run({ manifest: write.manifest, mode: 'first', options: {} }), (e) => e.code === 'flash.verify');
+  assert.equal(write.events.at(-1).changed, true, 'the write had begun');
+
+  // A second run on the same installer starts clean.
+  const again = await setup({ fake: makeFakeEsptool({ md5Mismatch: true }) });
+  await assert.rejects(again.inst.run({ manifest: again.manifest, mode: 'first', options: {} }));
+  const cancelled = await setup({ confirmFn: async () => { throw new Error('ui exploded'); } });
+  await assert.rejects(cancelled.inst.run({ manifest: cancelled.manifest, mode: 'first', options: {} }), (e) => e.code === 'engine.unexpected');
+  assert.equal(cancelled.events.at(-1).changed, false);
+});

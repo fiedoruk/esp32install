@@ -70,7 +70,7 @@ const REQUIRED = [
   'board.pick', 'board.pickHint',
   'alt.title', 'alt.cmd', 'alt.files', 'alt.drivers', 'alt.guide',
   'simple.prepare.title', 'simple.prepare.hintCable', 'simple.prepare.hintDoor', 'simple.prepare.hintBackup',
-  'simple.install.keepCable', 'simple.backup.save', 'simple.backup.saved', 'simple.done.title', 'simple.done.next', 'simple.done.again', 'simple.stopped.title',
+  'simple.install.keepCable', 'simple.backup.save', 'simple.backup.saved', 'simple.done.title', 'simple.done.next', 'simple.done.again', 'simple.stopped.safe', 'simple.stopped.during',
   'tech.title', 'tech.chip', 'tech.flash', 'tech.board', 'tech.release', 'tech.checksum', 'tech.log', 'tech.file',
   'simple.own.title', 'simple.own.instead', 'simple.own.hint', 'simple.own.choose', 'simple.own.read', 'simple.own.where',
   'simple.own.whole', 'simple.own.wholeHint', 'simple.own.app', 'simple.own.appHint', 'simple.own.address', 'simple.own.device',

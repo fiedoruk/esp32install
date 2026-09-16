@@ -88,7 +88,8 @@
       "unplug": "You can unplug the cable now."
     },
     "stopped": {
-      "title": "Stopped before anything changed."
+      "safe": "Stopped. Your device is unchanged.",
+      "during": "Stopped during writing. Keep the cable in and try again."
     },
     "wifi": {
       "title": "Connect the device to Wi-Fi",

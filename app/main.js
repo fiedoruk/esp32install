@@ -162,7 +162,7 @@ function makeInstaller({ esptool, ui, fw, guide, nameOf }) {
         ui.setConsoleAvailable(Boolean(port));
         offerWifi().catch((err) => log('improv: ' + String(err?.message ?? err)));
       } else if (e.type === 'error') {
-        ui.setError(e.error);
+        ui.setError(e.error, { changed: e.changed });
         ui.setConsoleAvailable(Boolean(port));
         track('error', { fw, version, chip, stage, code: e.error?.code });
       }

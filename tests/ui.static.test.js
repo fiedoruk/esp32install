@@ -223,6 +223,21 @@ test('the console lives inside the technical log: one button, hidden until a por
   const main = read('app/main.js');
   assert.match(main, /if \(monitor\) \{ const m = monitor; monitor = null; await m\.stop\(\); ui\.setConsoleRunning\(false\); \}/, 'releasePort stops the console');
   assert.match(main, /await releasePort\(\); \/\/ the Wi-Fi step must not hold the port/, 'and every install starts with releasePort');
-  assert.match(main, /ui\.setConsoleAvailable\(Boolean\(port\)\);[\s\S]*?ui\.setError\(e\.error\);\s*ui\.setConsoleAvailable\(Boolean\(port\)\);/, 'offered on the done screen and on the stopped screen');
+  assert.match(main, /ui\.setConsoleAvailable\(Boolean\(port\)\);[\s\S]*?ui\.setError\(e\.error, \{ changed: e\.changed \}\);\s*ui\.setConsoleAvailable\(Boolean\(port\)\);/, 'offered on the done screen and on the stopped screen');
   assert.match(read('app/console.js'), /export const MAX_LINES = 500;/);
+});
+
+test('the stopped title depends on whether the engine had begun erasing or writing, never on the error code alone', () => {
+  const ui = read('app/ui.js');
+  assert.match(ui, /setError\(error, \{ changed = false \} = \{\}\)/);
+  assert.match(ui, /t\(changed \? 'simple\.stopped\.during' : 'simple\.stopped\.safe'\)/);
+  assert.doesNotMatch(ui, /simple\.stopped\.title/);
+  assert.match(read('app/main.js'), /ui\.setError\(e\.error, \{ changed: e\.changed \}\)/, 'main.js passes the engine flag through');
+  const engine = read('app/engine.js');
+  assert.match(engine, /emit\(\{ type: 'error', error, changed \}\)/);
+  assert.match(engine, /stage\('erasing', 35\);\s*changed = true;/, 'the erase flips the flag before eraseFlash');
+  assert.match(engine, /writing = true;\s*changed = true;\s*await loader\.writeFlash/, 'so does the write');
+  assert.match(engine, /setWriting: \(\) => \{ writing = true; changed = true; \}/, 'and the preserve profile');
+  assert.match(en.simple.stopped.safe, /unchanged/);
+  assert.match(en.simple.stopped.during, /Keep the cable in/);
 });

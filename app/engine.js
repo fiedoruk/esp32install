@@ -99,7 +99,9 @@ export async function fetchOwnFile(fetchFn, address, base, max = PART_MAX) {
 export function createInstaller(deps) {
   const { esptool, requestPort, fetchFn, onEvent, chooseBuild, confirmErase, saveBackup } = deps;
   const now = deps.now ?? Date.now; // injectable clock, so a test can see an ETA without waiting
-  let busy = false, transport = null, loader = null, cancelled = false, lost = false, writing = false;
+  // `changed` flips the moment an erase or a write begins: from then on the flash is no longer what
+  // it was, and the page must not tell the person their device is unchanged.
+  let busy = false, transport = null, loader = null, cancelled = false, lost = false, writing = false, changed = false;
   const emit = (e) => { try { onEvent?.(e); } catch { /* UI errors must not break the flow */ } };
   const stage = (s, percent, params = {}, eta) => emit({ type: 'stage', stage: s, percent, params, eta });
   const log = (line) => emit({ type: 'log', line: String(line) });
@@ -180,6 +182,7 @@ export function createInstaller(deps) {
 
   async function erase() {
     stage('erasing', 35);
+    changed = true;
     try {
       await loader.eraseFlash();
     } catch (err) {
@@ -193,6 +196,7 @@ export function createInstaller(deps) {
     const total = parts.reduce((n, p) => n + p.data.length, 0);
     let done = 0, startedAt = 0;
     writing = true;
+    changed = true;
     await loader.writeFlash({
       fileArray: parts.map((p) => ({ data: p.data, address: p.offset })),
       flashMode: 'keep', flashFreq: 'keep', flashSize: 'keep', eraseAll: false, compress: true,
@@ -251,11 +255,11 @@ export function createInstaller(deps) {
   return {
     async run(job) {
       if (busy) throw new InstallError('engine.busy');
-      busy = true; cancelled = false; lost = false; writing = false;
+      busy = true; cancelled = false; lost = false; writing = false; changed = false;
       try {
         const profile = job.manifest.profile;
         const result = profile === 'preserve'
-          ? await runPreserve({ job, connect, pick, download, loader: () => loader, stage, log, emit, check, deps, now, setWriting: () => { writing = true; } })
+          ? await runPreserve({ job, connect, pick, download, loader: () => loader, stage, log, emit, check, deps, now, setWriting: () => { writing = true; changed = true; } })
           : await runFactory(job);
         await cleanup();
         emit({ type: 'done', result });
@@ -264,7 +268,7 @@ export function createInstaller(deps) {
         const error = mapSerialError(err, { writing });
         log('ERROR ' + error.code + (error.cause?.message ? ': ' + error.cause.message : ''));
         await cleanup();
-        emit({ type: 'error', error });
+        emit({ type: 'error', error, changed });
         throw error;
       } finally { busy = false; }
     },

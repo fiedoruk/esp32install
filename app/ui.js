@@ -324,11 +324,15 @@ export function mountUi({ i18n, system }) {
       if (checksum) $('fact-checksum').textContent = checksum;
       showScreen('done');
     },
-    setError(error) {
+    /**
+     * The title is the one line a beginner reads. `changed` comes from the engine and is true once
+     * an erase or a write has begun; before that the device really is untouched.
+     */
+    setError(error, { changed = false } = {}) {
       const code = error?.code ?? 'engine.unexpected';
       const done = $('screen-done');
       done.classList.add('is-error');
-      $('done-title').textContent = t('simple.stopped.title');
+      $('done-title').textContent = t(changed ? 'simple.stopped.during' : 'simple.stopped.safe');
       $('done-unplug').hidden = true;
       $('done-text').textContent = t('error.' + code, safeParams(error?.params));
       $('wifi').hidden = true;
