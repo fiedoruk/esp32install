@@ -30,9 +30,28 @@ test('safeHref keeps https and relative links and drops everything else', () => 
     assert.equal(safeHref(good), good, good);
   }
   assert.equal(safeHref('  https://example.org/guide  '), 'https://example.org/guide', 'trimmed');
+  // A space inside an address is not a scheme in hiding; the browser keeps it, and so do we.
+  assert.equal(safeHref('/os/radio/a guide.html'), '/os/radio/a guide.html');
+  const TAB = String.fromCharCode(9), LF = String.fromCharCode(10), CR = String.fromCharCode(13);
   for (const bad of ['javascript:alert(1)', 'JavaScript:alert(1)', ' javascript:alert(1)', 'data:text/html,x',
     'http://example.org/guide', 'vbscript:x', '//evil.example/guide', '\\\\evil.example/guide',
-    '/\\evil.example', '', '   ', null, undefined, 42, {}]) {
+    '/\\evil.example', '', '   ', null, undefined, 42, {},
+    // The browser takes these out while it parses the href, so the anchor's protocol comes back
+    // javascript: although the string never spells the word. Measured in Chrome 153.
+    'java' + TAB + 'script:alert(1)', 'java' + LF + 'script:alert(1)', 'java' + CR + 'script:alert(1)',
+    'jav' + TAB + 'ascr' + LF + 'ipt:alert(1)', 'da' + TAB + 'ta:text/html,x',
+    '/' + TAB + '/evil.example/guide', TAB + '//evil.example',
+    // And what the parser does not take out is refused, not repaired.
+    'java' + String.fromCharCode(0) + 'script:x', '/guide' + String.fromCharCode(0),
+    'https://example.org/' + String.fromCharCode(27)]) {
     assert.equal(safeHref(bad), '', JSON.stringify(bad));
   }
+});
+
+test('safeHref reads the value the way the browser will: the scheme cannot hide behind a tab', () => {
+  const TAB = String.fromCharCode(9), LF = String.fromCharCode(10);
+  // The whitespace comes out wherever it sits, including in the middle of a path we do keep.
+  assert.equal(safeHref('/os/' + TAB + 'radio/guide'), '/os/radio/guide');
+  assert.equal(safeHref('https://example.org/' + LF + 'guide'), 'https://example.org/guide');
+  assert.equal(safeHref(TAB + LF + '  /guide'), '/guide');
 });
