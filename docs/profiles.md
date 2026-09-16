@@ -10,6 +10,14 @@ profile is refused with `manifest.profile`, because the engine installs by the
 manifest's profile and a `preserve` build inside a `factory` manifest would
 otherwise run through the erase path.
 
+A file chosen from disk always runs `factory`. Step 4 takes the bytes from
+memory instead of downloading them and holds them to the size and SHA-256
+measured when the file was read; every other step is the same. The erase prompt
+of step 8 is offered only for a file written at `0x0`; a file written anywhere
+else never erases, because the bootloader and partition table it relies on are
+already on the device. `preserve` cannot be chosen for it: there is no
+`compatibility` data to check the device against.
+
 ## `factory`, step by step
 
 1. **Connect.** The browser opens its port picker. If the release has exactly one

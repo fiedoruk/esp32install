@@ -42,6 +42,10 @@
       <h1 data-i18n="pick.title"></h1>
       <p class="lead" data-i18n="pick.hint"></p>
       <ul id="pick-list" class="pick-list"></ul>
+      <a class="own-card" id="own-entry">
+        <b data-i18n="simple.own.title"></b>
+        <small data-i18n="simple.own.hint"></small>
+      </a>
     </section>
 
     <section class="screen" id="screen-prepare" hidden>
@@ -62,6 +66,32 @@
         <button class="hint" type="button" aria-expanded="false" aria-controls="hint-cable" data-i18n-attr="aria-label:hint.open"><span aria-hidden="true">?</span></button>
       </div>
       <div class="hint-text" id="hint-cable" hidden data-i18n="simple.prepare.hintCable"></div>
+
+      <div class="own" id="own" hidden>
+        <p class="own-hint" data-i18n="simple.own.hint"></p>
+        <label class="file" for="own-file"><span data-i18n="simple.own.choose"></span><input type="file" id="own-file" accept=".bin,application/octet-stream"></label>
+        <div class="own-read" id="own-read" hidden>
+          <p class="lead" id="own-summary"></p>
+          <h2 class="door-title" data-i18n="simple.own.where"></h2>
+          <div class="doors" role="radiogroup" data-i18n-attr="aria-label:simple.own.where">
+            <label class="door" for="own-whole">
+              <input type="radio" name="own-where" id="own-whole" value="whole">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="8" y="8" width="32" height="32" rx="5"/><path d="M8 19h32M8 30h32"/></svg>
+              <span><b data-i18n="simple.own.whole"></b><small data-i18n="simple.own.wholeHint"></small></span>
+            </label>
+            <label class="door" for="own-app">
+              <input type="radio" name="own-where" id="own-app" value="app">
+              <svg viewBox="0 0 48 48" aria-hidden="true"><rect x="8" y="8" width="32" height="32" rx="5"/><path d="M8 19h32M8 30h32"/><rect x="12" y="33" width="24" height="4" rx="1" fill="currentColor" stroke="none"/></svg>
+              <span><b data-i18n="simple.own.app"></b><small data-i18n="simple.own.appHint"></small></span>
+            </label>
+          </div>
+          <div class="fields">
+            <label class="field" for="own-address"><span data-i18n="simple.own.address"></span><input type="text" id="own-address" spellcheck="false" autocomplete="off" autocapitalize="off"></label>
+            <label class="field" for="own-chip"><span data-i18n="simple.own.device"></span><select id="own-chip"></select></label>
+          </div>
+          <p class="hint-text" id="own-note" aria-live="polite"></p>
+        </div>
+      </div>
 
       <div class="line">
         <h2 class="door-title" data-i18n="door.title"></h2>
@@ -92,6 +122,7 @@
         <span id="connect-label"></span>
       </button>
       <p class="note" data-i18n="simple.prepare.picker"></p>
+      <a class="quiet" id="own-instead" hidden data-i18n="simple.own.instead"></a>
     </section>
 
     <section class="screen" id="screen-install" hidden>
@@ -130,7 +161,7 @@
         <dt data-i18n="tech.chip"></dt><dd id="fact-chip"></dd>
         <dt data-i18n="tech.flash"></dt><dd id="fact-flash"></dd>
         <dt data-i18n="tech.board"></dt><dd id="fact-board"></dd>
-        <dt data-i18n="tech.release"></dt><dd id="fact-release"></dd>
+        <dt id="fact-release-label" data-i18n="tech.release"></dt><dd id="fact-release"></dd>
         <dt data-i18n="tech.checksum"></dt><dd id="fact-checksum"></dd>
       </dl>
     </details>

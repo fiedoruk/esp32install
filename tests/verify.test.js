@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CHIPS, sha256Hex, checkFetchedPart, checkLayout, checkBootImage, checkImageParts, esptoolCommand } from '../app/verify.js';
+import { CHIPS, sha256Hex, checkFetchedPart, checkLayout, checkBootImage, checkImageParts, esptoolCommand, inspectImage } from '../app/verify.js';
 
 const bytes = (n, fill = 0) => new Uint8Array(n).fill(fill);
 const ABC_SHA256 = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
@@ -173,4 +173,46 @@ test('esptoolCommand rejects a file name list that does not match the parts', ()
   const parts = [{ path: 'a.bin', url: 'u', offset: 0 }, { path: 'b.bin', url: 'u', offset: 0x10000 }];
   assert.throws(() => esptoolCommand('ESP32', parts, ['a.bin']), (e) => e.code === 'verify.part' && e.params.index === 1);
   assert.throws(() => esptoolCommand('ESP32', parts, ['a.bin', 'b.bin', 'c.bin']), (e) => e.code === 'verify.part');
+});
+
+/* --- inspectImage: what a single file says about itself --------------------- */
+
+const withHeader = (d, at, chipId) => { d[at] = 0xe9; d[at + 12] = chipId & 0xff; d[at + 13] = chipId >> 8; return d; };
+const withTable = (d) => { d[0x8000] = 0xaa; d[0x8001] = 0x50; return d; };
+const merged = (family) => withTable(withHeader(bytes(0x9000, 0xff), CHIPS[family].bootloaderOffset, CHIPS[family].imageChipId));
+const appOnly = (chipId, size = 0x9000) => withHeader(bytes(size, 0x5a), 0, chipId);
+
+test('inspectImage: a merged image is whole for its family, at 0x0, 0x1000 or 0x2000', () => {
+  assert.deepEqual(inspectImage(merged('ESP32')), { headerOffset: 0x1000, chipFamily: 'ESP32', whole: true });
+  assert.deepEqual(inspectImage(merged('ESP32-S2')), { headerOffset: 0x1000, chipFamily: 'ESP32-S2', whole: true });
+  assert.deepEqual(inspectImage(merged('ESP32-S3')), { headerOffset: 0, chipFamily: 'ESP32-S3', whole: true });
+  assert.deepEqual(inspectImage(merged('ESP32-C3')), { headerOffset: 0, chipFamily: 'ESP32-C3', whole: true });
+  assert.deepEqual(inspectImage(merged('ESP32-P4')), { headerOffset: 0x2000, chipFamily: 'ESP32-P4', whole: true });
+  assert.deepEqual(inspectImage(merged('ESP32-C5')), { headerOffset: 0x2000, chipFamily: 'ESP32-C5', whole: true });
+});
+
+test('inspectImage: an application image names its family but is never whole', () => {
+  assert.deepEqual(inspectImage(appOnly(0)), { headerOffset: 0, chipFamily: 'ESP32', whole: false });
+  assert.deepEqual(inspectImage(appOnly(9)), { headerOffset: 0, chipFamily: 'ESP32-S3', whole: false });
+  assert.deepEqual(inspectImage(appOnly(13, 0x100)), { headerOffset: 0, chipFamily: 'ESP32-C6', whole: false }, 'shorter than a table offset');
+  // An ESP32 application whose bytes at 0x8000 happen to look like a table: the header is not at the ESP32 bootloader offset.
+  assert.deepEqual(inspectImage(withTable(appOnly(0))), { headerOffset: 0, chipFamily: 'ESP32', whole: false });
+});
+
+test('inspectImage: an unknown image id gives no family; a padded header still means a merged image', () => {
+  assert.deepEqual(inspectImage(withTable(withHeader(bytes(0x9000, 0xff), 0x1000, 200))), { headerOffset: 0x1000, chipFamily: null, whole: true });
+  assert.deepEqual(inspectImage(withTable(withHeader(bytes(0x9000, 0x5a), 0, 200))), { headerOffset: 0, chipFamily: null, whole: false });
+  assert.deepEqual(inspectImage(withHeader(bytes(0x9000, 0xff), 0x1000, 200)), { headerOffset: 0x1000, chipFamily: null, whole: false }, 'no table: not whole');
+});
+
+test('inspectImage: no header, a header behind non-0xff padding, a short buffer or a non-buffer say nothing', () => {
+  const none = { headerOffset: null, chipFamily: null, whole: false };
+  assert.deepEqual(inspectImage(bytes(0x9000, 0x00)), none);
+  const dirty = withHeader(bytes(0x9000, 0xff), 0x1000, 0); dirty[5] = 0x00;
+  assert.deepEqual(inspectImage(dirty), none, 'a byte before the header that is not 0xff');
+  assert.deepEqual(inspectImage(withHeader(bytes(0x1010, 0xff), 0x1000, 0)), none, 'header cut short');
+  assert.deepEqual(inspectImage(bytes(10, 0xe9)), none);
+  assert.deepEqual(inspectImage(bytes(0)), none);
+  assert.deepEqual(inspectImage(null), none);
+  assert.deepEqual(inspectImage([0xe9]), none);
 });

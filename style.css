@@ -330,6 +330,31 @@ details[open] pre, details[open] code { font-family: var(--font-mono); }
   font-size: 19px;
 }
 .pick-list small { display: block; font: 15px var(--font-body); color: var(--dim); }
+/* Your own file: a dashed card under the list, and a block on the prepare screen. */
+.own-card {
+  display: block;
+  margin-top: 10px;
+  padding: 16px 18px;
+  border: 2px dashed var(--line);
+  border-radius: var(--radius);
+  color: var(--ink);
+  text-decoration: none;
+}
+.own-card b { display: block; font-family: var(--font-display); font-weight: 700; font-size: 19px; }
+.own-card small { display: block; font: 15px var(--font-body); color: var(--dim); margin-top: 2px; }
+.own, .own-read { display: flex; flex-direction: column; gap: var(--gap); }
+.own-hint { color: var(--dim); }
+.fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+.field { display: flex; flex-direction: column; gap: 6px; color: var(--dim); font-size: 16px; }
+.field input, .field select {
+  width: 100%;
+  padding: 10px 12px;
+  border: 2px solid var(--line);
+  border-radius: calc(var(--radius) - 4px);
+  background: var(--bg-2);
+  color: var(--ink);
+  font: 17px var(--font-body);
+}
 .gate p { padding: 12px 16px; border-left: 3px solid var(--warn); background: var(--bg); border-radius: 0 var(--radius) var(--radius) 0; }
 
 /* ---- dialogs: one sentence, two buttons -------------------------------- */
@@ -372,6 +397,7 @@ dialog p { margin-top: 8px; }
   .doors { grid-template-columns: 1fr; }
   .ring-wrap { width: 150px; height: 150px; }
   .plate { padding: 20px 16px; }
+  .fields { grid-template-columns: 1fr; }
   .facts { grid-template-columns: 1fr; gap: 2px 0; }
   .facts dt { margin-top: 6px; }
 }

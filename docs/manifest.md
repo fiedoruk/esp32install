@@ -8,6 +8,14 @@ as it is, so an existing release keeps working. **Schema 2** is a superset: the
 same fields, plus the ones the extra checks and the `preserve` profile need. A
 file without a `schema` key is read as schema 1.
 
+A file chosen from disk needs no manifest at all. The page builds the same
+normalized shape in memory (`localManifest` in `app/manifest.js`): profile
+`factory`, one build called `local` with the chip family the user confirmed, one
+part at the address the user confirmed, with `size` and `sha256` measured from
+the bytes. The part carries the bytes instead of a `path`, is never fetched,
+and is held to the same checks as a downloaded one. `preserve` is refused for
+it, because a local file carries no `compatibility` data to hold the device to.
+
 ## Schema
 
 ### Top level

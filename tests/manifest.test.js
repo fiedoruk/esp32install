@@ -1,7 +1,8 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { normalizeManifest } from '../app/manifest.js';
+import { normalizeManifest, localManifest } from '../app/manifest.js';
+import { sha256Hex } from '../app/verify.js';
 import { InstallError } from '../app/errors.js';
 
 const load = (n) => JSON.parse(readFileSync(new URL('./fixtures/' + n, import.meta.url), 'utf8'));
@@ -259,4 +260,73 @@ test('a part with a javascript:, data:, blob: or file: scheme is refused even wh
     assert.throws(() => normalizeManifest(oneBuild({ parts: [{ path, offset: 0 }] }), URL_M), code('manifest.origin'), path);
     assert.throws(() => normalizeManifest(oneBuild({ parts: [{ path, offset: 0 }] }), URL_M, { allowOrigins: ['null', 'https://esp32ai.me'] }), code('manifest.origin'), path);
   }
+});
+
+/* --- the own-file path ----------------------------------------------------- */
+
+const localImage = (chipId = 0, size = 0x3000) => { const d = new Uint8Array(size).fill(0xff); d[0x1000] = 0xe9; d[0x1000 + 12] = chipId; return d; };
+const rejects = (promise, code, extra = () => true) => assert.rejects(promise, (e) => e instanceof InstallError && e.code === code && extra(e));
+
+test('localManifest returns the normalized shape: factory, one build "local", size and sha256 measured, bytes carried, no url', async () => {
+  const bytes = localImage();
+  const m = await localManifest({ name: 'mine.bin', chipFamily: 'ESP32', parts: [{ path: 'mine.bin', offset: 0, bytes }] });
+  const ref = normalizeManifest({ name: 'x', version: '1', builds: [{ chipFamily: 'ESP32', parts: [{ path: 'a.bin', offset: 0 }] }] }, URL_M);
+  assert.deepEqual(Object.keys(m).sort(), Object.keys(ref).sort(), 'same top-level keys as a normalized manifest');
+  assert.deepEqual(Object.keys(m.builds[0]).sort(), Object.keys(ref.builds[0]).sort(), 'same build keys');
+  assert.equal(m.name, 'mine.bin');
+  assert.equal(m.schema, 2);
+  assert.equal(m.profile, 'factory');
+  assert.equal(m.eraseAll, false);
+  assert.equal(m.builds.length, 1);
+  const b = m.builds[0];
+  assert.equal(b.boardKey, 'local');
+  assert.equal(b.chipFamily, 'ESP32');
+  assert.equal(b.profile, 'factory');
+  assert.equal(b.eraseAll, false);
+  assert.equal(b.compatibility, undefined);
+  assert.equal(b.flashSizeMB, undefined);
+  assert.deepEqual(b.chipDescriptionIncludes, []);
+  assert.deepEqual(b.featuresAll, []);
+  assert.equal(b.parts.length, 1);
+  const p = b.parts[0];
+  assert.equal(p.path, 'mine.bin');
+  assert.equal(p.offset, 0);
+  assert.equal(p.size, bytes.length);
+  assert.equal(p.sha256, await sha256Hex(bytes));
+  assert.equal(p.bytes, bytes);
+  assert.equal(p.url, undefined);
+  assert.equal(m.version, p.sha256.slice(0, 8), 'the version names the file by its hash');
+});
+
+test('localManifest: a file written at 0 asks about erasing; a file written anywhere else never does', async () => {
+  const whole = await localManifest({ name: 'a.bin', chipFamily: 'ESP32-S3', parts: [{ offset: 0, bytes: localImage(9) }] });
+  assert.equal(whole.promptErase, true);
+  assert.equal(whole.builds[0].parts[0].path, 'a.bin', 'a part without a path takes the name');
+  const app = await localManifest({ name: 'a.bin', chipFamily: 'ESP32-S3', parts: [{ offset: 0x10000, bytes: localImage(9) }] });
+  assert.equal(app.promptErase, false);
+  assert.equal(app.builds[0].eraseAll, false);
+});
+
+test('localManifest rejects an empty file, an oversized file, a bad offset, an unknown chip, no name, no parts and a part without bytes', async () => {
+  const ok = { name: 'a.bin', chipFamily: 'ESP32', parts: [{ offset: 0, bytes: localImage() }] };
+  await rejects(localManifest({ ...ok, parts: [{ offset: 0, bytes: new Uint8Array(0) }] }), 'verify.empty', (e) => e.params.path === 'a.bin');
+  await rejects(localManifest({ ...ok, parts: [{ offset: 0, bytes: new Uint8Array(32 * 1024 * 1024 + 1) }] }), 'verify.tooLarge');
+  await rejects(localManifest({ ...ok, parts: [{ offset: 0x1234, bytes: localImage() }] }), 'manifest.offset', (e) => e.params.boardKey === 'local' && e.params.index === 1);
+  await rejects(localManifest({ ...ok, parts: [{ offset: -0x1000, bytes: localImage() }] }), 'manifest.offset');
+  await rejects(localManifest({ ...ok, parts: [{ offset: '0x0', bytes: localImage() }] }), 'manifest.offset');
+  await rejects(localManifest({ ...ok, chipFamily: 'ESP99' }), 'manifest.chipFamily', (e) => e.params.boardKey === 'local');
+  await rejects(localManifest({ ...ok, chipFamily: undefined }), 'manifest.chipFamily');
+  await rejects(localManifest({ ...ok, name: '  ' }), 'manifest.name');
+  await rejects(localManifest({ ...ok, parts: [] }), 'manifest.noParts');
+  await rejects(localManifest({ ...ok, parts: [{ offset: 0, bytes: [0xe9, 0, 0] }] }), 'manifest.part', (e) => e.params.index === 1);
+  await rejects(localManifest({ ...ok, parts: [{ offset: 0, bytes: localImage().buffer }] }), 'manifest.part');
+  await rejects(localManifest(), 'manifest.name'); // no arguments at all
+});
+
+test('localManifest refuses the preserve profile: a local file has no compatibility data', async () => {
+  const parts = [{ offset: 0, bytes: localImage() }];
+  await rejects(localManifest({ name: 'a.bin', chipFamily: 'ESP32', parts, profile: 'preserve' }), 'manifest.profile', (e) => e.params.boardKey === 'local');
+  await rejects(localManifest({ name: 'a.bin', chipFamily: 'ESP32', parts, profile: 'anything' }), 'manifest.profile');
+  const m = await localManifest({ name: 'a.bin', chipFamily: 'ESP32', parts, profile: 'factory' });
+  assert.equal(m.profile, 'factory');
 });

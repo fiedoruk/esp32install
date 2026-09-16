@@ -159,3 +159,31 @@ test('the save button lives on the install screen, is hidden until the copy is r
   assert.match(main, /await ui\.requestBackupSave\(\);\s*const saved = await saveBackupWithHandle\(bytes, filename\);\s*if \(!saved\) await saveBlob\(bytes, filename\);\s*return saved;/);
   assert.match(read('app/preserve.js'), /readBackHandle\(saved\.handle\)/);
 });
+
+test('the own-file path: an entry under the list, a block on the prepare screen with labelled controls, and a way back from a catalogued install', () => {
+  assert.match(html, /<a class="own-card" id="own-entry">\s*<b data-i18n="simple\.own\.title"><\/b>\s*<small data-i18n="simple\.own\.hint"><\/small>\s*<\/a>/);
+  assert.match(html, /<section class="screen" id="screen-prepare"[\s\S]*?<div class="own" id="own" hidden>[\s\S]*?<\/section>/, 'the block lives on the prepare screen');
+  assert.match(html, /<label class="file" for="own-file"><span data-i18n="simple\.own\.choose"><\/span><input type="file" id="own-file" accept="\.bin,application\/octet-stream"><\/label>/);
+  assert.match(html, /<div class="own-read" id="own-read" hidden>/, 'what was read stays hidden until a file is chosen');
+  assert.match(html, /<div class="doors" role="radiogroup" data-i18n-attr="aria-label:simple\.own\.where">/);
+  for (const [id, key] of [['own-whole', 'whole'], ['own-app', 'app']]) {
+    assert.match(html, new RegExp(`<label class="door" for="${id}">\\s*<input type="radio" name="own-where" id="${id}" value="${key}">[\\s\\S]*?<b data-i18n="simple\\.own\\.${key}"><\\/b><small data-i18n="simple\\.own\\.${key}Hint">`), id);
+  }
+  assert.match(html, /<label class="field" for="own-address"><span data-i18n="simple\.own\.address"><\/span><input type="text" id="own-address" spellcheck="false" autocomplete="off" autocapitalize="off"><\/label>/);
+  assert.match(html, /<label class="field" for="own-chip"><span data-i18n="simple\.own\.device"><\/span><select id="own-chip"><\/select><\/label>/);
+  assert.match(html, /<p class="hint-text" id="own-note" aria-live="polite"><\/p>/, 'the plan is spoken before the button');
+  assert.match(html, /<a class="quiet" id="own-instead" hidden data-i18n="simple\.own\.instead"><\/a>/);
+  assert.match(html, /<dt id="fact-release-label" data-i18n="tech\.release"><\/dt>/);
+  const main = read('app/main.js');
+  assert.match(main, /q\.get\('own'\) === '1'\) return startOwn\(lang\)/, '?own=1 opens the path on any copy');
+  assert.match(main, /if \(systems\.length === 0\) return startOwn\(lang\)/, 'no catalog, or an empty one, opens it too');
+  assert.match(main, /localManifest\(\{ name: picked\.name, chipFamily: choice\.chipFamily, parts: \[\{ path: picked\.name, offset: choice\.offset, bytes: picked\.bytes \}\] \}\)/);
+  const ui = read('app/ui.js');
+  assert.match(ui, /\$\('connect'\)\.disabled = !choice/, 'no install without both choices');
+  assert.match(ui, /t\('simple\.own\.plan', \{ name: own\.name, address, device: chipFamily \}\)/, 'the address and the chip are shown before the install');
+});
+
+test('the simple layer of the own-file path never says .bin; only the file input and the technical layer may', () => {
+  for (const [k, v] of Object.entries(en.simple.own)) assert.doesNotMatch(v, /\.bin/i, k);
+  assert.equal((html.match(/\.bin/g) ?? []).length, 2, 'the two accept attributes');
+});

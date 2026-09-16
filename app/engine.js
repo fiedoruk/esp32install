@@ -128,20 +128,23 @@ export function createInstaller(deps) {
    * Downloads every part and verifies it in a fixed order: per part `checkFetchedPart`,
    * then `checkLayout` against the detected flash size, then `checkBootImage` and
    * `checkImageParts` against the chip esptool-js reported (`loader.chip.CHIP_NAME`,
-   * never the description string). Both profiles come through here.
+   * never the description string). Both profiles come through here. A part that carries
+   * `bytes` (the own-file path, see `localManifest`) is taken from memory: there is nothing
+   * to fetch and no origin to hold it to, and every check after that point is the same.
    */
   async function download(build, hw) {
     const parts = [];
+    const local = build.parts.every((p) => p.bytes instanceof Uint8Array);
     for (let i = 0; i < build.parts.length; i++) {
       const p = build.parts[i];
-      stage('downloading', 12 + (i / build.parts.length) * 18, { name: p.path });
-      const data = await fetchBytes(fetchFn, p.url, PART_MAX);
+      stage('downloading', 12 + (i / build.parts.length) * 18, { name: p.path, local });
+      const data = p.bytes instanceof Uint8Array ? p.bytes : await fetchBytes(fetchFn, p.url, PART_MAX);
       check();
       const { sha256 } = await checkFetchedPart(p, data);
       if (p.sha256 === undefined) log(`no checksum declared for ${p.path}; downloaded sha256 ${sha256}`);
       parts.push({ offset: p.offset, data, path: p.path, sha256 });
     }
-    stage('verifying', 32);
+    stage('verifying', 32, { local });
     checkLayout(parts, hw.flashSizeMB * 1024 * 1024);
     checkBootImage(parts, hw.chipFamily);
     checkImageParts(parts, hw.chipFamily);

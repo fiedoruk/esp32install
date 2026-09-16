@@ -3,9 +3,36 @@
 A browser page that writes firmware to an ESP32 over a USB cable. It is a set of
 static files: no build step, no bundler, no CDN, nothing to install on a server
 beyond copying a directory. Anyone can put their own firmware behind it by
-writing one JSON manifest and listing it in `catalog.json`.
+writing one JSON manifest and listing it in `catalog.json`, and anyone visiting
+can install a file of their own without one.
 
 Live demo: <https://esp32ai.me/install>
+
+## Install your own file
+
+Open the page with `?own=1` (the list of systems links there too, under *Install
+your own file*), choose a `.bin` from your disk and click the button. Nothing is
+uploaded: the file is read in the browser, its header is inspected, and it goes
+through the same checks as a catalogued release: not empty, within the size
+limits, held to the size and SHA-256 measured when it was read, nothing past the
+end of the flash the chip reports, and the image chip id must be the chip that
+is plugged in. Then it is written with esptool-js's MD5 read-back and the device
+is reset.
+
+Two things a file cannot decide for itself are shown before the install starts,
+with the defaults the file suggests. **Where it goes:** a merged image
+(bootloader at the chip's offset, `0xff` before it, partition table at `0x8000`)
+defaults to *The whole system* at `0x0`; anything else defaults to *Only the
+application* at `0x10000`, and the address field takes any sector-aligned `0x`
+value. **Which chip it is for:** read from the image header when there is one;
+when there is not, you pick it from the list, and the device-side check refuses
+if the plugged-in chip disagrees. A file written at `0x0` is offered the same
+erase prompt as a release with `new_install_prompt_erase`; a file written
+anywhere else never erases, because the bootloader and partition table it
+relies on are already on the device.
+
+The own-file path is always the `factory` profile and needs no `catalog.json`:
+a copy of these files with no catalog opens on it directly.
 
 ## What you need
 
@@ -90,7 +117,8 @@ have passed.
   fetch; `check.py` accepts exactly the listed origins there.
 - **Where the bytes actually came from.** Redirects are followed, but the final
   response has to be on the same origin as the request; otherwise the download is
-  rejected.
+  rejected. A file chosen from disk has no origin and is never fetched; every
+  other check below runs on it unchanged.
 - **Size.** A part that declares `size` must arrive with exactly that many bytes.
   An empty part is refused, a single part above 32 MiB is refused, and all parts
   together above 64 MiB are refused.
@@ -133,6 +161,18 @@ instead, and the page checks that.
   4 KiB sector a write touched but outside the part itself read back as `0xff`.
 - A hard reset is attempted last. If it fails, the log says to press reset or
   replug, because the image is already written and verified at that point.
+
+Two things follow the install and can never fail it:
+
+- **Wi-Fi setup over the cable.** The page reopens the port and asks whether
+  the device speaks [Improv Serial](https://www.improv-wifi.com/serial/). If it
+  does, the done screen offers one optional step: pick a network the device can
+  see, type the password, send. A device that stays silent gets no step. See
+  [`improv` in the manifest](docs/manifest.md#improv-wi-fi-setup-after-the-install).
+- **What the device says.** Inside the technical log, *Show what the device
+  says* streams the device's own output at 115200 baud, on the done screen and
+  on the stopped screen alike, so a failed boot can be read without another
+  tool. The page keeps the last 500 lines.
 
 ## Supported chips
 
@@ -191,6 +231,13 @@ ef7d5a237d3f273ecf546bcee65dddad90bd82cf02f22a980d1537e0cd79a152  esptool-js-0.6
 ```
 
 The bundle embeds pako 2.1.0 (MIT AND Zlib) for deflate.
+
+`vendor/improv-wifi/` holds the headless protocol client from
+improv-wifi-serial-sdk 2.8.1, Apache-2.0: four files, no dependencies, pinned in
+`vendor/improv-wifi/SHA256SUMS` and verified by `tools/check.py` when present.
+Two import specifiers carry a `.js` extension the upstream files lack; the
+notices file records both hashes and `tests/vendor.improv.test.js` proves that
+is the only difference.
 
 Three font families are vendored under `assets/fonts/`, all under the SIL Open
 Font License 1.1, with the licence text next to each family: Figtree, Source

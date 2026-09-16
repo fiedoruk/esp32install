@@ -29,6 +29,20 @@ function safeParams(params = {}) {
 }
 
 const MEASURED = new Set(['backup', 'writing', 'done']);
+const ADDRESS = /^0x[0-9a-f]{1,8}$/i;
+
+/** `0x` hex, sector-aligned, or null. Anything else is shown as a bad address, never guessed. */
+export function parseAddress(text) {
+  const v = String(text ?? '').trim();
+  if (!ADDRESS.test(v)) return null;
+  const n = parseInt(v, 16);
+  return Number.isSafeInteger(n) && n % 0x1000 === 0 ? n : null;
+}
+
+/** Rounded size for the first layer; the exact byte count goes into the technical layer. */
+export function formatSize(bytes) {
+  return bytes < 1024 * 1024 ? `${Math.max(1, Math.round(bytes / 1024))} KB` : `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
 /** Hides the three technical hatches; used when there is no system to describe (list, boot failure). */
 export function hideHatches() {
@@ -104,6 +118,36 @@ export function mountUi({ i18n, system }) {
     if (text !== undefined) $(id + '-text').textContent = text;
   };
 
+  // The own-file path: what was read, and the two choices shown before anything starts.
+  let own = null; // { name, size, sha256 } once a file has been read
+  let onOwnChange = null;
+  const ownChoice = () => {
+    if (!own) return null;
+    const offset = parseAddress($('own-address').value);
+    const chipFamily = $('own-chip').value || null;
+    return offset !== null && chipFamily ? { offset, chipFamily } : null;
+  };
+  const ownReady = () => $('own').hidden || ownChoice() !== null;
+  const refreshOwn = () => {
+    if (!own) return;
+    const offset = parseAddress($('own-address').value);
+    const chipFamily = $('own-chip').value || null;
+    const address = offset === null ? '' : '0x' + offset.toString(16);
+    $('fact-board').textContent = chipFamily ?? '';
+    $('fact-release').textContent = `${own.name}, ${own.size} bytes` + (address ? `, at ${address}` : '');
+    $('own-note').textContent = offset === null ? t('simple.own.badAddress')
+      : !chipFamily ? t('simple.own.unknownDevice')
+      : t('simple.own.plan', { name: own.name, address, device: chipFamily });
+    const choice = ownChoice();
+    $('connect').disabled = !choice;
+    onOwnChange?.(choice);
+  };
+  for (const r of document.querySelectorAll('input[name="own-where"]')) {
+    r.addEventListener('change', () => { $('own-address').value = r.value === 'whole' ? '0x0' : '0x10000'; refreshOwn(); });
+  }
+  $('own-address').addEventListener('input', refreshOwn);
+  $('own-chip').addEventListener('change', refreshOwn);
+
   const ui = {
     showScreen,
     hideHatches,
@@ -118,9 +162,10 @@ export function mountUi({ i18n, system }) {
       $('fact-release').textContent = release;
       showScreen('prepare');
     },
-    showSystems(systems, hrefFor) {
+    showSystems(systems, hrefFor, ownHref) {
       $('pick').hidden = false;
       hideHatches(); // nothing to show without a system
+      $('own-entry').href = ownHref;
       clear($('pick-list'));
       for (const s of systems) {
         const li = document.createElement('li');
@@ -134,16 +179,59 @@ export function mountUi({ i18n, system }) {
         $('pick-list').append(li);
       }
     },
+    /** Catalogued install: the quiet way out to the own-file path. */
+    setOwnLink(href) { $('own-instead').href = href; $('own-instead').hidden = false; },
+    /**
+     * The own-file path on the prepare screen. `chips` fills the device list; the button stays
+     * off until a file has been read and both choices are valid.
+     */
+    showOwn(chips) {
+      $('title').textContent = t('simple.own.title');
+      $('door-update-hint').textContent = t('door.updateHintOwn');
+      $('fact-release-label').textContent = t('tech.file');
+      const sel = $('own-chip');
+      clear(sel);
+      const blank = document.createElement('option');
+      blank.value = '';
+      blank.textContent = t('simple.own.pickDevice');
+      sel.append(blank);
+      for (const c of chips) {
+        const o = document.createElement('option');
+        o.value = c;
+        o.textContent = c;
+        sel.append(o);
+      }
+      $('own').hidden = false;
+      $('connect').disabled = true;
+      showScreen('prepare');
+    },
+    bindOwnFile(fn) {
+      $('own-file').addEventListener('change', () => { const f = $('own-file').files?.[0]; if (f) fn(f); });
+    },
+    bindOwnChange(fn) { onOwnChange = fn; },
+    /** What was read, and the defaults the file itself suggests. Both stay editable and visible. */
+    setOwnFile({ name, size, sha256, chipFamily, whole }) {
+      own = { name, size, sha256 };
+      $('own-read').hidden = false;
+      $('own-summary').textContent = t('simple.own.read', { name, size: formatSize(size) });
+      $(whole ? 'own-whole' : 'own-app').checked = true;
+      $('own-address').value = whole ? '0x0' : '0x10000';
+      $('own-chip').value = chipFamily ?? '';
+      $('title').textContent = t('app.title', { system: name });
+      $('fact-checksum').textContent = sha256;
+      refreshOwn();
+    },
+    ownChoice,
     mode() { return document.querySelector('input[name="mode"]:checked')?.value ?? 'first'; },
     wantsBackup() { return !$('backup-opt').hidden && $('backup').checked; },
     setBackupAvailable(on) { $('backup-opt').hidden = !on; if (!on) $('hint-backup').hidden = true; },
     bindConnect(fn) { $('connect').addEventListener('click', fn); },
     bindRetry(fn) { $('retry').addEventListener('click', fn); },
     setBusy(on) {
-      $('connect').disabled = on;
+      $('connect').disabled = on || !ownReady();
       $('connect-label').textContent = on ? t('action.connecting') : t('action.connect');
-      for (const r of document.querySelectorAll('input[name="mode"]')) r.disabled = on;
-      $('backup').disabled = on;
+      for (const r of document.querySelectorAll('input[name="mode"], input[name="own-where"]')) r.disabled = on;
+      for (const id of ['backup', 'own-file', 'own-address', 'own-chip']) $(id).disabled = on;
     },
     /** Resets screen 2 and shows it. */
     startInstall() {
@@ -162,7 +250,7 @@ export function mountUi({ i18n, system }) {
         ? t('stage.writing', { n: params.n, total: params.total })
         : stage === 'backup' && params.phase === 'save' ? t('simple.backup.save')
         : stage === 'backup' && params.phase === 'readBack' ? t('simple.backup.saved', { file: String(params.file ?? '') })
-        : stage === 'downloading' ? t('stage.downloading') : t('stage.' + stage);
+        : (stage === 'downloading' || stage === 'verifying') && params.local ? t('stage.local') : t('stage.' + stage);
       $('stage-text').textContent = sentence;
       setRing(percent, !MEASURED.has(stage));
       $('eta').textContent = eta === undefined || eta <= 0 ? ''
@@ -216,8 +304,8 @@ export function mountUi({ i18n, system }) {
       clear($('alt-files'));
       for (const f of files) {
         const li = document.createElement('li');
-        const a = document.createElement('a');
-        a.href = f.url;
+        const a = document.createElement(f.url ? 'a' : 'span'); // a local file has no address to link
+        if (f.url) a.href = f.url;
         a.textContent = f.name;
         li.append(a);
         if (f.sha256) {

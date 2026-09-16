@@ -15,7 +15,8 @@
     "first": "Pierwsza instalacja",
     "firstHint": "Na urządzeniu jest coś innego albo jeszcze nic.",
     "update": "Aktualizacja",
-    "updateHint": "{system} jest już na tym urządzeniu."
+    "updateHint": "{system} jest już na tym urządzeniu.",
+    "updateHintOwn": "To, co jest w pliku, jest już na tym urządzeniu."
   },
   "gate": {
     "insecure": "Żeby połączyć się z urządzeniem, otwórz tę stronę pod adresem zaczynającym się od https.",
@@ -51,7 +52,8 @@
     "writing": "Zapisuję na urządzeniu, część {n} z {total}",
     "md5": "Sprawdzam, czy wszystko zapisało się poprawnie",
     "done": "Gotowe",
-    "error": "Przerwane"
+    "error": "Przerwane",
+    "local": "Sprawdzam twój plik"
   },
   "eta": {
     "left": "zostało około {seconds} s",
@@ -84,6 +86,24 @@
     },
     "stopped": {
       "title": "Przerwane, zanim cokolwiek się zmieniło."
+    },
+    "own": {
+      "title": "Zainstaluj własny plik",
+      "instead": "Albo zainstaluj własny plik",
+      "hint": "Wskaż plik z tego komputera. Nic nigdzie nie jest wysyłane.",
+      "choose": "Wybierz plik",
+      "read": "{name}, {size}.",
+      "where": "Co jest w pliku?",
+      "whole": "Cały system",
+      "wholeHint": "Zastępuje wszystko, co jest na urządzeniu.",
+      "app": "Tylko program",
+      "appHint": "Zostawia to, co jest na urządzeniu, i podmienia sam program.",
+      "address": "Gdzie na urządzeniu ma trafić",
+      "device": "Do jakiego urządzenia jest przeznaczony",
+      "pickDevice": "Wybierz urządzenie",
+      "plan": "{name} trafi pod {address} na {device}. Instalator zatrzyma się, jeśli podłączone urządzenie okaże się inne.",
+      "unknownDevice": "Plik nie mówi, do jakiego urządzenia jest przeznaczony. Wybierz je powyżej. Instalator zatrzyma się, jeśli podłączone urządzenie okaże się inne.",
+      "badAddress": "Adres musi zaczynać się od 0x i być wielokrotnością 0x1000, na przykład 0x10000."
     }
   },
   "pick": {
@@ -109,7 +129,8 @@
     "board": "Płytka",
     "release": "Wydanie",
     "checksum": "Suma kontrolna",
-    "log": "Zapis techniczny"
+    "log": "Zapis techniczny",
+    "file": "Plik"
   },
   "board": {
     "pick": "Która to płytka?",

@@ -1,4 +1,5 @@
 import { InstallError } from './errors.js';
+import { sha256Hex } from './verify.js';
 
 export const CHIP_FAMILIES = new Set(['ESP8266', 'ESP32', 'ESP32-S2', 'ESP32-S3', 'ESP32-C2', 'ESP32-C3',
   'ESP32-C5', 'ESP32-C6', 'ESP32-C61', 'ESP32-H2', 'ESP32-P4']);
@@ -151,4 +152,47 @@ export function normalizeManifest(raw, manifestUrl, policy = {}) {
     return nb;
   });
   return manifest;
+}
+
+const PART_MAX = 32 * 1024 * 1024;
+const SECTOR = 0x1000;
+
+/**
+ * The own-file path: a file the user picked, held in memory, with no manifest, no server and no
+ * download. Returns the shape `normalizeManifest` returns, always the `factory` profile with one
+ * build called `local`, and `size` and `sha256` measured from the bytes so the engine holds the
+ * part to them with the same checks a release gets. Each part carries `bytes` and no `url`.
+ * A part written at 0 replaces the whole system and asks about erasing like a release with
+ * `new_install_prompt_erase`; anything written elsewhere never erases, because the bootloader
+ * and partition table it relies on are already on the device. `preserve` is refused: a local file
+ * carries no compatibility data to hold the device to.
+ */
+export async function localManifest({ name, chipFamily, parts, profile = 'factory' } = {}) {
+  if (profile !== 'factory') fail('manifest.profile', { boardKey: 'local' });
+  if (typeof name !== 'string' || !name.trim()) fail('manifest.name', {});
+  if (!CHIP_FAMILIES.has(chipFamily)) fail('manifest.chipFamily', { boardKey: 'local', chipFamily: String(chipFamily) });
+  if (!Array.isArray(parts) || parts.length === 0) fail('manifest.noParts', { boardKey: 'local' });
+  const out = [];
+  for (let i = 0; i < parts.length; i++) {
+    const p = parts[i];
+    if (!isPlainObject(p) || !(p.bytes instanceof Uint8Array)) fail('manifest.part', { boardKey: 'local', index: i + 1 });
+    const path = typeof p.path === 'string' && p.path.trim() ? p.path : name;
+    if (p.bytes.length === 0) fail('verify.empty', { path });
+    if (p.bytes.length > PART_MAX) fail('verify.tooLarge', { path, bytes: p.bytes.length, max: PART_MAX });
+    if (!isInt(p.offset) || p.offset < 0 || p.offset % SECTOR !== 0) fail('manifest.offset', { boardKey: 'local', index: i + 1 });
+    out.push({ path, offset: p.offset, size: p.bytes.length, sha256: await sha256Hex(p.bytes), bytes: p.bytes });
+  }
+  return {
+    name, version: out[0].sha256.slice(0, 8), schema: 2,
+    profile: 'factory',
+    promptErase: out.some((p) => p.offset === 0),
+    eraseAll: false,
+    builds: [{
+      boardKey: 'local', board: chipFamily, chipFamily,
+      flashSizeMB: undefined, usbVendorId: undefined, usbProductId: undefined,
+      chipDescriptionIncludes: [], featuresAll: [],
+      profile: 'factory', eraseAll: false, compatibility: undefined,
+      parts: out,
+    }],
+  };
 }

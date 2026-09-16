@@ -92,6 +92,36 @@ export function checkImageParts(parts, chipFamily) {
   }
 }
 
+const PARTITION_TABLE_OFFSET = 0x8000;
+const PARTITION_MAGIC = [0xaa, 0x50];
+const HEADER_OFFSETS = [0x0, 0x1000, 0x2000]; // every bootloader offset the chip table declares
+const allFF = (b, from, to) => { for (let i = from; i < to; i++) if (b[i] !== 0xff) return false; return true; };
+const familyOrNull = (id) => Object.entries(CHIPS).find(([, c]) => c.imageChipId === id)?.[0] ?? null;
+
+/**
+ * What one file says about itself, for the own-file path. A merged image starts with the
+ * bootloader at the family's offset (0x0, 0x1000 or 0x2000), padded with 0xff before it, and
+ * carries a partition table at 0x8000; an application image starts with its own header at byte 0
+ * and has neither. `chipFamily` is null when no header is found or its id names no known family
+ * (ESP8266 images carry no id and are never identified). `whole` is true only for a merged image,
+ * and the caller shows it as a default, never as a decision.
+ */
+export function inspectImage(bytes) {
+  const out = { headerOffset: null, chipFamily: null, whole: false };
+  if (!(bytes instanceof Uint8Array)) return out;
+  for (const at of HEADER_OFFSETS) {
+    if (bytes.length < at + ESP_IMAGE_HEADER_BYTES || bytes[at] !== ESP_IMAGE_MAGIC) continue;
+    if (at > 0 && !allFF(bytes, 0, at)) continue;
+    out.headerOffset = at;
+    out.chipFamily = familyOrNull(bytes[at + 12] | (bytes[at + 13] << 8));
+    const table = bytes.length > PARTITION_TABLE_OFFSET + 1
+      && bytes[PARTITION_TABLE_OFFSET] === PARTITION_MAGIC[0] && bytes[PARTITION_TABLE_OFFSET + 1] === PARTITION_MAGIC[1];
+    out.whole = table && (out.chipFamily === null ? at > 0 : CHIPS[out.chipFamily].bootloaderOffset === at);
+    break;
+  }
+  return out;
+}
+
 export function esptoolCommand(chipFamily, parts, fileNames) {
   if (fileNames.length !== parts.length) fail('verify.part', { index: Math.min(parts.length, fileNames.length) });
   const chip = CHIPS[chipFamily]?.esptoolChip ?? chipFamily.toLowerCase().replace('-', '');

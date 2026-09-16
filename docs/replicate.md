@@ -47,6 +47,16 @@ python3 tools/check.py http://127.0.0.1:8731/
 the install button works there and you can rehearse a release against real
 hardware before you upload anything.
 
+## Without a catalog
+
+`catalog.json` is optional. A copy of these files with no catalog, or with an
+empty `systems` list, opens straight on the own-file path: the visitor picks a
+`.bin` from their disk and installs it with the same checks a release gets.
+`?own=1` opens that path on any copy, catalog or not, and a catalogued install
+links to it under the button. `check.py` still reports a missing catalog as a
+FAIL, because a site that publishes releases is expected to have one; on a copy
+that deliberately has none, that one finding is the expected one.
+
 ## Apache
 
 Copying the directory into the document root is normally all it takes. If the
@@ -208,8 +218,9 @@ and checksum, so it catches the classic mistake of updating a manifest and
 forgetting to upload the binary. It exits 1 on any FAIL, which makes it usable as
 the last step of a deployment script.
 
-The tool also re-reads `index.html` and the vendored bundle each time, so a
-half-finished upload that left an old `esptool-js` behind is reported:
+The tool also re-reads `index.html` and the vendored files each time (the
+esptool-js bundle, and the Improv client when it is shipped), so a half-finished
+upload that left an old `esptool-js` behind is reported:
 
 ```
 OK csp index.html pins default-src to 'self'

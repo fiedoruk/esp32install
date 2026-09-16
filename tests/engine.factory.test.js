@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { createInstaller, mapSerialError, flashSizeFromId } from '../app/engine.js';
-import { normalizeManifest } from '../app/manifest.js';
+import { normalizeManifest, localManifest } from '../app/manifest.js';
 import { makeFakeEsptool } from './helpers/fakeEsptool.js';
 import { sha256Hex } from '../app/verify.js';
 
@@ -270,4 +270,105 @@ test('an application image for another chip stops a factory install even when it
     chooseBuild: async (b) => b[0], confirmErase: async () => true, saveBackup: async () => {} });
   await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'verify.wrongChip' && e.params.offset === 0x10000);
   assert.ok(!called(fake, 'eraseFlash')); assert.ok(!called(fake, 'writeFlash'));
+});
+
+/* --- the own-file path: bytes from memory, never a fetch ------------------- */
+
+async function setupLocal({ fake = makeFakeEsptool(), img = image(0), chipFamily = 'ESP32', offset = 0, confirm = true } = {}) {
+  const manifest = await localManifest({ name: 'mine.bin', chipFamily, parts: [{ path: 'mine.bin', offset, bytes: img }] });
+  const events = [], fetches = [];
+  const inst = createInstaller({
+    esptool: fake,
+    requestPort: async () => ({ getInfo: () => ({}) }),
+    fetchFn: async (url) => { fetches.push(url); throw new Error('fetchFn must not be called for a local file'); },
+    onEvent: (e) => events.push(e),
+    chooseBuild: async (builds) => builds[0],
+    confirmErase: async () => confirm,
+    saveBackup: async () => {},
+  });
+  return { inst, manifest, events, fake, fetches };
+}
+
+test('own file: installs from memory with no fetch at all, the full check chain, an MD5-verified write and a reset', async () => {
+  const img = image(0);
+  const { inst, manifest, events, fake, fetches } = await setupLocal({ img });
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
+  assert.equal(r.build, 'local');
+  assert.deepEqual(fetches, [], 'nothing was fetched');
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  const w = fake.calls.find((c) => c[0] === 'writeFlash');
+  assert.deepEqual(w[1], [[0, 0x3000]]);
+  assert.equal(w[2], false, 'erase is its own step, never eraseAll');
+  assert.equal(r.parts[0].sha256, await sha256Hex(img));
+  assert.ok(fake.flash.subarray(0, 0x3000).every((b, i) => b === img[i]), 'the bytes on the device are the file');
+  const local = events.filter((e) => e.type === 'stage' && (e.stage === 'downloading' || e.stage === 'verifying'));
+  assert.ok(local.length >= 2 && local.every((e) => e.params.local === true), 'the page can say it is checking a file, not downloading');
+  assert.equal(events.at(-1).type, 'done');
+});
+
+test('own file: an image built for another chip is refused before any erase or write', async () => {
+  const { inst, manifest, fake, fetches } = await setupLocal({ img: image(9) }); // an ESP32-S3 image on an ESP32 install
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }),
+    (e) => e.code === 'verify.wrongChip' && e.params.expected === 'ESP32' && e.params.found === 'ESP32-S3');
+  assert.ok(!called(fake, 'eraseFlash'));
+  assert.ok(!called(fake, 'writeFlash'));
+  assert.deepEqual(fetches, []);
+  assert.ok(called(fake, 'disconnect'));
+});
+
+test('own file: the chip the user chose is not the one plugged in → device.noMatch, nothing written', async () => {
+  const fake = makeFakeEsptool({ chipName: 'ESP32-S3' });
+  const { inst, manifest } = await setupLocal({ fake, img: image(0), chipFamily: 'ESP32' });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'device.noMatch' && e.params.chip === 'ESP32-S3');
+  assert.ok(!called(fake, 'eraseFlash'));
+  assert.ok(!called(fake, 'writeFlash'));
+});
+
+test('own file: an application at 0x10000 is written without any erase prompt and without erasing', async () => {
+  const app = new Uint8Array(0x200).fill(0xff); app[0] = 0xe9; app[12] = 0; app[13] = 0;
+  const { inst, manifest, fake, events } = await setupLocal({ img: app, offset: 0x10000 });
+  assert.equal(manifest.promptErase, false);
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
+  assert.ok(!called(fake, 'eraseFlash'));
+  assert.deepEqual(fake.calls.find((c) => c[0] === 'writeFlash')[1], [[0x10000, 0x200]]);
+  assert.equal(events.at(-1).type, 'done');
+});
+
+test('own file: a whole-system image with the erase declined still writes', async () => {
+  const { inst, manifest, fake } = await setupLocal({ confirm: false });
+  await inst.run({ manifest, mode: 'update', options: {} });
+  assert.ok(!called(fake, 'eraseFlash'));
+  assert.ok(called(fake, 'writeFlash'));
+});
+
+test('own file: bytes changed after the file was read are caught by the measured sha256 before any write', async () => {
+  const img = image(0);
+  const { inst, manifest, fake } = await setupLocal({ img });
+  img[0x2000] ^= 0xff;
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'verify.sha256' && e.params.path === 'mine.bin');
+  assert.ok(!called(fake, 'eraseFlash'));
+  assert.ok(!called(fake, 'writeFlash'));
+});
+
+test('own file: a part larger than the device stops at the layout check', async () => {
+  const fake = makeFakeEsptool({ flashId: 0x001440c8 }); // 1 MB
+  const big = new Uint8Array(0x101000).fill(0xff); big[0x1000] = 0xe9;
+  const { inst, manifest } = await setupLocal({ fake, img: big });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'verify.beyondFlash');
+  assert.ok(!called(fake, 'writeFlash'));
+});
+
+test('own file: the optional backup runs for a local install exactly as for a release', async () => {
+  const saved = [];
+  const { inst, manifest, fake } = await setupLocal();
+  const inst2 = createInstaller({ esptool: fake, requestPort: async () => ({ getInfo: () => ({}) }),
+    fetchFn: async () => { throw new Error('no fetch'); }, chooseBuild: async (b) => b[0], confirmErase: async () => true,
+    saveBackup: async (bytes, name) => { fake.calls.push(['saveBackup', name]); saved.push(name); } });
+  void inst;
+  await inst2.run({ manifest, mode: 'first', options: { backup: true } });
+  const names = fake.calls.map((c) => c[0]);
+  assert.ok(names.indexOf('saveBackup') < names.indexOf('eraseFlash'));
+  assert.match(saved[0], /^mine\.bin-backup-[0-9a-f]{8}\.bin$/);
 });

@@ -15,7 +15,8 @@
     "first": "First installation",
     "firstHint": "The device runs something else, or nothing yet.",
     "update": "Update",
-    "updateHint": "{system} is already on this device."
+    "updateHint": "{system} is already on this device.",
+    "updateHintOwn": "What is in the file is already on this device."
   },
   "gate": {
     "insecure": "This page has to be opened over a secure (https) address before it can talk to a device.",
@@ -51,7 +52,8 @@
     "writing": "Writing to the device, part {n} of {total}",
     "md5": "Checking that everything was written correctly",
     "done": "Done",
-    "error": "Stopped"
+    "error": "Stopped",
+    "local": "Checking your file"
   },
   "eta": {
     "left": "about {seconds} s left",
@@ -84,6 +86,24 @@
     },
     "stopped": {
       "title": "Stopped before anything changed."
+    },
+    "own": {
+      "title": "Install your own file",
+      "instead": "Install your own file instead",
+      "hint": "Choose a file from this computer. Nothing is uploaded anywhere.",
+      "choose": "Choose the file",
+      "read": "{name}, {size}.",
+      "where": "What is in the file?",
+      "whole": "The whole system",
+      "wholeHint": "Replaces everything on the device.",
+      "app": "Only the application",
+      "appHint": "Keeps what is on the device and updates the program.",
+      "address": "Where on the device it goes",
+      "device": "Which device it is for",
+      "pickDevice": "Choose the device",
+      "plan": "{name} goes to {address} on {device}. The installer stops if the connected device turns out to be a different one.",
+      "unknownDevice": "The file does not say which device it is for. Choose it above. The installer stops if the connected device turns out to be a different one.",
+      "badAddress": "The address has to start with 0x and be a multiple of 0x1000, for example 0x10000."
     }
   },
   "pick": {
@@ -109,7 +129,8 @@
     "board": "Board",
     "release": "Release",
     "checksum": "Checksum",
-    "log": "Technical log"
+    "log": "Technical log",
+    "file": "File"
   },
   "board": {
     "pick": "Which board is this?",
