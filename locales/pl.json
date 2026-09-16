@@ -31,6 +31,7 @@
     "backup": "Najpierw zapisz kopię tego, co jest na urządzeniu (około {minutes} min)",
     "chooseBackup": "Wybierz zapisaną przed chwilą kopię",
     "chooseBackupTitle": "Teraz wskaż kopię zapisaną przed chwilą",
+    "chooseBackupHint": "Przeglądarka zapisała ją jako {file}, zwykle w folderze Pobrane.",
     "erase": "Wyczyść całe urządzenie przed instalacją"
   },
   "stage": {
@@ -139,7 +140,6 @@
     "manifest.preserveNeedsSize": "Wersja {boardKey}, plik {index} potrzebuje i rozmiaru, i sumy kontrolnej. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
     "manifest.duplicateBoardKey": "Dwie wersje w pliku wydania mają tę samą nazwę {boardKey}. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
     "manifest.fetch": "Nie udało się pobrać pliku wydania ({status}). Sprawdź połączenie i spróbuj jeszcze raz. Jeśli powtórzy się to samo, to błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
-    "manifest.tooBig": "Plik wydania jest o wiele większy, niż powinien, więc nie został użyty. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
     "catalog.fetch": "Nie udało się wczytać listy systemów. Sprawdź połączenie i spróbuj jeszcze raz. Jeśli powtórzy się to samo, to błąd tej strony, nie twojego urządzenia. Powiedz o tym osobie, która ją prowadzi.",
     "catalog.unknownSystem": "Nie ma tu systemu o nazwie {fw}. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
     "catalog.unknownVersion": "Tej wersji {fw} tutaj nie ma. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",

@@ -77,13 +77,21 @@ class SiteFixture(unittest.TestCase):
     def write_raw_manifest(self, data):
         self.manifest_path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
 
-    def write_catalog(self, releases):
-        (self.site / 'catalog.json').write_text(json.dumps(
-            {'site': 'test', 'systems': [{'id': 'demo', 'name': 'Demo', 'device': 'Any ESP32',
-                                          'releases': releases}]}, indent=2) + '\n', encoding='utf-8')
+    def write_catalog(self, releases, **extra):
+        data = {'site': 'test', 'systems': [{'id': 'demo', 'name': 'Demo', 'device': 'Any ESP32',
+                                             'releases': releases}]}
+        data.update(extra)
+        (self.site / 'catalog.json').write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
 
-    def findings(self, base=None):
-        return check.check_site(str(base or self.site))
+    def preserve_compat(self, table_offset=0x1000, **over):
+        """A complete compatibility block: the demo binary at 0x1000 stands in for the table part."""
+        compat = {'regions': [{'offset': 0x8000, 'size': 0x1000, 'sha256': 'a' * 64}],
+                  'update': {'tableOffset': table_offset}}
+        compat.update(over)
+        return compat
+
+    def findings(self, base=None, *extra_origins):
+        return check.check_site(str(base or self.site), list(extra_origins))
 
     def levels(self, findings, what):
         return [f.level for f in findings if f.what == what]
@@ -215,11 +223,46 @@ class SiteTest(SiteFixture):
         self.write_raw_manifest(data)
         self.assertIn(check.FAIL, self.levels(self.findings(), 'chipFamily'))
 
-    def test_a_chip_without_a_declared_bootloader_offset_is_skipped(self):
+    def test_a_chip_without_a_declared_bootloader_offset_still_has_its_image_parts_checked(self):
+        self.bin.write_bytes(esp_image(20))  # 20 is ESP32-C61
+        self.write_one_part_manifest(0x1000, family='ESP32-C61')
+        found = self.findings()
+        self.assertEqual(self.fails(found), [])
+        self.assertTrue(any('no bootloader offset' in f.detail for f in found if f.what == 'chip'))
+        self.assertTrue(any('is an ESP32-C61 image' in f.detail for f in found if f.what == 'chip'))
+        self.bin.write_bytes(esp_image(0))  # an ESP32 image offered to a C61: the part check catches it
+        found = self.findings()
+        self.assertIn(check.FAIL, self.levels(found, 'chip'))
+
+    def test_an_application_for_another_chip_fails_wherever_it_is_written(self):
+        app = self.firmware / 'app.bin'
+        app.write_bytes(esp_image(9, length=2048))  # ESP32-S3 image at 0x10000 on an ESP32 manifest
         data = json.loads(self.manifest_path.read_text('utf-8'))
-        data['builds'][0]['chipFamily'] = 'ESP32-C61'
+        data['builds'][0]['parts'].append({
+            'path': 'app.bin', 'offset': 0x10000, 'size': 2048,
+            'sha256': hashlib.sha256(app.read_bytes()).hexdigest()})
         self.write_raw_manifest(data)
-        self.assertEqual(self.fails(self.findings()), [])
+        found = self.findings()
+        chip = [f for f in found if f.what == 'chip']
+        self.assertEqual([f.level for f in chip], [check.OK, check.FAIL], [str(f) for f in chip])
+        self.assertIn('app.bin at 0x10000', chip[1].detail)
+        self.assertIn('ESP32-S3', chip[1].detail)
+
+    def test_a_matching_application_image_is_reported_and_a_data_part_is_not_judged(self):
+        app = self.firmware / 'app.bin'
+        app.write_bytes(esp_image(0, length=2048))
+        data_part = self.firmware / 'data.bin'
+        data_part.write_bytes(b'\x00' * 512)
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['builds'][0]['parts'].extend([
+            {'path': 'app.bin', 'offset': 0x10000, 'size': 2048,
+             'sha256': hashlib.sha256(app.read_bytes()).hexdigest()},
+            {'path': 'data.bin', 'offset': 0x20000, 'size': 512,
+             'sha256': hashlib.sha256(data_part.read_bytes()).hexdigest()}])
+        self.write_raw_manifest(data)
+        found = self.findings()
+        self.assertEqual(self.fails(found), [])
+        self.assertEqual(self.levels(found, 'chip'), [check.OK, check.OK])
 
     def test_a_missing_csp_fails(self):
         (self.site / 'index.html').write_text('<!doctype html><html><head></head><body></body></html>',
@@ -292,11 +335,89 @@ class ShapeTest(SiteFixture):
         self.write_index("default-src 'self-hosted'; script-src 'self'")
         self.assertIn(check.FAIL, self.levels(self.findings(), 'csp'))
 
-    def test_the_download_counter_is_the_only_extra_script_source(self):
-        self.write_index("default-src 'self'; script-src 'self' https://skad.click")
-        self.assertEqual(self.fails(self.findings()), [])
-        self.write_index("default-src 'self'; script-src 'self' https://cdn.example")
+    @staticmethod
+    def policy_with(directive, sources):
+        """default-src first, unless the directive under test is default-src itself."""
+        head = "default-src 'self'; " if directive != 'default-src' else ''
+        return "%s%s 'self' %s" % (head, directive, sources)
+
+    def test_no_third_party_is_allowed_in_any_directive_by_default(self):
+        for directive in ('script-src', 'script-src-elem', 'connect-src', 'style-src', 'default-src'):
+            with self.subTest(directive=directive):
+                self.write_index(self.policy_with(directive, 'https://stats.example'))
+                found = self.findings()
+                self.assertIn(check.FAIL, self.levels(found, 'csp'))
+                self.assertTrue(any('stats.example' in detail for what, detail in self.fails(found) if what == 'csp'))
+
+    def test_no_counter_origin_is_special_without_the_flag(self):
+        self.write_index("default-src 'self'; script-src 'self' https://counter.example")
         self.assertIn(check.FAIL, self.levels(self.findings(), 'csp'))
+        self.assertEqual(self.levels(self.findings(None, 'https://counter.example'), 'csp'), [check.OK])
+
+    def test_allow_origin_widens_script_and_connect_but_not_style_or_default(self):
+        for directive, ok in (('script-src', True), ('script-src-elem', True), ('connect-src', True),
+                              ('style-src', False), ('default-src', False)):
+            with self.subTest(directive=directive):
+                self.write_index(self.policy_with(directive, 'https://stats.example'))
+                levels = self.levels(self.findings(None, 'https://stats.example'), 'csp')
+                self.assertEqual(levels, [check.OK] if ok else [check.FAIL])
+
+    def test_allow_origin_is_repeatable_and_exact(self):
+        self.write_index("default-src 'self'; script-src 'self' https://a.example https://b.example")
+        self.assertEqual(self.levels(self.findings(None, 'https://a.example', 'https://b.example'), 'csp'), [check.OK])
+        self.assertIn(check.FAIL, self.levels(self.findings(None, 'https://a.example'), 'csp'))
+        self.assertIn(check.FAIL, self.levels(self.findings(None, 'https://a.example', 'https://c.example'), 'csp'))
+
+    def test_allow_origin_on_the_command_line(self):
+        self.write_index("default-src 'self'; script-src 'self' https://stats.example; connect-src 'self' https://stats.example")
+        self.assertEqual(self.cli(self.site)[0], 1)
+        code, text = self.cli(self.site, '--allow-origin', 'https://stats.example')
+        self.assertEqual(code, 0, text)
+        self.assertIn("OK csp", text)
+
+    def test_a_malformed_allow_origin_is_a_usage_error(self):
+        for bad in ('stats.example', 'https://stats.example/path', 'https://stats.example/', "'self'", '*'):
+            with self.subTest(origin=bad):
+                code, text = self.cli(self.site, '--allow-origin', bad)
+                self.assertEqual(code, 2, text)
+                self.assertNotIn('FAIL', text)
+
+    def test_catalog_allow_origins_widen_connect_src_only(self):
+        self.write_catalog([{'version': '1.0.0', 'manifest': 'firmware/demo-1-0-0.json', 'channel': 'stable'}],
+                           allowOrigins=['https://files.example'])
+        self.write_index("default-src 'self'; connect-src 'self' https://files.example")
+        found = self.findings()
+        self.assertEqual(self.levels(found, 'csp'), [check.OK])
+        self.assertEqual(self.fails(found), [])
+        self.write_index("default-src 'self'; connect-src 'self' https://other.example")
+        self.assertIn(check.FAIL, self.levels(self.findings(), 'csp'))
+        self.write_index("default-src 'self'; script-src 'self' https://files.example; connect-src 'self' https://files.example")
+        self.assertIn(check.FAIL, self.levels(self.findings(), 'csp'))
+
+    def test_an_allow_origin_the_policy_does_not_name_warns(self):
+        self.write_catalog([{'version': '1.0.0', 'manifest': 'firmware/demo-1-0-0.json', 'channel': 'stable'}],
+                           allowOrigins=['https://files.example'])
+        found = self.findings()
+        self.assertEqual(self.levels(found, 'csp'), [check.OK, check.WARN])
+        self.assertTrue(any('files.example' in f.detail for f in found if f.level == check.WARN))
+        self.assertEqual(self.fails(found), [])
+
+    def test_a_malformed_allow_origins_list_fails_and_widens_nothing(self):
+        for bad in ('https://files.example', ['https://files.example/downloads'], ['files.example'], [42], ['*']):
+            with self.subTest(allowOrigins=bad):
+                self.write_catalog([{'version': '1.0.0', 'manifest': 'firmware/demo-1-0-0.json', 'channel': 'stable'}],
+                                   allowOrigins=bad)
+                self.write_index("default-src 'self'; connect-src 'self' https://files.example")
+                found = self.findings()
+                self.assertIn(check.FAIL, self.levels(found, 'catalog'))
+                self.assertIn(check.FAIL, self.levels(found, 'csp'))
+
+    def test_is_origin(self):
+        for good in ('https://files.example', 'http://localhost:8731', 'https://a-b.example.org:8443'):
+            self.assertTrue(check.is_origin(good), good)
+        for bad in ('https://files.example/', 'files.example', 'ftp://files.example', 'https://', "'self'",
+                    'https://files.example:123456', 42, None):
+            self.assertFalse(check.is_origin(bad), repr(bad))
 
     def test_a_policy_without_default_src_fails(self):
         self.write_index("script-src 'self'")
@@ -315,12 +436,12 @@ class ShapeTest(SiteFixture):
         self.assertEqual(self.levels(self.findings(), 'csp'), [check.OK])
 
     def test_the_other_fetch_directives_are_checked_too(self):
-        for policy, ok in (("default-src 'self'; connect-src 'self' https://skad.click", True),
+        for policy, ok in (("default-src 'self'; connect-src 'self'", True),
                            ("default-src 'self'; connect-src 'self' https://evil.example", False),
-                           ("default-src 'self'; script-src-elem 'self' https://skad.click", True),
+                           ("default-src 'self'; script-src-elem 'self'", True),
                            ("default-src 'self'; script-src-elem 'self' 'unsafe-inline'", False),
                            ("default-src 'self'; style-src 'self'", True),
-                           ("default-src 'self'; style-src 'self' https://skad.click", False)):
+                           ("default-src 'self'; style-src 'self' https://fonts.example", False)):
             with self.subTest(policy=policy):
                 self.write_index(policy)
                 levels = self.levels(self.findings(), 'csp')
@@ -385,25 +506,102 @@ class ShapeTest(SiteFixture):
         data = json.loads(self.manifest_path.read_text('utf-8'))
         data['profile'] = 'preserve'
         data['builds'][0]['compatibility'] = {
-            'firstInstall': {'regions': [{'offset': 0x8000, 'size': 0x1000}]}}
+            'firstInstall': {'regions': [{'offset': 0x8000, 'size': 0x1000, 'sha256': 'a' * 64}]},
+            'update': {'tableOffset': 0x1000}}
         self.write_raw_manifest(data)
         self.assertEqual(self.fails(self.findings()), [])
+
+    def test_a_complete_preserve_manifest_passes(self):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['profile'] = 'preserve'
+        data['builds'][0]['compatibility'] = self.preserve_compat()
+        self.write_raw_manifest(data)
+        self.assertEqual(self.fails(self.findings()), [])
+
+    def test_preserve_with_a_region_without_a_checksum_fails(self):
+        for where in ('regions', 'first'):
+            with self.subTest(where=where):
+                data = json.loads(self.manifest_path.read_text('utf-8'))
+                data['profile'] = 'preserve'
+                region = {'offset': 0x8000, 'size': 0x1000}
+                compat = (self.preserve_compat(regions=[region]) if where == 'regions'
+                          else self.preserve_compat(firstInstall={'regions': [region]}))
+                data['builds'][0]['compatibility'] = compat
+                self.write_raw_manifest(data)
+                found = self.findings()
+                self.assertIn(check.FAIL, self.levels(found, 'manifest'))
+                self.assertTrue(any('sha256' in detail for what, detail in self.fails(found)))
+
+    def test_preserve_with_a_malformed_region_checksum_fails(self):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['profile'] = 'preserve'
+        data['builds'][0]['compatibility'] = self.preserve_compat(
+            regions=[{'offset': 0x8000, 'size': 0x1000, 'sha256': 'xyz'}])
+        self.write_raw_manifest(data)
+        self.assertIn(check.FAIL, self.levels(self.findings(), 'manifest'))
+
+    def test_preserve_without_an_update_table_offset_fails(self):
+        for update in (None, {}, {'tableOffset': -1}, {'tableOffset': '0x1000'}, 'x'):
+            with self.subTest(update=update):
+                data = json.loads(self.manifest_path.read_text('utf-8'))
+                data['profile'] = 'preserve'
+                compat = self.preserve_compat()
+                if update is None:
+                    del compat['update']
+                else:
+                    compat['update'] = update
+                data['builds'][0]['compatibility'] = compat
+                self.write_raw_manifest(data)
+                found = self.findings()
+                self.assertIn(check.FAIL, self.levels(found, 'manifest'))
+                self.assertTrue(any('tableOffset' in detail for what, detail in self.fails(found)))
+
+    def test_preserve_with_a_table_offset_no_part_is_written_at_fails(self):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['profile'] = 'preserve'
+        data['builds'][0]['compatibility'] = self.preserve_compat(table_offset=0x8000)
+        self.write_raw_manifest(data)
+        found = self.findings()
+        self.assertIn(check.FAIL, self.levels(found, 'manifest'))
+        self.assertTrue(any('0x8000' in detail and 'no part' in detail for what, detail in self.fails(found)))
 
     def test_preserve_with_a_part_that_has_no_checksum_fails(self):
         data = json.loads(self.manifest_path.read_text('utf-8'))
         data['profile'] = 'preserve'
-        data['builds'][0]['compatibility'] = {'regions': [{'offset': 0x8000, 'size': 0x1000}]}
+        data['builds'][0]['compatibility'] = self.preserve_compat()
         del data['builds'][0]['parts'][0]['sha256']
         self.write_raw_manifest(data)
         found = self.findings()
         self.assertIn(check.FAIL, self.levels(found, 'manifest'))
         self.assertTrue(any('preserve' in detail for what, detail in self.fails(found)))
 
-    def test_a_build_level_profile_overrides_the_manifest(self):
+    def test_a_build_profile_that_differs_from_the_manifest_fails(self):
+        # factory manifest, preserve build: the page would run it through the erase path.
         data = json.loads(self.manifest_path.read_text('utf-8'))
         data['builds'][0]['profile'] = 'preserve'
         self.write_raw_manifest(data)
-        self.assertIn(check.FAIL, self.levels(self.findings(), 'manifest'))
+        found = self.findings()
+        self.assertIn(check.FAIL, self.levels(found, 'manifest'))
+        self.assertTrue(any('never change it' in detail for what, detail in self.fails(found)))
+        # preserve manifest, factory build: the same finding the other way round.
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['profile'] = 'preserve'
+        data['builds'][0]['profile'] = 'factory'
+        data['builds'][0]['compatibility'] = self.preserve_compat()
+        self.write_raw_manifest(data)
+        found = self.findings()
+        self.assertTrue(any('never change it' in detail for what, detail in self.fails(found)))
+
+    def test_a_build_may_repeat_the_manifest_profile(self):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['builds'][0]['profile'] = 'factory'
+        self.write_raw_manifest(data)
+        self.assertEqual(self.fails(self.findings()), [])
+        data['profile'] = 'preserve'
+        data['builds'][0]['profile'] = 'preserve'
+        data['builds'][0]['compatibility'] = self.preserve_compat()
+        self.write_raw_manifest(data)
+        self.assertEqual(self.fails(self.findings()), [])
 
     def test_an_unknown_profile_on_a_build_fails(self):
         data = json.loads(self.manifest_path.read_text('utf-8'))
@@ -454,6 +652,13 @@ class ShapeTest(SiteFixture):
     def test_check_site_raises_for_a_directory_that_is_not_there(self):
         with self.assertRaises(check.UsageError):
             check.check_site(str(self.site / 'nowhere'))
+
+    def test_a_missing_catalog_is_reported_once_and_the_policy_is_still_checked(self):
+        (self.site / 'catalog.json').unlink()
+        found = self.findings()
+        self.assertEqual(self.levels(found, 'missing'), [check.FAIL])
+        self.assertEqual(self.levels(found, 'csp'), [check.OK])
+        self.assertEqual(self.levels(found, 'vendor'), [check.OK])
 
 
 class HelperTest(unittest.TestCase):

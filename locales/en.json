@@ -31,6 +31,7 @@
     "backup": "Save a copy of what is on the device first (about {minutes} min)",
     "chooseBackup": "Choose the copy you just saved",
     "chooseBackupTitle": "Now choose the copy you just saved",
+    "chooseBackupHint": "Your browser saved it as {file}, usually in the Downloads folder.",
     "erase": "Clear everything on the device before installing"
   },
   "stage": {
@@ -139,7 +140,6 @@
     "manifest.preserveNeedsSize": "Build {boardKey}, file {index} needs both a size and a checksum. This is a problem with the release itself, not with your device. Tell whoever published it.",
     "manifest.duplicateBoardKey": "Two builds in the release file share the name {boardKey}. This is a problem with the release itself, not with your device. Tell whoever published it.",
     "manifest.fetch": "Could not download the release file ({status}). Check your connection and try again. If it keeps failing, the release itself is broken, not your device. Tell whoever published it.",
-    "manifest.tooBig": "The release file is far larger than expected, so it was not used. This is a problem with the release itself, not with your device. Tell whoever published it.",
     "catalog.fetch": "Could not load the list of systems. Check your connection and try again. If it keeps failing, this page is broken, not your device. Tell whoever runs it.",
     "catalog.unknownSystem": "There is no system called {fw} here. This is a problem with the release itself, not with your device. Tell whoever published it.",
     "catalog.unknownVersion": "This version of {fw} is not available here. This is a problem with the release itself, not with your device. Tell whoever published it.",

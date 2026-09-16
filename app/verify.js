@@ -56,6 +56,9 @@ export function checkLayout(parts, flashBytes, limits = {}) {
   }
 }
 
+const ESP_IMAGE_HEADER_BYTES = 24;
+const familyOfImageChipId = (id) => Object.entries(CHIPS).find(([, c]) => c.imageChipId === id)?.[0] ?? String(id);
+
 /** The part that covers the chip's bootloader offset must start with an ESP image header for this chip. */
 export function checkBootImage(parts, chipFamily) {
   const chip = CHIPS[chipFamily];
@@ -65,12 +68,27 @@ export function checkBootImage(parts, chipFamily) {
   const holder = parts.find((p) => p.offset <= at && p.offset + p.data.length > at);
   if (!holder) return;
   const rel = at - holder.offset;
-  if (holder.data.length < rel + 24 || holder.data[rel] !== ESP_IMAGE_MAGIC) fail('verify.notAnImage', { offset: at });
+  if (holder.data.length < rel + ESP_IMAGE_HEADER_BYTES || holder.data[rel] !== ESP_IMAGE_MAGIC) fail('verify.notAnImage', { offset: at });
   if (chip.imageChipId === null) return;
   const imageChipId = holder.data[rel + 12] | (holder.data[rel + 13] << 8);
-  if (imageChipId !== chip.imageChipId) {
-    const found = Object.entries(CHIPS).find(([, c]) => c.imageChipId === imageChipId)?.[0] ?? String(imageChipId);
-    fail('verify.wrongChip', { expected: chipFamily, found });
+  if (imageChipId !== chip.imageChipId) fail('verify.wrongChip', { expected: chipFamily, found: familyOfImageChipId(imageChipId) });
+}
+
+/**
+ * Every part that looks like an ESP image (at least a header long and `0xE9` first) must carry
+ * this family's image chip id, wherever it is written. An application at `0x20000` never covers
+ * the bootloader offset, so without this an app built for another chip would pass `checkBootImage`.
+ * A data part that happens to start with `0xE9` is refused too; that is the price of failing closed.
+ * Families whose images carry no chip id (ESP8266) are not checked.
+ */
+export function checkImageParts(parts, chipFamily) {
+  const chip = CHIPS[chipFamily];
+  if (!chip) fail('verify.chipUnknown', { chipFamily });
+  if (chip.imageChipId === null) return;
+  for (const p of parts) {
+    if (p.data.length < ESP_IMAGE_HEADER_BYTES || p.data[0] !== ESP_IMAGE_MAGIC) continue;
+    const imageChipId = p.data[12] | (p.data[13] << 8);
+    if (imageChipId !== chip.imageChipId) fail('verify.wrongChip', { expected: chipFamily, found: familyOfImageChipId(imageChipId), offset: p.offset });
   }
 }
 

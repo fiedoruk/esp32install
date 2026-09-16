@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { CHIPS, sha256Hex, checkFetchedPart, checkLayout, checkBootImage, esptoolCommand } from '../app/verify.js';
+import { CHIPS, sha256Hex, checkFetchedPart, checkLayout, checkBootImage, checkImageParts, esptoolCommand } from '../app/verify.js';
 
 const bytes = (n, fill = 0) => new Uint8Array(n).fill(fill);
 const ABC_SHA256 = 'ba7816bf8f01cfea414140de5dae2223b00361a396177a9cb410ff61f20015ad';
@@ -135,6 +135,29 @@ test('checkBootImage validates C5 and P4 at 0x2000', () => {
   checkBootImage([{ offset: 0, data: imageWithHeader(18, 0xe9, 0x2000) }], 'ESP32-P4');
   assert.throws(() => checkBootImage([{ offset: 0, data: imageWithHeader(18, 0xe9, 0x2000) }], 'ESP32-C5'),
     (e) => e.code === 'verify.wrongChip' && e.params.found === 'ESP32-P4');
+});
+
+/** An image header at byte 0 of a part: the shape of an application or a partition-table-less app image. */
+function appImage(chipId, length = 64) { const d = bytes(length, 0xff); d[0] = 0xe9; d[12] = chipId & 0xff; d[13] = chipId >> 8; return d; }
+
+test('checkImageParts: an app image for another chip is refused wherever it sits, with its offset', () => {
+  // An ESP32 application at 0x20000 on an ESP32-S3: nothing covers the S3 bootloader offset, so only this check sees it.
+  checkBootImage([{ offset: 0x20000, data: appImage(0) }], 'ESP32-S3');
+  assert.throws(() => checkImageParts([{ offset: 0x20000, data: appImage(0) }], 'ESP32-S3'),
+    (e) => e.code === 'verify.wrongChip' && e.params.expected === 'ESP32-S3' && e.params.found === 'ESP32' && e.params.offset === 0x20000);
+  assert.throws(() => checkImageParts([{ offset: 0x8000, data: bytes(3072, 0xaa) }, { offset: 0x10000, data: appImage(18) }], 'ESP32-C5'),
+    (e) => e.code === 'verify.wrongChip' && e.params.found === 'ESP32-P4');
+  assert.throws(() => checkImageParts([{ offset: 0, data: appImage(0x7fff) }], 'ESP32'), (e) => e.code === 'verify.wrongChip' && e.params.found === '32767');
+});
+
+test('checkImageParts accepts matching images, data parts, short parts, and skips families without an image chip id', () => {
+  checkImageParts([{ offset: 0x20000, data: appImage(9) }, { offset: 0x8000, data: bytes(3072, 0xaa) }], 'ESP32-S3');
+  checkImageParts([{ offset: 0x10000, data: bytes(4096, 0x00) }], 'ESP32'); // no 0xE9: a data part
+  checkImageParts([{ offset: 0x10000, data: appImage(9, 23) }], 'ESP32'); // shorter than a header: not an image
+  checkImageParts([{ offset: 0, data: appImage(9) }], 'ESP8266'); // ESP8266 images carry no chip id
+  assert.throws(() => checkImageParts([{ offset: 0, data: appImage(0) }], 'ESP32-XX'), (e) => e.code === 'verify.chipUnknown');
+  // Positive control: a 24-byte part is long enough to be checked.
+  assert.throws(() => checkImageParts([{ offset: 0x10000, data: appImage(9, 24) }], 'ESP32'), (e) => e.code === 'verify.wrongChip');
 });
 
 test('esptoolCommand renders offsets and file names in order', () => {

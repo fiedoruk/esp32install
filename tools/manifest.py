@@ -113,6 +113,24 @@ def boot_image_problem(chip_family: str, head: bytes, rel: int) -> Optional[str]
     return None
 
 
+def image_part_problem(chip_family: str, head: bytes, size: int) -> Optional[str]:
+    """Why a part that starts like an ESP image is not one for `chip_family`, or None.
+
+    Mirrors checkImageParts in app/verify.js: a part at least a header long whose first byte
+    is the image magic must carry this family's image chip id, wherever it is written. A part
+    that does not look like an image is not judged. Families without an image chip id are skipped.
+    """
+    chip = CHIPS[chip_family]
+    if chip.image_chip_id is None or size < ESP_IMAGE_HEADER_BYTES or len(head) < ESP_IMAGE_HEADER_BYTES:
+        return None
+    if head[0] != ESP_IMAGE_MAGIC:
+        return None
+    found = head[12] | (head[13] << 8)
+    if found != chip.image_chip_id:
+        return 'image is built for %s, not %s' % (family_for_image_chip_id(found), chip_family)
+    return None
+
+
 def covering(spans: Sequence[Tuple[int, int]], at: int) -> Optional[int]:
     """Index of the (offset, size) span that contains flash address `at`."""
     for index, (offset, size) in enumerate(spans):
@@ -280,9 +298,17 @@ def validate_options(opts: Options) -> None:
             raise UsageError('a region checksum must be 64 hexadecimal characters')
     if opts.update_table is not None and opts.update_table < 0:
         raise UsageError('--update-table must not be negative')
-    if opts.profile == 'preserve' and not (opts.compat_regions or opts.first_regions):
-        raise UsageError('the preserve profile needs at least one --compat-region or --first-region: '
-                         'without one the page cannot tell whether the flash it is about to keep is ours')
+    if opts.profile == 'preserve':
+        if not (opts.compat_regions or opts.first_regions):
+            raise UsageError('the preserve profile needs at least one --compat-region or --first-region: '
+                             'without one the page cannot tell whether the flash it is about to keep is ours')
+        for region in list(opts.compat_regions) + list(opts.first_regions):
+            if region.sha256 is None:
+                raise UsageError('the preserve profile needs a checksum on every region (OFFSET:SIZE:SHA256): '
+                                 'a region without one is a claim the page cannot check, so it refuses the manifest')
+        if opts.update_table is None:
+            raise UsageError('the preserve profile needs --update-table OFFSET, the partition table offset, '
+                             'and a part written at exactly that offset')
 
 
 def measure(parts: Sequence[Part]) -> List[Dict[str, Any]]:
@@ -348,6 +374,15 @@ def build_manifest(parts: Sequence[Part], opts: Any) -> Dict[str, Any]:
             problem = boot_image_problem(options.chip, hit['head'], chip.bootloader_offset - hit['offset'])
             if problem is not None:
                 raise ManifestError('%s at 0x%x: %s' % (hit['file'].name, hit['offset'], problem))
+    # Every part that starts like an image has to be for this chip, in both profiles: a preserve
+    # release writes an application that never covers the bootloader offset.
+    for m in measured:
+        problem = image_part_problem(options.chip, m['head'], m['size'])
+        if problem is not None:
+            raise ManifestError('%s at 0x%x: %s' % (m['file'].name, m['offset'], problem))
+    if options.profile == 'preserve' and all(m['offset'] != options.update_table for m in measured):
+        raise UsageError('--update-table 0x%x names an offset no part is written at; the preserve '
+                         'profile needs the partition table among the parts' % options.update_table)
 
     build: Dict[str, Any] = {}
     if options.board_key:
@@ -403,9 +438,14 @@ def part_argument(text: str) -> Part:
 
 
 def region_argument(text: str, with_checksum: bool = True) -> Region:
+    """OFFSET:SIZE:SHA256 for a compared region; OFFSET:SIZE for a range that must be blank.
+
+    The checksum is not optional: a region without one is a claim the page cannot check and the
+    manifest layer refuses it, so the generator refuses it here rather than writing a dead manifest.
+    """
     fields = text.split(':')
-    wanted = '2 or 3 fields (OFFSET:SIZE[:SHA256])' if with_checksum else '2 fields (OFFSET:SIZE)'
-    if len(fields) not in ((2, 3) if with_checksum else (2,)):
+    wanted = '3 fields (OFFSET:SIZE:SHA256)' if with_checksum else '2 fields (OFFSET:SIZE)'
+    if len(fields) != (3 if with_checksum else 2):
         raise argparse.ArgumentTypeError('%r needs %s' % (text, wanted))
     try:
         offset, size = parse_int(fields[0]), parse_int(fields[1])
@@ -475,16 +515,17 @@ def make_parser() -> argparse.ArgumentParser:
     parser.add_argument('--path-prefix', metavar='PREFIX',
                         help='put this in front of each file name instead of the path from the manifest')
     parser.add_argument('--compat-region', dest='compat_regions', action='append', default=[],
-                        type=region_argument, metavar='OFFSET:SIZE[:SHA256]',
-                        help='flash region that must match before a preserve update (repeatable)')
+                        type=region_argument, metavar='OFFSET:SIZE:SHA256',
+                        help='flash region that must match before a preserve install (repeatable)')
     parser.add_argument('--first-region', dest='first_regions', action='append', default=[],
-                        type=region_argument, metavar='OFFSET:SIZE[:SHA256]',
+                        type=region_argument, metavar='OFFSET:SIZE:SHA256',
                         help='region that identifies a first install (repeatable)')
     parser.add_argument('--first-empty', dest='first_empty', action='append', default=[],
                         type=empty_region_argument, metavar='OFFSET:SIZE',
                         help='region that must be blank on a first install (repeatable)')
     parser.add_argument('--update-table', type=number_argument, metavar='OFFSET',
-                        help='partition table offset the preserve profile reads')
+                        help='partition table offset; required by the preserve profile, and one part '
+                             'must be written exactly there')
     return parser
 
 

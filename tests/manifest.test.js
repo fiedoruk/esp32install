@@ -188,3 +188,75 @@ test('credentials are stripped from a resolved part URL', () => {
   const url = normalizeManifest(raw, URL_M).builds[0].parts[0].url;
   assert.equal(url, 'https://esp32ai.me/os/x.bin');
 });
+
+test('a build may repeat the manifest profile but never change it (a preserve build in a factory manifest would erase)', () => {
+  const mixed = load('manifest-v2-factory.json');
+  mixed.builds[1].parts[0].sha256 = 'a'.repeat(64);
+  mixed.builds[0].profile = 'preserve';
+  assert.throws(() => normalizeManifest(mixed, URL_M), (e) => e.code === 'manifest.profile' && e.params.boardKey === 'core2');
+  const other = load('manifest-v2-preserve.json');
+  other.builds[0].profile = 'factory';
+  assert.throws(() => normalizeManifest(other, URL_M), (e) => e.code === 'manifest.profile' && e.params.boardKey === 'note4c');
+  const same = load('manifest-v2-preserve.json');
+  same.builds[0].profile = 'preserve';
+  assert.equal(normalizeManifest(same, URL_M).builds[0].profile, 'preserve');
+  const explicit = load('manifest-v2-factory.json');
+  explicit.builds[1].parts[0].sha256 = 'a'.repeat(64);
+  explicit.builds[0].profile = 'factory';
+  assert.equal(normalizeManifest(explicit, URL_M).builds[0].profile, 'factory');
+});
+
+test('preserve requires update.tableOffset and a part written at exactly that offset', () => {
+  const noTable = load('manifest-v2-preserve.json');
+  delete noTable.builds[0].compatibility.update;
+  assert.throws(() => normalizeManifest(noTable, URL_M), code('manifest.compatibility'));
+  const noOffset = load('manifest-v2-preserve.json');
+  noOffset.builds[0].compatibility.update = {};
+  assert.throws(() => normalizeManifest(noOffset, URL_M), code('manifest.compatibility'));
+  const noPart = load('manifest-v2-preserve.json');
+  noPart.builds[0].compatibility.update.tableOffset = 0x9000;
+  assert.throws(() => normalizeManifest(noPart, URL_M), code('manifest.compatibility'));
+  const partRemoved = load('manifest-v2-preserve.json');
+  partRemoved.builds[0].parts = partRemoved.builds[0].parts.filter((p) => p.offset !== 32768);
+  assert.throws(() => normalizeManifest(partRemoved, URL_M), code('manifest.compatibility'));
+  // Positive control: the fixture as shipped has both.
+  assert.equal(normalizeManifest(load('manifest-v2-preserve.json'), URL_M).builds[0].compatibility.update.tableOffset, 32768);
+});
+
+test('preserve requires sha256 on every region and every firstInstall region; empty ranges carry none', () => {
+  const region = load('manifest-v2-preserve.json');
+  delete region.builds[0].compatibility.regions[1].sha256;
+  assert.throws(() => normalizeManifest(region, URL_M), code('manifest.compatibility'));
+  const first = load('manifest-v2-preserve.json');
+  delete first.builds[0].compatibility.firstInstall.regions[0].sha256;
+  assert.throws(() => normalizeManifest(first, URL_M), code('manifest.compatibility'));
+  const ok = normalizeManifest(load('manifest-v2-preserve.json'), URL_M).builds[0].compatibility;
+  assert.equal(ok.firstInstall.empty[0].sha256, undefined);
+  // A factory build with a compatibility block is not held to the preserve rules.
+  const factory = oneBuild({ compatibility: { regions: [{ offset: 0, size: 16 }] } });
+  assert.equal(normalizeManifest(factory, URL_M).builds[0].compatibility.regions[0].sha256, undefined);
+});
+
+test('manifest.build, manifest.part and manifest.flashSizeMB are the codes for those shapes', () => {
+  for (const bad of [null, 'x', 42, []]) {
+    assert.throws(() => normalizeManifest(mini({ builds: [bad] }), URL_M),
+      (e) => e instanceof InstallError && e.code === 'manifest.build' && e.params.index === 1, `build ${JSON.stringify(bad)}`);
+  }
+  for (const bad of [null, 'x', 42, []]) {
+    assert.throws(() => normalizeManifest(oneBuild({ boardKey: 'k', parts: [{ path: 'a.bin', offset: 0 }, bad] }), URL_M),
+      (e) => e instanceof InstallError && e.code === 'manifest.part' && e.params.boardKey === 'k' && e.params.index === 2, `part ${JSON.stringify(bad)}`);
+  }
+  for (const bad of [-1, 1.5, 1025, '16', NaN]) {
+    assert.throws(() => normalizeManifest(oneBuild({ boardKey: 'k', flashSizeMB: bad }), URL_M),
+      (e) => e instanceof InstallError && e.code === 'manifest.flashSizeMB' && e.params.boardKey === 'k', `flashSizeMB ${bad}`);
+  }
+  assert.equal(normalizeManifest(oneBuild({ flashSizeMB: 16 }), URL_M).builds[0].flashSizeMB, 16);
+  assert.equal(normalizeManifest(oneBuild({ flashSizeMB: null }), URL_M).builds[0].flashSizeMB, undefined);
+});
+
+test('a part with a javascript:, data:, blob: or file: scheme is refused even when its origin is allowed', () => {
+  for (const path of ['javascript:alert(1)', 'data:application/octet-stream;base64,6QAA', 'blob:https://esp32ai.me/x', 'file:///etc/passwd', 'ftp://esp32ai.me/x.bin']) {
+    assert.throws(() => normalizeManifest(oneBuild({ parts: [{ path, offset: 0 }] }), URL_M), code('manifest.origin'), path);
+    assert.throws(() => normalizeManifest(oneBuild({ parts: [{ path, offset: 0 }] }), URL_M, { allowOrigins: ['null', 'https://esp32ai.me'] }), code('manifest.origin'), path);
+  }
+});

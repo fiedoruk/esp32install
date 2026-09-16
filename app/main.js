@@ -99,7 +99,7 @@ async function boot() {
     chooseBuild: (builds, hw) => ui.chooseBuild(builds, hw),
     confirmErase: (build, mode) => ui.confirmErase(build, mode),
     saveBackup: (bytes, filename) => saveBlob(bytes, filename),
-    requestBackupFile: () => ui.requestBackupFile(),
+    requestBackupFile: (filename) => ui.requestBackupFile(filename),
   });
   ui.bindConnect(async () => {
     ui.setBusy(true);

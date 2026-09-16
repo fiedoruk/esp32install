@@ -24,33 +24,41 @@ function resolveUrl(path, base, allowOrigins) {
   return url.href;
 }
 
-function normalizeCompatibility(raw, boardKey, profile) {
+/**
+ * `preserve` needs everything it will compare to be checkable up front: a checksum on every
+ * region, and a partition-table offset that one of the parts is written at. A manifest that
+ * would only be refused after the device has been opened is refused here instead.
+ */
+function normalizeCompatibility(raw, boardKey, profile, parts) {
+  const preserve = profile === 'preserve';
   if (raw == null) {
-    if (profile === 'preserve') fail('manifest.compatibility', { boardKey });
+    if (preserve) fail('manifest.compatibility', { boardKey });
     return undefined;
   }
   if (!isPlainObject(raw)) fail('manifest.compatibility', { boardKey });
-  const region = (r) => {
+  const region = (r, hashed) => {
     if (!isPlainObject(r) || !isInt(r.offset) || r.offset < 0 || !isInt(r.size) || r.size <= 0) fail('manifest.compatibility', { boardKey });
     if (r.sha256 !== undefined && !HEX64.test(String(r.sha256).toLowerCase())) fail('manifest.compatibility', { boardKey });
+    if (hashed && preserve && r.sha256 === undefined) fail('manifest.compatibility', { boardKey });
     return { offset: r.offset, size: r.size, ...(r.sha256 ? { sha256: String(r.sha256).toLowerCase() } : {}) };
   };
-  const list = (v) => (Array.isArray(v) ? v.map(region) : []);
+  const list = (v, hashed) => (Array.isArray(v) ? v.map((r) => region(r, hashed)) : []);
   const tableOffset = raw.update?.tableOffset;
   if (tableOffset !== undefined && (!isInt(tableOffset) || tableOffset < 0)) fail('manifest.compatibility', { boardKey });
   const out = {
-    regions: list(raw.regions),
-    firstInstall: { regions: list(raw.firstInstall?.regions), empty: list(raw.firstInstall?.empty) },
+    regions: list(raw.regions, true),
+    firstInstall: { regions: list(raw.firstInstall?.regions, true), empty: list(raw.firstInstall?.empty, false) },
     update: { tableOffset },
   };
-  if (profile === 'preserve' && out.regions.length + out.firstInstall.regions.length === 0) {
-    fail('manifest.compatibility', { boardKey });
+  if (preserve) {
+    if (out.regions.length + out.firstInstall.regions.length === 0) fail('manifest.compatibility', { boardKey });
+    if (tableOffset === undefined || !parts.some((p) => p.offset === tableOffset)) fail('manifest.compatibility', { boardKey });
   }
   return out;
 }
 
 function normalizePart(p, i, boardKey, base, allowOrigins, profile) {
-  if (!p || typeof p !== 'object') fail('manifest.part', { boardKey, index: i + 1 });
+  if (!isPlainObject(p)) fail('manifest.part', { boardKey, index: i + 1 });
   const url = resolveUrl(p.path, base, allowOrigins);
   if (!isInt(p.offset) || p.offset < 0) fail('manifest.offset', { boardKey, index: i + 1 });
   const part = { path: p.path, url, offset: p.offset };
@@ -70,12 +78,14 @@ function normalizePart(p, i, boardKey, base, allowOrigins, profile) {
 }
 
 function normalizeBuild(b, i, manifest, base, allowOrigins) {
-  if (!b || typeof b !== 'object') fail('manifest.build', { index: i + 1 });
+  if (!isPlainObject(b)) fail('manifest.build', { index: i + 1 });
   const boardKey = b.boardKey === undefined ? `build-${i + 1}` : String(b.boardKey);
   if (!KEY.test(boardKey)) fail('manifest.boardKey', { index: i + 1 });
   if (!CHIP_FAMILIES.has(b.chipFamily)) fail('manifest.chipFamily', { boardKey, chipFamily: String(b.chipFamily) });
-  const profile = b.profile ?? manifest.profile;
-  if (profile !== 'factory' && profile !== 'preserve') fail('manifest.profile', { boardKey });
+  // The engine dispatches on the manifest's profile, so a build may repeat it but never change it:
+  // a `preserve` build inside a `factory` manifest would otherwise run through the erase path.
+  const profile = manifest.profile;
+  if (b.profile !== undefined && b.profile !== profile) fail('manifest.profile', { boardKey });
   const eraseAll = Boolean(b.eraseAll ?? manifest.eraseAll);
   if (profile === 'preserve' && eraseAll) fail('manifest.preserveNoErase', { boardKey });
   const optInt = (v, code, max) => {
@@ -89,6 +99,7 @@ function normalizeBuild(b, i, manifest, base, allowOrigins) {
     return [...v];
   };
   if (!Array.isArray(b.parts) || b.parts.length === 0) fail('manifest.noParts', { boardKey });
+  const parts = b.parts.map((p, j) => normalizePart(p, j, boardKey, base, allowOrigins, profile));
   return {
     boardKey,
     board: typeof b.board === 'string' && b.board.trim() ? b.board : (typeof b.name === 'string' ? b.name : boardKey),
@@ -100,8 +111,8 @@ function normalizeBuild(b, i, manifest, base, allowOrigins) {
     featuresAll: strList(b.featuresAll, 'manifest.filters'),
     profile,
     eraseAll,
-    compatibility: normalizeCompatibility(b.compatibility, boardKey, profile),
-    parts: b.parts.map((p, j) => normalizePart(p, j, boardKey, base, allowOrigins, profile)),
+    compatibility: normalizeCompatibility(b.compatibility, boardKey, profile, parts),
+    parts,
   };
 }
 

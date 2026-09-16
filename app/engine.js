@@ -9,10 +9,11 @@
  */
 import { InstallError } from './errors.js';
 import { compatibleBuilds, mismatchReasons } from './match.js';
-import { checkFetchedPart, checkLayout, checkBootImage, sha256Hex } from './verify.js';
+import { checkFetchedPart, checkLayout, checkBootImage, checkImageParts, sha256Hex } from './verify.js';
 import { md5Hex } from './md5.js';
 import { runPreserve } from './preserve.js';
 import { readWholeFlash, backupFilename } from './backup.js';
+import { etaSeconds } from './progress.js';
 
 const BAUD = 460800;
 const PART_MAX = 32 * 1024 * 1024;
@@ -70,6 +71,7 @@ export async function fetchBytes(fetchFn, url, max) {
 
 export function createInstaller(deps) {
   const { esptool, requestPort, fetchFn, onEvent, chooseBuild, confirmErase, saveBackup } = deps;
+  const now = deps.now ?? Date.now; // injectable clock, so a test can see an ETA without waiting
   let busy = false, transport = null, loader = null, cancelled = false, lost = false, writing = false;
   const emit = (e) => { try { onEvent?.(e); } catch { /* UI errors must not break the flow */ } };
   const stage = (s, percent, params = {}, eta) => emit({ type: 'stage', stage: s, percent, params, eta });
@@ -124,8 +126,9 @@ export function createInstaller(deps) {
 
   /**
    * Downloads every part and verifies it in a fixed order: per part `checkFetchedPart`,
-   * then `checkLayout` against the detected flash size, then `checkBootImage` against
-   * the chip esptool-js reported (`loader.chip.CHIP_NAME`, never the description string).
+   * then `checkLayout` against the detected flash size, then `checkBootImage` and
+   * `checkImageParts` against the chip esptool-js reported (`loader.chip.CHIP_NAME`,
+   * never the description string). Both profiles come through here.
    */
   async function download(build, hw) {
     const parts = [];
@@ -141,6 +144,7 @@ export function createInstaller(deps) {
     stage('verifying', 32);
     checkLayout(parts, hw.flashSizeMB * 1024 * 1024);
     checkBootImage(parts, hw.chipFamily);
+    checkImageParts(parts, hw.chipFamily);
     return parts;
   }
 
@@ -166,13 +170,11 @@ export function createInstaller(deps) {
       // esptool-js reports `written`/`partTotal` in compressed bytes; scale the per-part
       // fraction to the uncompressed size so the overall ratio stays in uncompressed bytes.
       reportProgress: (i, written, partTotal) => {
-        startedAt ||= Date.now();
+        startedAt ||= now();
         const before = parts.slice(0, i).reduce((n, p) => n + p.data.length, 0);
         const frac = partTotal > 0 ? Math.min(written / partTotal, 1) : 0;
         done = before + frac * parts[i].data.length;
-        const elapsed = (Date.now() - startedAt) / 1000;
-        const eta = done > 0 && elapsed > 1 ? Math.round(((total - done) * elapsed) / done) : undefined;
-        stage('writing', 40 + (done / total) * 50, { n: i + 1, total: parts.length, written, partTotal }, eta);
+        stage('writing', 40 + (done / total) * 50, { n: i + 1, total: parts.length, written, partTotal }, etaSeconds(startedAt, done, total, now));
       },
     });
   }
@@ -187,7 +189,8 @@ export function createInstaller(deps) {
     if (job.options?.backup) {
       stage('backup', 33);
       const flashBytes = hw.flashSizeMB * 1024 * 1024;
-      const bytes = await readWholeFlash(loader, flashBytes, (done, total) => stage('backup', 33 + (done / total) * 2));
+      const startedAt = now();
+      const bytes = await readWholeFlash(loader, flashBytes, (done, total) => stage('backup', 33 + (done / total) * 2, {}, etaSeconds(startedAt, done, total, now)));
       await saveBackup(bytes, backupFilename(manifest.name, await sha256Hex(bytes)));
       check();
     }
@@ -221,7 +224,7 @@ export function createInstaller(deps) {
       try {
         const profile = job.manifest.profile;
         const result = profile === 'preserve'
-          ? await runPreserve({ job, connect, pick, download, loader: () => loader, stage, log, emit, check, deps, setWriting: () => { writing = true; } })
+          ? await runPreserve({ job, connect, pick, download, loader: () => loader, stage, log, emit, check, deps, now, setWriting: () => { writing = true; } })
           : await runFactory(job);
         await cleanup();
         emit({ type: 'done', result });

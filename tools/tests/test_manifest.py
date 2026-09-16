@@ -250,11 +250,87 @@ class GeneratorTest(unittest.TestCase):
     def test_a_malformed_region_is_a_usage_error(self):
         self.assertEqual(self.generate('--profile', 'preserve', '--compat-region', '0x0')[0], 2)
 
+    def test_a_region_without_a_checksum_is_a_usage_error(self):
+        for flag in ('--compat-region', '--first-region'):
+            with self.subTest(flag=flag):
+                code, text = self.generate('--profile', 'preserve', flag, '0x0:0x8000', '--update-table', '0x1000')
+                self.assertEqual(code, 2, text)
+                self.assertIn('SHA256', text)
+                self.assertFalse(self.out.exists())
+
+    def test_the_importable_api_refuses_a_preserve_region_without_a_checksum(self):
+        with self.assertRaises(manifest.UsageError) as caught:
+            manifest.build_manifest(
+                [manifest.Part(self.bin, 0x1000)],
+                manifest.Options(chip='ESP32', name='D', version='1', out=self.out, profile='preserve',
+                                 compat_regions=[manifest.Region(0, 0x8000)], update_table=0x1000))
+        self.assertIn('checksum', str(caught.exception))
+
+    def test_preserve_without_an_update_table_is_a_usage_error(self):
+        code, text = self.generate('--profile', 'preserve', '--compat-region', '0x0:0x8000:' + 'a' * 64)
+        self.assertEqual(code, 2, text)
+        self.assertIn('--update-table', text)
+        self.assertFalse(self.out.exists())
+
+    def test_an_update_table_with_no_part_at_that_offset_is_a_usage_error(self):
+        code, text = self.generate('--profile', 'preserve', '--compat-region', '0x0:0x8000:' + 'a' * 64,
+                                   '--update-table', '0x8000')  # the only part sits at 0x1000
+        self.assertEqual(code, 2, text)
+        self.assertIn('0x8000', text)
+        self.assertFalse(self.out.exists())
+
+    def test_an_application_for_another_chip_is_refused_in_the_preserve_profile(self):
+        app = self.firmware / 'app.bin'
+        app.write_bytes(esp_image(9, length=2048))  # an ESP32-S3 application, nowhere near the bootloader offset
+        table = self.firmware / 'table.bin'
+        table.write_bytes(b'\x00' * 3072)
+        code, text = self.cli(f'{app}@0x10000', f'{table}@0x8000', '--chip', 'ESP32', '--name', 'D',
+                              '--version', '1', '--profile', 'preserve', '--update-table', '0x8000',
+                              '--compat-region', '0x0:0x8000:' + 'a' * 64, '--out', self.out)
+        self.assertEqual(code, 1, text)
+        self.assertIn('ESP32-S3', text)
+        self.assertIn('0x10000', text)
+        self.assertFalse(self.out.exists())
+
+    def test_an_application_for_another_chip_is_refused_in_the_factory_profile_too(self):
+        app = self.firmware / 'app.bin'
+        app.write_bytes(esp_image(9, length=2048))
+        code, text = self.cli(f'{self.bin}@0x1000', f'{app}@0x10000', '--chip', 'ESP32', '--name', 'D',
+                              '--version', '1', '--out', self.out)
+        self.assertEqual(code, 1, text)
+        self.assertIn('ESP32-S3', text)
+
+    def test_a_data_part_that_does_not_start_like_an_image_is_not_judged(self):
+        data = self.firmware / 'data.bin'
+        data.write_bytes(b'\x00' * 4096)
+        code, text = self.cli(f'{self.bin}@0x1000', f'{data}@0x10000', '--chip', 'ESP32', '--name', 'D',
+                              '--version', '1', '--out', self.out)
+        self.assertEqual(code, 0, text)
+
+    def test_an_esp8266_image_carries_no_chip_id_and_is_not_judged(self):
+        app = self.firmware / 'app.bin'
+        app.write_bytes(esp_image(9, length=2048))
+        code, text = self.cli(f'{app}@0x10000', '--chip', 'ESP8266', '--name', 'D', '--version', '1',
+                              '--out', self.out)
+        self.assertEqual(code, 0, text)
+
+    def test_image_part_problem_mirrors_the_page(self):
+        self.assertIsNone(manifest.image_part_problem('ESP32', esp_image(0), 4096))
+        self.assertIn('ESP32-S3', manifest.image_part_problem('ESP32', esp_image(9), 4096))
+        self.assertIsNone(manifest.image_part_problem('ESP32', esp_image(9), 23), 'shorter than a header')
+        self.assertIsNone(manifest.image_part_problem('ESP32', esp_image(9, magic=0x00), 4096), 'no magic')
+        self.assertIsNone(manifest.image_part_problem('ESP8266', esp_image(9), 4096))
+        self.assertIsNotNone(manifest.image_part_problem('ESP32', esp_image(9), 24), '24 bytes is a header')
+
     # --- preserve profile ------------------------------------------------
 
     def test_preserve_emits_compatibility_in_the_shape_the_page_accepts(self):
         digest = 'a' * 64
-        code, text = self.generate(
+        table = self.firmware / 'table.bin'
+        table.write_bytes(b'\x00' * 3072)
+        code, text = self.cli(
+            f'{self.bin}@0x10000', f'{table}@0x8000', '--chip', 'ESP32', '--name', 'Demo firmware',
+            '--version', '1.0.0', '--out', self.out,
             '--profile', 'preserve',
             '--compat-region', f'0x0:0x8000:{digest}',
             '--first-region', f'0x8000:0x1000:{digest}',
@@ -269,11 +345,18 @@ class GeneratorTest(unittest.TestCase):
                          [{'offset': 0x8000, 'size': 0x1000, 'sha256': digest}])
         self.assertEqual(compat['firstInstall']['empty'], [{'offset': 0x10000, 'size': 0x10000}])
         self.assertEqual(compat['update']['tableOffset'], 0x8000)
+        self.assertEqual([p['offset'] for p in data['builds'][0]['parts']], [0x10000, 0x8000])
 
-    def test_a_region_checksum_is_optional(self):
-        self.assertEqual(self.generate('--profile', 'preserve', '--compat-region', '0x0:0x8000')[0], 0)
+    def test_a_region_checksum_is_lower_cased(self):
+        digest = 'A' * 64
+        code, text = self.generate('--profile', 'preserve', '--compat-region', f'0x0:0x8000:{digest}',
+                                   '--update-table', '0x1000')
+        self.assertEqual(code, 0, text)
         compat = json.loads(self.out.read_text('utf-8'))['builds'][0]['compatibility']
-        self.assertEqual(compat['regions'], [{'offset': 0, 'size': 0x8000}])
+        self.assertEqual(compat['regions'], [{'offset': 0, 'size': 0x8000, 'sha256': 'a' * 64}])
+
+    def test_a_factory_manifest_needs_neither_regions_nor_a_table(self):
+        self.assertEqual(self.generate()[0], 0)
 
     # --- importable API --------------------------------------------------
 

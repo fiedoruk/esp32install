@@ -35,7 +35,7 @@ function deviceImage({ mode = 'first', dirtySettings = false, bootloader = BOOT 
   return img;
 }
 
-async function manifestFor(img, { minimal = false } = {}) {
+async function manifestFor(img, { minimal = false, app = APP } = {}) {
   const page = (off, size) => sha256Hex(img.slice(off, off + size));
   if (minimal) {
     // Only the bootloader region and the table offset: the table page alone must stretch the header.
@@ -43,7 +43,7 @@ async function manifestFor(img, { minimal = false } = {}) {
       schema: 2, name: 'Home', version: '0.4.4', profile: 'preserve',
       builds: [{ boardKey: 'note4c', chipFamily: 'ESP32-S3', flashSizeMB: 16,
         compatibility: { regions: [{ offset: 0, size: 0x8000, sha256: await page(0, 0x8000) }], update: { tableOffset: 0x8000 } },
-        parts: [{ path: 'app.bin', offset: 0x20000, size: APP.length, sha256: await sha256Hex(APP) },
+        parts: [{ path: 'app.bin', offset: 0x20000, size: app.length, sha256: await sha256Hex(app) },
                 { path: 'table.bin', offset: 0x8000, size: TABLE.length, sha256: await sha256Hex(TABLE) }] }],
     }, 'https://h/install/manifests/home.json');
   }
@@ -57,7 +57,7 @@ async function manifestFor(img, { minimal = false } = {}) {
         update: { tableOffset: 0x8000 },
       },
       parts: [
-        { path: 'app.bin', offset: 0x20000, size: APP.length, sha256: await sha256Hex(APP) },
+        { path: 'app.bin', offset: 0x20000, size: app.length, sha256: await sha256Hex(app) },
         { path: 'table.bin', offset: 0x8000, size: TABLE.length, sha256: await sha256Hex(TABLE) },
       ],
     }],
@@ -79,22 +79,23 @@ function afterWrite(img, parts) {
 const fileOf = (bytes) => ({ size: bytes.length, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) });
 
 /** Wires the installer with a device image; the saved backup is what `requestBackupFile` hands back unless overridden. */
-async function setup({ img = deviceImage(), fakeOptions = {}, manifest, backupFile } = {}) {
+async function setup({ img = deviceImage(), fakeOptions = {}, manifest, backupFile, app = APP, now } = {}) {
   const fake = makeFakeEsptool({ chipName: 'ESP32-S3', flashImage: img, ...fakeOptions });
   fakes.push(fake);
-  manifest ??= await manifestFor(img);
+  manifest ??= await manifestFor(img, { app });
   const events = [];
   const saved = [];
   const port = { getInfo: () => ({ usbVendorId: 0x303a, usbProductId: 0x1001 }) };
   const inst = createInstaller({
     esptool: fake,
     requestPort: async () => port,
-    fetchFn: async (url) => ({ ok: true, status: 200, arrayBuffer: async () => (url.endsWith('app.bin') ? APP : TABLE).buffer.slice(0) }),
+    fetchFn: async (url) => ({ ok: true, status: 200, arrayBuffer: async () => (url.endsWith('app.bin') ? app : TABLE).buffer.slice(0) }),
     onEvent: (e) => events.push(e),
     chooseBuild: async (builds) => builds[0],
     confirmErase: async () => { throw new Error('preserve must never ask about erasing'); },
     saveBackup: async (bytes, name) => { fake.calls.push(['saveBackup', name]); saved.push(bytes); },
-    requestBackupFile: async () => { fake.calls.push(['requestBackupFile']); return backupFile ?? fileOf(saved.at(-1)); },
+    requestBackupFile: async (filename) => { fake.calls.push(['requestBackupFile', filename]); return backupFile ?? fileOf(saved.at(-1)); },
+    ...(now ? { now } : {}),
   });
   return { inst, manifest, events, fake, saved, img };
 }
@@ -128,6 +129,46 @@ test('first install on a matching device: security ok, header ok, backup require
   assert.ok(events.some((e) => e.type === 'stage' && e.stage === 'checkingDevice'));
   assert.ok(events.some((e) => e.type === 'stage' && e.stage === 'backup'));
   assert.equal(events.at(-1).type, 'done');
+});
+
+test('the backup dialog is asked for the file by name, and the name is the one in the result', async () => {
+  const { inst, manifest, fake } = await setup();
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  const ask = fake.calls.find((c) => c[0] === 'requestBackupFile');
+  assert.match(ask[1], /^Home-backup-[0-9a-f]{8}\.bin$/);
+  assert.equal(ask[1], r.backup.filename);
+  assert.equal(ask[1].slice(12, 20), r.backup.sha256.slice(0, 8));
+});
+
+test('an application built for another chip → verify.wrongChip before any backup or write (nothing covers the S3 bootloader offset)', async () => {
+  const foreign = APP.slice();
+  foreign[0] = 0xe9; foreign[12] = 0; foreign[13] = 0; // ESP32 image chip id 0, at 0x20000 on an ESP32-S3 manifest
+  const { inst, manifest, fake, events } = await setup({ app: foreign });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }),
+    (e) => e.code === 'verify.wrongChip' && e.params.expected === 'ESP32-S3' && e.params.found === 'ESP32' && e.params.offset === 0x20000);
+  assert.ok(!called(fake, 'saveBackup')); assert.ok(!called(fake, 'requestBackupFile')); assert.ok(!called(fake, 'writeFlash'));
+  assert.ok(fake.calls.filter((c) => c[0] === 'readFlash').every((c) => c[1] + c[2] <= HEADER), 'only the header was read');
+  assert.equal(events.at(-1).type, 'error');
+  // Positive control: the same bytes with the S3 chip id install.
+  const own = APP.slice(); own[0] = 0xe9; own[12] = 9; own[13] = 0;
+  const s2 = await setup({ app: own });
+  assert.equal((await s2.inst.run({ manifest: s2.manifest, mode: 'first', options: {} })).verified, true);
+});
+
+test('backup stage events carry a numeric time estimate after the first chunk, in seconds, falling to 0 at the end', async () => {
+  let t = 0;
+  const { inst, manifest, events } = await setup({ now: () => (t += 1500) }); // every look at the clock is 1.5 s later
+  await inst.run({ manifest, mode: 'first', options: {} });
+  const backup = events.filter((e) => e.type === 'stage' && e.stage === 'backup');
+  assert.equal(backup[0].eta, undefined, 'the bare stage announcement has no estimate yet');
+  const measured = backup.slice(1);
+  assert.equal(measured.length, 128, 'two 16 MiB reads in 256 KiB chunks');
+  assert.ok(measured.every((e) => Number.isFinite(e.eta) && e.eta >= 0), `eta values: ${measured.slice(0, 3).map((e) => e.eta)}`);
+  assert.ok(measured[0].eta > measured.at(-2).eta, 'the estimate falls as the read progresses');
+  assert.equal(measured.at(-1).eta, 0);
+  assert.ok(measured.every((e, i) => i === 0 || e.percent >= measured[i - 1].percent), 'percent never goes backwards');
+  const writing = events.filter((e) => e.type === 'stage' && e.stage === 'writing');
+  assert.ok(writing.some((e) => Number.isFinite(e.eta)), 'the write stage uses the same clock');
 });
 
 test('secured device (secure boot flag, encryption count, or no security-info command) → device.secured before any read, backup or write', async () => {
@@ -332,6 +373,6 @@ test('reset failure after a verified preserve write still resolves with verified
 });
 
 test('eraseFlash is never called in preserve', () => {
-  assert.ok(fakes.length >= 20, `expected the preserve scenarios above to have run (${fakes.length})`);
+  assert.ok(fakes.length >= 24, `expected the preserve scenarios above to have run (${fakes.length})`);
   for (const fake of fakes) assert.ok(!called(fake, 'eraseFlash'));
 });

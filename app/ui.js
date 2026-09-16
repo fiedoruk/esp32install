@@ -260,12 +260,16 @@ export function mountUi({ i18n, system }) {
         d.showModal();
       });
     },
-    /** Preserve profile: the user re-selects the copy they just saved. Cancelling stops the install. */
-    requestBackupFile() {
+    /**
+     * Preserve profile: the user re-selects the copy they just saved. The dialog names the file
+     * and says where the browser put it, so nobody has to guess. Cancelling stops the install.
+     */
+    requestBackupFile(filename) {
       return new Promise((resolve, reject) => {
         const d = $('backup-dialog');
         const input = $('backup-file');
         input.value = '';
+        $('backup-hint').textContent = t('action.chooseBackupHint', { file: String(filename ?? '') });
         let settled = false;
         const finish = (file) => {
           if (settled) return;

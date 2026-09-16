@@ -125,3 +125,12 @@ test('no gradients, no oversized shadows, motion is switched off on request', ()
   assert.doesNotMatch(style, /box-shadow:\s*[^;]*\b(1[0-9]|[2-9][0-9])px/);
   assert.match(style, /prefers-reduced-motion/);
 });
+
+test('the backup dialog has a hint line that ui.js fills with the saved file name (D-06)', () => {
+  assert.match(html, /<dialog id="backup-dialog"[\s\S]*?<p id="backup-hint"><\/p>[\s\S]*?<\/dialog>/);
+  const ui = read('app/ui.js');
+  assert.match(ui, /requestBackupFile\(filename\)/);
+  assert.match(ui, /\$\('backup-hint'\)\.textContent = t\('action\.chooseBackupHint', \{ file: /);
+  assert.match(read('app/preserve.js'), /deps\.requestBackupFile\(filename\)/);
+  assert.match(read('app/main.js'), /requestBackupFile: \(filename\) => ui\.requestBackupFile\(filename\)/);
+});

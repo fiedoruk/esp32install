@@ -12,6 +12,7 @@ import { InstallError } from './errors.js';
 import { sha256Hex } from './verify.js';
 import { md5Hex } from './md5.js';
 import { readRange, verifiedBackup, matchesBackup, backupFilename } from './backup.js';
+import { etaSeconds } from './progress.js';
 
 const PAGE = 0x1000;
 const fail = (code, params = {}) => { throw new InstallError(code, params); };
@@ -40,11 +41,14 @@ async function assertUnlocked(loader, log) {
 const sectorDown = (n) => Math.floor(n / PAGE) * PAGE;
 const sectorUp = (n) => Math.ceil(n / PAGE) * PAGE;
 
-/** The page at `update.tableOffset`: in update mode it must hold this release's table, padded with 0xff. */
+/**
+ * The page at `update.tableOffset`: in update mode it must hold this release's table, padded
+ * with 0xff. The manifest layer already requires the offset and a part at it for `preserve`;
+ * this repeats the check so the flow fails closed even on a build that skipped that layer.
+ */
 function tablePageOf(build) {
   const offset = build.compatibility.update.tableOffset;
-  if (offset === undefined) return null;
-  const part = build.parts.find((p) => p.offset === offset);
+  const part = offset === undefined ? undefined : build.parts.find((p) => p.offset === offset);
   if (!part) fail('manifest.compatibility', { boardKey: build.boardKey });
   return { offset, size: Math.max(PAGE, part.size), part };
 }
@@ -79,7 +83,7 @@ async function checkHeader(header, build, mode, tablePage) {
 }
 
 /** Writes one part at a time, `eraseAll` false, and cross-checks each with the chip's own MD5. */
-async function writeParts(loader, parts, stage) {
+async function writeParts(loader, parts, stage, now) {
   const total = parts.reduce((n, p) => n + p.data.length, 0);
   let before = 0, startedAt = 0;
   for (let i = 0; i < parts.length; i++) {
@@ -89,11 +93,9 @@ async function writeParts(loader, parts, stage) {
       flashMode: 'keep', flashFreq: 'keep', flashSize: 'keep', eraseAll: false, compress: true,
       calculateMD5Hash: (image) => md5Hex(image),
       reportProgress: (_, written, partTotal) => {
-        startedAt ||= Date.now();
+        startedAt ||= now();
         const done = before + (partTotal > 0 ? Math.min(written / partTotal, 1) : 0) * p.data.length;
-        const elapsed = (Date.now() - startedAt) / 1000;
-        const eta = done > 0 && elapsed > 1 ? Math.round(((total - done) * elapsed) / done) : undefined;
-        stage('writing', 40 + (done / total) * 50, { n: i + 1, total: parts.length, written, partTotal }, eta);
+        stage('writing', 40 + (done / total) * 50, { n: i + 1, total: parts.length, written, partTotal }, etaSeconds(startedAt, done, total, now));
       },
     });
     const onChip = String(await loader.flashMd5sum(p.offset, p.data.length)).toLowerCase();
@@ -124,6 +126,7 @@ function checkUntouched(before, after, parts) {
 export async function runPreserve(ctx) {
   const { job, connect, pick, download, stage, log, check, deps } = ctx;
   const { manifest, mode } = job;
+  const now = ctx.now ?? Date.now;
   const loader = () => ctx.loader();
   const hw = await connect(manifest.builds.length === 1 ? manifest.builds[0] : null);
   const build = await pick(manifest, hw);
@@ -152,13 +155,16 @@ export async function runPreserve(ctx) {
   // copy on disk is proven to be the one the write is about to rely on.
   await sameDevice();
   stage('backup', 33);
-  const backup = await verifiedBackup(loader(), flashBytes, (done, total) => stage('backup', 33 + (done / total) * 6));
+  const backupStartedAt = now();
+  // Two full reads of the flash: the estimate covers both, from the rate of the first chunks.
+  const backup = await verifiedBackup(loader(), flashBytes, (done, total) => stage('backup', 33 + (done / total) * 6, {}, etaSeconds(backupStartedAt, done, total, now)));
   if (differs(backup.bytes, header, 0, headerSize) >= 0) fail('device.changed', { reason: 'header' });
   const filename = backupFilename(manifest.name, backup.sha256);
   await deps.saveBackup(backup.bytes, filename);
   log(`backup ${filename} sha256 ${backup.sha256}`);
   check();
-  const file = await deps.requestBackupFile();
+  // The dialog names the file, so the user knows what to look for in the browser's download folder.
+  const file = await deps.requestBackupFile(filename);
   check();
   if (!file) fail('serial.cancelled');
   if (!(await matchesBackup(file, backup.sha256, flashBytes))) fail('backup.file', { filename });
@@ -170,7 +176,7 @@ export async function runPreserve(ctx) {
   if (differs(again, header) >= 0) fail('device.changed', { reason: 'header' });
   check();
   ctx.setWriting();
-  await writeParts(loader(), parts, stage);
+  await writeParts(loader(), parts, stage, now);
   stage('md5', 92);
   checkUntouched(header, await readRange(loader(), 0, headerSize), parts);
   // The parts are written and verified by now; a failed reset is not a failed install.

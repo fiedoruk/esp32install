@@ -7,7 +7,7 @@ import { sha256Hex } from '../app/verify.js';
 
 function image(chipId) { const d = new Uint8Array(0x3000).fill(0xff); d[0x1000] = 0xe9; d[0x1000 + 12] = chipId; d[0x1000 + 13] = 0; return d; }
 
-async function setup({ fake = makeFakeEsptool(), img = image(0), sha, confirm = true, choose, fetch, confirmFn, saveBackup } = {}) {
+async function setup({ fake = makeFakeEsptool(), img = image(0), sha, confirm = true, choose, fetch, confirmFn, saveBackup, now } = {}) {
   const manifest = normalizeManifest({ name: 'Demo', version: '1.0', new_install_prompt_erase: true,
     builds: [{ chipFamily: 'ESP32', parts: [{ path: 'demo.bin', offset: 0, size: img.length, ...(sha ? { sha256: sha } : {}) }] }] },
     'https://h/install/manifests/demo.json');
@@ -21,6 +21,7 @@ async function setup({ fake = makeFakeEsptool(), img = image(0), sha, confirm = 
     chooseBuild: choose ?? (async (builds) => builds[0]),
     confirmErase: confirmFn ?? (async () => confirm),
     saveBackup: saveBackup ?? (async () => { throw new Error('saveBackup must not be called unless options.backup is true'); }),
+    ...(now ? { now } : {}),
   });
   return { inst, manifest, events, fake, port };
 }
@@ -241,4 +242,28 @@ test('factory with options.backup: true saves one whole-flash copy before the er
   const s3 = await setup();
   await s3.inst.run({ manifest: s3.manifest, mode: 'first', options: {} });
   assert.ok(!called(s3.fake, 'saveBackup'));
+});
+
+test('the optional factory backup reports a time estimate after the first chunk', async () => {
+  let t = 0;
+  const { inst, manifest, events } = await setup({ saveBackup: async () => {}, now: () => (t += 1500) });
+  await inst.run({ manifest, mode: 'first', options: { backup: true } });
+  const backup = events.filter((e) => e.type === 'stage' && e.stage === 'backup');
+  assert.equal(backup[0].eta, undefined);
+  const measured = backup.slice(1);
+  assert.equal(measured.length, 64, 'one 16 MiB read in 256 KiB chunks');
+  assert.ok(measured.every((e) => Number.isFinite(e.eta) && e.eta >= 0));
+  assert.equal(measured.at(-1).eta, 0);
+});
+
+test('an application image for another chip stops a factory install even when it does not cover the bootloader offset', async () => {
+  const fake = makeFakeEsptool({ chipName: 'ESP32-S3' });
+  const app = new Uint8Array(0x100).fill(0xff); app[0] = 0xe9; app[12] = 0; app[13] = 0; // ESP32 app image
+  const manifest = normalizeManifest({ name: 'Demo', version: '1.0', builds: [{ chipFamily: 'ESP32-S3', parts: [{ path: 'app.bin', offset: 0x10000, size: app.length }] }] },
+    'https://h/install/manifests/demo.json');
+  const inst = createInstaller({ esptool: fake, requestPort: async () => ({ getInfo: () => ({}) }),
+    fetchFn: async () => ({ ok: true, status: 200, arrayBuffer: async () => app.buffer.slice(0) }),
+    chooseBuild: async (b) => b[0], confirmErase: async () => true, saveBackup: async () => {} });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'verify.wrongChip' && e.params.offset === 0x10000);
+  assert.ok(!called(fake, 'eraseFlash')); assert.ok(!called(fake, 'writeFlash'));
 });

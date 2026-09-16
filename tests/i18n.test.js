@@ -60,7 +60,7 @@ const REQUIRED = [
   'door.title', 'door.first', 'door.firstHint', 'door.update', 'door.updateHint',
   'gate.insecure', 'gate.noSerial', 'gate.altFirst',
   'action.connect', 'action.connecting', 'action.installing', 'action.retry',
-  'action.cancel', 'action.backup', 'action.chooseBackup', 'action.chooseBackupTitle', 'action.erase',
+  'action.cancel', 'action.backup', 'action.chooseBackup', 'action.chooseBackupTitle', 'action.chooseBackupHint', 'action.erase',
   'stage.idle', 'stage.connecting', 'stage.detecting', 'stage.matching', 'stage.downloading',
   'stage.verifying', 'stage.checkingDevice', 'stage.backup', 'stage.erasing', 'stage.writing',
   'stage.md5', 'stage.done', 'stage.error',
@@ -84,7 +84,7 @@ test('every key the page asks for exists in en.json', () => {
 
 /** Codes for parts of the engine that land in later tasks; the strings must already be there. */
 const FUTURE_CODES = [
-  'manifest.flashSizeMB', 'manifest.usb', 'manifest.filters', 'manifest.fetch', 'manifest.tooBig',
+  'manifest.flashSizeMB', 'manifest.usb', 'manifest.filters', 'manifest.fetch',
   'catalog.fetch',
   'serial.cancelled', 'serial.busy', 'serial.lost', 'serial.connect', 'serial.blocked',
   'device.chipUnknown', 'device.flashUnknown', 'device.noMatch', 'device.changed', 'device.secured',
@@ -118,6 +118,21 @@ test('an empty translation counts as missing and falls back to en', () => {
 test('every error string says what happened and what to do', () => {
   const thin = Object.entries(en.error).filter(([, v]) => (v.match(/[.!?]/g) ?? []).length < 2);
   assert.deepEqual(thin, []);
+});
+
+test('the backup hint names the file in both locales', () => {
+  assert.match(en.action.chooseBackupHint, /\{file\}/);
+  assert.match(readLocale('pl').action.chooseBackupHint, /\{file\}/);
+});
+
+test('no dead error strings: every error.* key in en.json is thrown somewhere in app/', () => {
+  const thrown = new Set();
+  for (const f of readdirSync(new URL('../app/', import.meta.url))) {
+    const src = readFileSync(new URL('../app/' + f, import.meta.url), 'utf8');
+    for (const m of src.matchAll(/'([a-z]+\.[A-Za-z0-9]+)'/g)) thrown.add(m[1]);
+  }
+  const dead = Object.keys(en.error).filter((c) => !thrown.has(c));
+  assert.deepEqual(dead, []);
 });
 
 test('catalog.unknownVersion interpolates no version', () => {

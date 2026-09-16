@@ -31,9 +31,9 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 if __package__:
-    from .manifest import CHIPS, HEAD_SAMPLE, boot_image_problem, covering, overlaps
+    from .manifest import CHIPS, HEAD_SAMPLE, boot_image_problem, covering, image_part_problem, overlaps
 else:  # run as a script: tools/ is already on sys.path
-    from manifest import CHIPS, HEAD_SAMPLE, boot_image_problem, covering, overlaps
+    from manifest import CHIPS, HEAD_SAMPLE, boot_image_problem, covering, image_part_problem, overlaps
 
 OK = 'OK'
 WARN = 'WARN'
@@ -51,16 +51,21 @@ META_ATTR = re.compile(r'([A-Za-z-]+)\s*=\s*("[^"]*"|\'[^\']*\'|[^\s">]+)')
 VERSION = re.compile(r'^[vV]?(\d+(?:\.\d+)*)(.*)$')
 SUMS_LINE = re.compile(r'^([0-9a-fA-F]{64})\s+\*?(\S.*)$')
 SELF = "'self'"
-COUNTER = 'https://skad.click'
-# What each directive may name. Everything else in them is a finding. The download counter is the
-# one third party the page is allowed to reach; styles have no reason to come from anywhere but us.
+# What each directive may name out of the box: the page itself and nothing else. A host widens
+# this in exactly two ways, both explicit. Origins listed in catalog.json `allowOrigins` may appear
+# in connect-src, because that is where the page fetches binaries from. Origins passed with
+# --allow-origin (a host's own analytics, say) may appear in script-src, script-src-elem and
+# connect-src. default-src and style-src never widen: styles have no reason to come from elsewhere.
 CSP_ALLOWED = {
     'default-src': (SELF,),
-    'script-src': (SELF, COUNTER),
-    'script-src-elem': (SELF, COUNTER),
-    'connect-src': (SELF, COUNTER),
+    'script-src': (SELF,),
+    'script-src-elem': (SELF,),
+    'connect-src': (SELF,),
     'style-src': (SELF,),
 }
+SCRIPT_DIRECTIVES = ('script-src', 'script-src-elem', 'connect-src')
+CONNECT_DIRECTIVES = ('connect-src',)
+ORIGIN = re.compile(r'^https?://[A-Za-z0-9.-]+(?::\d{1,5})?$')
 CATALOG = 'catalog.json'
 INDEX = 'index.html'
 VENDOR_SUMS = 'vendor/esptool-js/SHA256SUMS'
@@ -294,17 +299,37 @@ def csp_directives(policy: str) -> Dict[str, List[str]]:
     return found
 
 
-def csp_problem(policy: str, require_default: bool = True) -> Optional[str]:
+def is_origin(value: Any) -> bool:
+    """scheme://host[:port], nothing else: what the browser compares and what a CSP source names."""
+    return isinstance(value, str) and ORIGIN.match(value) is not None
+
+
+def csp_allowed(catalog_origins: Sequence[str] = (), extra_origins: Sequence[str] = ()) -> Dict[str, Tuple[str, ...]]:
+    """CSP_ALLOWED widened by exactly the origins a host has declared, and nowhere else."""
+    allowed = {}
+    for directive, base in CSP_ALLOWED.items():
+        sources = list(base)
+        if directive in SCRIPT_DIRECTIVES:
+            sources.extend(o for o in extra_origins if o not in sources)
+        if directive in CONNECT_DIRECTIVES:
+            sources.extend(o for o in catalog_origins if o not in sources)
+        allowed[directive] = tuple(sources)
+    return allowed
+
+
+def csp_problem(policy: str, require_default: bool = True, catalog_origins: Sequence[str] = (),
+                extra_origins: Sequence[str] = ()) -> Optional[str]:
     """Why this policy does not lock the page down, or None if it does.
 
-    default-src must be exactly 'self'. script-src, if present, may name only 'self' and the
-    download counter at https://skad.click. Anything else is a way for another origin's code
-    to reach a page that is about to write to a device over USB.
+    default-src must be exactly 'self'. script-src, script-src-elem and connect-src may name
+    'self' and the origins passed as --allow-origin; connect-src may also name the origins the
+    catalog lists in allowOrigins. Anything else is a way for another origin's code or bytes to
+    reach a page that is about to write to a device over USB.
     """
     directives = csp_directives(policy)
     if require_default and 'default-src' not in directives:
         return 'no default-src'
-    for directive, allowed in CSP_ALLOWED.items():
+    for directive, allowed in csp_allowed(catalog_origins, extra_origins).items():
         if directive not in directives:
             continue
         sources = directives[directive]
@@ -316,7 +341,18 @@ def csp_problem(policy: str, require_default: bool = True) -> Optional[str]:
     return None
 
 
-def check_index(source: Source) -> List[Finding]:
+def unreachable_origins(policies: Sequence[str], catalog_origins: Sequence[str]) -> List[str]:
+    """allowOrigins entries that connect-src does not name: the page would refuse to fetch from them."""
+    directives: Dict[str, List[str]] = {}
+    for policy in policies:
+        for directive, sources in csp_directives(policy).items():
+            directives.setdefault(directive, sources)
+    connect = directives.get('connect-src', directives.get('default-src', []))
+    return [o for o in catalog_origins if o not in connect]
+
+
+def check_index(source: Source, catalog_origins: Sequence[str] = (),
+                extra_origins: Sequence[str] = ()) -> List[Finding]:
     ref = source.join(source.root(), INDEX)
     fetched, problems = read_or_report(source, ref, INDEX)
     if fetched is None:
@@ -327,10 +363,16 @@ def check_index(source: Source) -> List[Finding]:
     if not policies:
         return [Finding(FAIL, 'csp', '%s has no Content-Security-Policy meta tag' % INDEX)]
     for index, policy in enumerate(policies):
-        problem = csp_problem(policy, require_default=index == 0)
+        problem = csp_problem(policy, require_default=index == 0, catalog_origins=catalog_origins,
+                              extra_origins=extra_origins)
         if problem is not None:
             return [Finding(FAIL, 'csp', '%s: %s' % (INDEX, problem))]
-    return [Finding(OK, 'csp', "%s pins default-src to %s" % (INDEX, SELF))]
+    findings = [Finding(OK, 'csp', "%s pins default-src to %s" % (INDEX, SELF))]
+    for origin_ in unreachable_origins(policies, catalog_origins):
+        findings.append(Finding(WARN, 'csp', '%s: connect-src does not name %s, which %s lists in '
+                                'allowOrigins; the page will refuse to download from there'
+                                % (INDEX, origin_, CATALOG)))
+    return findings
 
 
 def check_vendor(source: Source) -> List[Finding]:
@@ -412,11 +454,18 @@ def check_part(source: Source, manifest_ref: Any, part: Any,
     return findings, {'offset': offset, 'size': size, 'head': fetched.data[:HEAD_SAMPLE], 'path': path}
 
 
+def is_offset(value: Any) -> bool:
+    return isinstance(value, int) and not isinstance(value, bool) and value >= 0
+
+
 def preserve_problems(build: Dict[str, Any], parts: Sequence[Any], board: str) -> List[Finding]:
     """What the page refuses about a preserve build: it has to know what it is keeping.
 
     Without a region to compare, the page cannot tell whether the flash it is about to preserve is
-    ours at all; without a size and a checksum per part it cannot tell what it just wrote.
+    ours at all; without a checksum on each region it cannot check the claim; without a size and a
+    checksum per part it cannot tell what it just wrote; and without a partition table offset that
+    one of the parts is written at, update mode has nothing to compare the device's table with.
+    Mirrors normalizeCompatibility in app/manifest.js.
     """
     findings: List[Finding] = []
     compat = build.get('compatibility')
@@ -428,6 +477,25 @@ def preserve_problems(build: Dict[str, Any], parts: Sequence[Any], board: str) -
     if not regions:
         findings.append(Finding(FAIL, 'manifest', '%s: the preserve profile needs compatibility with at '
                                 'least one region, in regions or firstInstall.regions' % board))
+    for region in regions:
+        if not (isinstance(region, dict) and is_offset(region.get('offset'))
+                and isinstance(region.get('size'), int) and not isinstance(region.get('size'), bool)
+                and region['size'] > 0):
+            findings.append(Finding(FAIL, 'manifest', '%s: a compatibility region needs offset >= 0 and '
+                                    'size > 0' % board))
+        elif not (isinstance(region.get('sha256'), str) and HEX64.fullmatch(region['sha256'].lower())):
+            findings.append(Finding(FAIL, 'manifest', '%s: the region at 0x%x declares no usable sha256; '
+                                    'the preserve profile refuses a region it cannot check'
+                                    % (board, region['offset'])))
+    update = compat.get('update')
+    table = update.get('tableOffset') if isinstance(update, dict) else None
+    offsets = [p.get('offset') for p in parts if isinstance(p, dict)]
+    if not is_offset(table):
+        findings.append(Finding(FAIL, 'manifest', '%s: the preserve profile needs update.tableOffset, '
+                                'the partition table offset' % board))
+    elif table not in offsets:
+        findings.append(Finding(FAIL, 'manifest', '%s: update.tableOffset is 0x%x but no part is written '
+                                'at that offset' % (board, table)))
     for part in parts:
         if not isinstance(part, dict):
             continue
@@ -475,6 +543,7 @@ def check_build(source: Source, manifest_ref: Any, build: Dict[str, Any], board:
 
     if family is not None and len(measured) == len(parts):
         boot = CHIPS[family].bootloader_offset
+        hit = None
         if boot is None:
             findings.append(Finding(OK, 'chip', '%s: %s declares no bootloader offset, header not checked'
                                     % (board, family)))
@@ -491,6 +560,18 @@ def check_build(source: Source, manifest_ref: Any, build: Dict[str, Any], board:
                 else:
                     findings.append(Finding(OK, 'chip', '%s: %s is an %s image'
                                             % (board, measured[hit]['path'], family)))
+        # Every other part that starts like an image has to be for this chip too: an application
+        # written above the bootloader offset is never seen by the check above.
+        for index, part in enumerate(measured):
+            if index == hit:
+                continue
+            problem = image_part_problem(family, part['head'], part['size'])
+            if problem is not None:
+                findings.append(Finding(FAIL, 'chip', '%s: %s at 0x%x %s'
+                                        % (board, part['path'], part['offset'], problem)))
+            elif part['size'] >= 24 and part['head'][:1] == b'\xe9' and CHIPS[family].image_chip_id is not None:
+                findings.append(Finding(OK, 'chip', '%s: %s at 0x%x is an %s image'
+                                        % (board, part['path'], part['offset'], family)))
     return findings
 
 
@@ -534,11 +615,13 @@ def check_manifest(source: Source, ref: Any, subject: str) -> List[Finding]:
                                     'keeps only one of them' % (subject, board)))
         seen.add(board)
         build_profile = build.get('profile', profile)
-        if build_profile not in ('factory', 'preserve'):
-            findings.append(Finding(FAIL, 'manifest', '%s: %s declares profile %r; the page accepts '
-                                    'factory and preserve' % (subject, board, build_profile)))
-            build_profile = profile
-        findings.extend(check_build(source, ref, build, board, build_profile))
+        if build_profile != profile:
+            # The page installs by the manifest's profile; a build that says otherwise is refused
+            # there, so it is a FAIL here rather than a silent override.
+            findings.append(Finding(FAIL, 'manifest', '%s: %s declares profile %r but the manifest is %r; '
+                                    'a build may repeat the profile, never change it'
+                                    % (subject, board, build_profile, profile)))
+        findings.extend(check_build(source, ref, build, board, profile))
     return findings
 
 
@@ -566,15 +649,40 @@ def check_release_order(system_id: str, releases: Sequence[Any]) -> List[Finding
     return findings
 
 
-def check_catalog(source: Source) -> List[Finding]:
+def read_catalog(source: Source) -> Tuple[Optional[Any], List[Finding]]:
     ref = source.join(source.root(), CATALOG)
     fetched, problems = read_or_report(source, ref, CATALOG)
     if fetched is None:
-        return problems
+        return None, problems
     try:
-        catalog = json.loads(fetched.data.decode('utf-8'))
+        return json.loads(fetched.data.decode('utf-8')), []
     except (ValueError, UnicodeDecodeError) as exc:
-        return [Finding(FAIL, 'json', '%s is not valid JSON: %s' % (CATALOG, exc))]
+        return None, [Finding(FAIL, 'json', '%s is not valid JSON: %s' % (CATALOG, exc))]
+
+
+def allow_origins(catalog: Any) -> Tuple[List[str], List[Finding]]:
+    """The origins the catalog lets binaries come from, and what is wrong with the list.
+
+    Only well-formed origins are returned; a malformed entry is a FAIL and is not honoured, so a
+    typo cannot widen the policy the checker accepts.
+    """
+    if not isinstance(catalog, dict) or 'allowOrigins' not in catalog:
+        return [], []
+    raw = catalog['allowOrigins']
+    if not isinstance(raw, list):
+        return [], [Finding(FAIL, 'catalog', '%s: allowOrigins must be a list of origins' % CATALOG)]
+    origins, findings = [], []
+    for entry in raw:
+        if is_origin(entry):
+            origins.append(entry)
+        else:
+            findings.append(Finding(FAIL, 'catalog', '%s: allowOrigins entry %r is not an origin '
+                                    '(scheme://host[:port], no path)' % (CATALOG, entry)))
+    return origins, findings
+
+
+def check_catalog(source: Source, catalog: Any) -> List[Finding]:
+    ref = source.join(source.root(), CATALOG)
     systems = catalog.get('systems') if isinstance(catalog, dict) else None
     if not isinstance(systems, list) or not systems:
         return [Finding(FAIL, 'catalog', '%s lists no systems' % CATALOG)]
@@ -607,17 +715,28 @@ def check_catalog(source: Source) -> List[Finding]:
     return findings
 
 
-def check_site(base: str) -> List[Finding]:
+def check_site(base: str, extra_origins: Sequence[str] = ()) -> List[Finding]:
     """Every check, in the order a reader wants to see them.
+
+    `extra_origins` are the --allow-origin values: origins the host has deliberately let into
+    script-src, script-src-elem and connect-src, for its own analytics. The catalog is read first
+    because its allowOrigins decide what connect-src may name.
 
     Raises UsageError when the base itself cannot be checked, for example a directory that is
     not there: that is a mistake in the command, not a finding about a site.
     """
+    for origin_ in extra_origins:
+        if not is_origin(origin_):
+            raise UsageError('--allow-origin %r is not an origin (scheme://host[:port], no path)' % (origin_,))
     source = make_source(base)
+    catalog, catalog_problems = read_catalog(source)
+    catalog_origins, origin_problems = allow_origins(catalog)
     findings: List[Finding] = []
-    findings.extend(check_index(source))
+    findings.extend(check_index(source, catalog_origins, extra_origins))
     findings.extend(check_vendor(source))
-    findings.extend(check_catalog(source))
+    findings.extend(catalog_problems or origin_problems)
+    if catalog is not None:
+        findings.extend(check_catalog(source, catalog))
     return findings
 
 
@@ -636,9 +755,12 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
         description='Check that an esp32install site serves everything the page will fetch.')
     parser.add_argument('base', metavar='URL-OR-DIRECTORY',
                         help='https://example.com/install/ or a path to the site directory')
+    parser.add_argument('--allow-origin', dest='allow_origins', action='append', default=[], metavar='ORIGIN',
+                        help='an origin the page policy may also name in script-src, script-src-elem and '
+                             'connect-src, for example the host of your own analytics script (repeatable)')
     args = parser.parse_args(argv)
     try:
-        findings = check_site(args.base)
+        findings = check_site(args.base, args.allow_origins)
     except UsageError as exc:
         print('check.py: %s' % exc, file=sys.stderr)
         return EXIT_USAGE
