@@ -347,6 +347,21 @@ class GeneratorTest(unittest.TestCase):
         self.assertEqual(compat['update']['tableOffset'], 0x8000)
         self.assertEqual([p['offset'] for p in data['builds'][0]['parts']], [0x10000, 0x8000])
 
+    def test_preserve_refuses_a_table_binary_that_is_not_given_last(self):
+        table = self.firmware / 'table.bin'
+        table.write_bytes(b'\x00' * 3072)
+        common = ['--chip', 'ESP32', '--name', 'D', '--version', '1', '--out', self.out, '--profile', 'preserve',
+                  '--compat-region', '0x0:0x8000:' + 'a' * 64, '--update-table', '0x8000']
+        code, text = self.cli(f'{table}@0x8000', f'{self.bin}@0x10000', *common)
+        self.assertEqual(code, 2, text)
+        self.assertIn('last', text)
+        self.assertIn('application first', text)
+        self.assertFalse(self.out.exists())
+        code, text = self.cli(f'{self.bin}@0x10000', f'{table}@0x8000', *common)
+        self.assertEqual(code, 0, text)
+        self.assertEqual([p['offset'] for p in json.loads(self.out.read_text('utf-8'))['builds'][0]['parts']],
+                         [0x10000, 0x8000], 'nothing is reordered')
+
     def test_a_region_checksum_is_lower_cased(self):
         digest = 'A' * 64
         code, text = self.generate('--profile', 'preserve', '--compat-region', f'0x0:0x8000:{digest}',

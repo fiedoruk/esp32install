@@ -458,6 +458,14 @@ def is_offset(value: Any) -> bool:
     return isinstance(value, int) and not isinstance(value, bool) and value >= 0
 
 
+def table_offset(build: Dict[str, Any]) -> Optional[int]:
+    """`compatibility.update.tableOffset` when it is a usable offset, else None."""
+    compat = build.get('compatibility')
+    update = compat.get('update') if isinstance(compat, dict) else None
+    table = update.get('tableOffset') if isinstance(update, dict) else None
+    return table if is_offset(table) else None
+
+
 def preserve_problems(build: Dict[str, Any], parts: Sequence[Any], board: str) -> List[Finding]:
     """What the page refuses about a preserve build: it has to know what it is keeping.
 
@@ -487,10 +495,9 @@ def preserve_problems(build: Dict[str, Any], parts: Sequence[Any], board: str) -
             findings.append(Finding(FAIL, 'manifest', '%s: the region at 0x%x declares no usable sha256; '
                                     'the preserve profile refuses a region it cannot check'
                                     % (board, region['offset'])))
-    update = compat.get('update')
-    table = update.get('tableOffset') if isinstance(update, dict) else None
+    table = table_offset(build)
     offsets = [p.get('offset') for p in parts if isinstance(p, dict)]
-    if not is_offset(table):
+    if table is None:
         findings.append(Finding(FAIL, 'manifest', '%s: the preserve profile needs update.tableOffset, '
                                 'the partition table offset' % board))
     elif table not in offsets:
@@ -531,7 +538,15 @@ def check_build(source: Source, manifest_ref: Any, build: Dict[str, Any], board:
         return findings
 
     spans = [(m['offset'], m['size']) for m in measured]
-    if any(spans[i][0] > spans[i + 1][0] for i in range(len(spans) - 1)):
+    if profile == 'preserve':
+        # Manifest order is write order, and the table page has to go on the chip last so a failure
+        # during the application leaves the old table intact. Rising offsets are beside the point here.
+        table = table_offset(build)
+        if table is not None and len(measured) == len(parts) and measured[-1]['offset'] != table:
+            findings.append(Finding(FAIL, 'order', '%s: the part at update.tableOffset 0x%x must be listed last; '
+                                    'parts are written in manifest order and the table has to be written '
+                                    'after the application' % (board, table)))
+    elif any(spans[i][0] > spans[i + 1][0] for i in range(len(spans) - 1)):
         findings.append(Finding(WARN, 'order', '%s: parts are not listed by rising offset' % board))
     collision = overlaps(spans)
     if collision is not None:

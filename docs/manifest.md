@@ -54,7 +54,7 @@ file without a `schema` key is read as schema 1.
 | `regions` | array of `{offset, size, sha256}` | Flash regions that must already hold exactly these bytes, in both modes. `sha256` is required. |
 | `firstInstall.regions` | same | Extra regions checked only in *first installation* mode. `sha256` is required. |
 | `firstInstall.empty` | array of `{offset, size}` | Regions that must read back as all `0xff` in *first installation* mode. |
-| `update.tableOffset` | integer ≥ 0 | Offset of the partition table. Required. In *update* mode the page requires the sector there to hold this release's table, padded with `0xff`. There must be a part at exactly this offset. |
+| `update.tableOffset` | integer ≥ 0 | Offset of the partition table. Required. In *update* mode the page requires the sector there to hold this release's table, padded with `0xff`. There must be a part at exactly this offset, and it must be the last part listed: parts are written in manifest order and the table has to go on the chip after the application. |
 
 All of this is checked when the manifest is read, before the device is opened,
 and each failure is `manifest.compatibility`: a region without `sha256` makes a

@@ -511,6 +511,47 @@ class ShapeTest(SiteFixture):
         self.write_raw_manifest(data)
         self.assertEqual(self.fails(self.findings()), [])
 
+    def test_preserve_parts_out_of_rising_order_do_not_warn_when_the_table_is_last(self):
+        app = self.firmware / 'app.bin'
+        app.write_bytes(b'\x00' * 1024)
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['profile'] = 'preserve'
+        data['builds'][0]['compatibility'] = self.preserve_compat()
+        data['builds'][0]['parts'].insert(0, {  # application at 0x10000 first, the 0x1000 table part last
+            'path': 'app.bin', 'offset': 0x10000, 'size': 1024,
+            'sha256': hashlib.sha256(app.read_bytes()).hexdigest()})
+        self.write_raw_manifest(data)
+        found = self.findings()
+        self.assertEqual(self.fails(found), [])
+        self.assertEqual(self.levels(found, 'order'), [])
+
+    def test_preserve_with_the_table_part_not_last_fails(self):
+        app = self.firmware / 'app.bin'
+        app.write_bytes(b'\x00' * 1024)
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['profile'] = 'preserve'
+        data['builds'][0]['compatibility'] = self.preserve_compat()
+        data['builds'][0]['parts'].append({  # table at 0x1000 first, application last: rising, and wrong
+            'path': 'app.bin', 'offset': 0x10000, 'size': 1024,
+            'sha256': hashlib.sha256(app.read_bytes()).hexdigest()})
+        self.write_raw_manifest(data)
+        found = self.findings()
+        self.assertEqual(self.levels(found, 'order'), [check.FAIL])
+        self.assertTrue(any('0x1000' in detail and 'last' in detail for what, detail in self.fails(found) if what == 'order'))
+        self.assertEqual(self.cli(self.site)[0], 1)
+
+    def test_factory_parts_out_of_rising_order_still_only_warn(self):
+        app = self.firmware / 'app.bin'
+        app.write_bytes(b'\x00' * 1024)
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['builds'][0]['parts'].insert(0, {
+            'path': 'app.bin', 'offset': 0x10000, 'size': 1024,
+            'sha256': hashlib.sha256(app.read_bytes()).hexdigest()})
+        self.write_raw_manifest(data)
+        found = self.findings()
+        self.assertEqual(self.levels(found, 'order'), [check.WARN])
+        self.assertEqual(self.fails(found), [])
+
     def test_a_complete_preserve_manifest_passes(self):
         data = json.loads(self.manifest_path.read_text('utf-8'))
         data['profile'] = 'preserve'

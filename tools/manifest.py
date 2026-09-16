@@ -383,6 +383,12 @@ def build_manifest(parts: Sequence[Part], opts: Any) -> Dict[str, Any]:
     if options.profile == 'preserve' and all(m['offset'] != options.update_table for m in measured):
         raise UsageError('--update-table 0x%x names an offset no part is written at; the preserve '
                          'profile needs the partition table among the parts' % options.update_table)
+    if options.profile == 'preserve' and measured[-1]['offset'] != options.update_table:
+        # Nothing is reordered: manifest order is write order, and the caller has to mean it.
+        raise UsageError('the partition table (--update-table 0x%x) must be the last binary on the command '
+                         'line: parts are written in the order given, and the table has to go on the chip '
+                         'after the application, so list the application first and the table last'
+                         % options.update_table)
 
     build: Dict[str, Any] = {}
     if options.board_key:

@@ -134,7 +134,10 @@ The parts are written in the order listed, so if the write fails during the
 application the old table is still on the device and a retry in *first
 installation* mode remains possible. Written the other way round, a failure
 between the two parts leaves a table that points at an application that is not
-there yet.
+there yet. Both tools enforce it: `tools/manifest.py` refuses a `preserve`
+command line whose `--update-table` binary is not given last, and `tools/check.py`
+reports `FAIL order` when the part at `update.tableOffset` is not the last part.
+The rising-offset warning applies to `factory` only.
 
 ## Stop conditions
 
