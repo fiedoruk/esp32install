@@ -11,12 +11,12 @@ import { md5Hex } from '../app/md5.js';
 
 function image(chipId) { const d = new Uint8Array(0x3000).fill(0xff); d[0x1000] = 0xe9; d[0x1000 + 12] = chipId; d[0x1000 + 13] = 0; return d; }
 
-async function setup({ fake = makeFakeEsptool(), img = image(0), sha, confirm = true, choose, fetch, confirmFn, saveBackup, now, over = {} } = {}) {
+async function setup({ fake = makeFakeEsptool(), img = image(0), sha, confirm = true, choose, fetch, confirmFn, saveBackup, now, over = {}, usb = { usbVendorId: 0x1a86, usbProductId: 0x55d4 } } = {}) {
   const manifest = normalizeManifest({ name: 'Demo', version: '1.0', new_install_prompt_erase: true,
     builds: [{ chipFamily: 'ESP32', parts: [{ path: 'demo.bin', offset: 0, size: img.length, ...(sha ? { sha256: sha } : {}) }] }], ...over },
     'https://h/install/manifests/demo.json');
   const events = [];
-  const port = { getInfo: () => ({ usbVendorId: 0x1a86, usbProductId: 0x55d4 }) };
+  const port = { getInfo: () => usb };   // a CH9102 bridge by default; pass `usb` for native USB
   const inst = createInstaller({
     esptool: fake,
     requestPort: async () => port,
@@ -40,7 +40,7 @@ test('happy path: connect, detect, verify, erase (confirmed), write with MD5, re
   const names = fake.calls.map((c) => c[0]);
   // The one readFlash is the partition table, read after the security check for the record: it
   // is between 'command' and 'eraseFlash' because nothing is read off a chip whose state is unknown.
-  assert.deepEqual(names, ['transport', 'main', 'readFlashId', 'readFlash', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(names, ['transport', 'main', 'readFlashId', 'readFlash', 'eraseFlash', 'writeFlash', 'setRTS', 'setRTS', 'disconnect']);
   assert.deepEqual(fake.calls.find((c) => c[0] === 'readFlash').slice(1), [0x8000, 0xc00]);
   assert.ok(events.some((e) => e.type === 'layout'), 'and it is reported to the page');
   const w = fake.calls.find((c) => c[0] === 'writeFlash');
@@ -366,7 +366,7 @@ test('reset failure after a verified write still resolves with verified: true an
   const { inst, manifest, events } = await setup({ fake });
   const r = await inst.run({ manifest, mode: 'first', options: {} });
   assert.equal(r.verified, true);
-  assert.ok(called(fake, 'after'));
+  assert.ok(called(fake, 'setRTS'), 'the line was reached; a bridge board is pulsed, not just released');
   assert.equal(events.at(-1).type, 'done');
   assert.ok(events.some((e) => e.type === 'log' && /reset: Failed to reset device/.test(e.line)));
   assert.ok(!events.some((e) => e.type === 'error'));
@@ -515,7 +515,7 @@ test('own file: installs from memory with no fetch at all, the full check chain,
   assert.equal(r.verified, true);
   assert.equal(r.build, 'local');
   assert.deepEqual(fetches, [], 'nothing was fetched');
-  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'readFlash', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'readFlash', 'eraseFlash', 'writeFlash', 'setRTS', 'setRTS', 'disconnect']);
   const w = fake.calls.find((c) => c[0] === 'writeFlash');
   assert.deepEqual(w[1], [[0, 0x3000]]);
   assert.equal(w[2], false, 'erase is its own step, never eraseAll');
@@ -616,7 +616,7 @@ test('own file by address: a relative same-origin address is fetched once, then 
     chooseBuild: async (b) => b[0], confirmErase: async () => true, saveBackup: async () => {} });
   const r = await inst.run({ manifest, mode: 'first', options: {} });
   assert.equal(r.verified, true);
-  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'readFlash', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'readFlash', 'eraseFlash', 'writeFlash', 'setRTS', 'setRTS', 'disconnect']);
   assert.ok(fake.flash.subarray(0, img.length).every((b, i) => b === img[i]));
 });
 
@@ -715,7 +715,7 @@ test('own files: two parts (partition table + application) are written in one ca
   const r = await inst.run({ manifest, mode: 'first', options: {} });
   assert.equal(r.verified, true);
   // S3 ma polecenie 0x14 i ma byc o nie pytany — inaczej niz klasyczne ESP32, ktore odpowiada efuse.
-  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'readFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'readFlash', 'writeFlash', 'setRTS', 'setRTS', 'disconnect']);
   assert.deepEqual(fake.calls.find((c) => c[0] === 'writeFlash')[1], [[0x8000, 0xc00], [0x10000, 0x200]]);
   assert.ok(fake.flash.subarray(0x8000, 0x8c00).every((b, i) => b === table[i]));
   assert.ok(fake.flash.subarray(0x10000, 0x10200).every((b, i) => b === app[i]));
@@ -729,7 +729,7 @@ test('own files: three parts with the bootloader at 0 on an S3 ask about erasing
   assert.equal(manifest.promptErase, true);
   const r = await inst.run({ manifest, mode: 'first', options: {} });
   assert.equal(r.verified, true);
-  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'readFlash', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'readFlash', 'eraseFlash', 'writeFlash', 'setRTS', 'setRTS', 'disconnect']);
   assert.deepEqual(fake.calls.find((c) => c[0] === 'writeFlash')[1], [[0x0, 0x5000], [0x8000, 0xc00], [0x10000, 0x200]]);
   assert.ok(fake.flash.subarray(0, 0x5000).every((b, i) => b === boot[i]));
 });
@@ -1087,4 +1087,32 @@ test('positive control: a classic ESP32 whose efuses say locked is still refused
   await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }),
     (e) => e.code === 'device.secured' && e.params.source === 'efuse');
   assert.ok(!called(fake, 'writeFlash'), 'nothing is written to a locked board');
+});
+
+test('a board on a USB-serial bridge is pulsed, not just released', async () => {
+  // Reported from an M5Stack Core2 (CH9102, usb 1a86:55d4) on 16.09.2026: the page said the
+  // install had finished and the device had to be switched off and on by hand. The vendored
+  // hard_reset is sleep(100) then setRTS(false) — it only RELEASES the line, and after a normal
+  // flash the line is already released, so nothing happens electrically. esptool.py pulses it.
+  const fake = makeFakeEsptool();
+  const { inst, manifest, events } = await setup({ fake });
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
+  const lines = fake.calls.filter((c) => c[0] === 'setRTS').map((c) => c[1]);
+  assert.deepEqual(lines, [true, false], 'EN held low, then released');
+  assert.ok(!called(fake, 'after'), 'the library call that does nothing here is not used');
+  const log = events.filter((e) => e.type === 'log').map((e) => e.line).join('\n');
+  assert.match(log, /reset: pulsed the reset line/);
+});
+
+test('a chip on Espressif native USB is left to the library, which knows the USB-JTAG reset', async () => {
+  const fake = makeFakeEsptool({ chipName: 'ESP32-S3' });
+  const img = image(9);
+  const s3 = { chipFamily: 'ESP32-S3', parts: [{ path: 'demo.bin', offset: 0x10000, size: img.length }] };
+  const { inst, manifest } = await setup({ fake, img, over: { builds: [s3] },
+    usb: { usbVendorId: 0x303a, usbProductId: 0x1001 } });
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
+  assert.ok(called(fake, 'after'), 'native USB: the library resets it');
+  assert.ok(!fake.calls.some((c) => c[0] === 'setRTS'), 'RTS is not wired to EN there, so it is not touched');
 });

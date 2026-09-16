@@ -4,6 +4,22 @@ What changed between released versions. The only supported way to update a copy
 is to replace the files with the current ones, so this page exists for the
 question "does the copy I am running have that fix?".
 
+## 0.3.2 — 2026-09-16
+
+### The device now restarts into what was just written
+Reported from an M5Stack Core2: the page said the install had finished, and the device had to be
+switched off and on by hand before the new firmware ran.
+
+`hard_reset` in the vendored library is `sleep(100)` followed by `setRTS(false)` — it only
+**releases** the reset line. After a normal connect-and-flash that line is already released, so the
+call did nothing electrically and the chip carried on running the flasher stub. esptool.py pulses
+it instead: assert RTS so EN goes low, hold, release.
+
+A board on a USB-serial bridge is now pulsed that way. A chip on Espressif's native USB
+(vendor `0x303a`) is left to the library, because there the reset line is not wired to EN and the
+USB-JTAG reset the library performs is the correct one. A reset that fails is still not a failed
+install: the write was verified before it, and the log says to press reset or replug.
+
 ## 0.3.1 — 2026-09-16
 
 **Replace 0.3.0 if you have it.** It refuses every classic ESP32.

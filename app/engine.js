@@ -250,6 +250,32 @@ export function createInstaller(deps) {
   }
 
   /**
+   * Restarts the device into what was just written.
+   *
+   * ⛔ `loader.after('hard_reset')` is not enough on a board with a USB-serial bridge. The
+   * vendored implementation is `sleep(100); setRTS(false)` — it only RELEASES the line. After a
+   * normal connect-and-flash the line is already released, so the call does nothing electrically
+   * and the chip carries on running the stub. Reported from an M5Stack Core2 on 16.09.2026: the
+   * page said the install was finished and the device had to be switched off and on by hand.
+   *
+   * esptool.py pulses it instead — assert RTS so EN goes low, hold, release — and that is what we
+   * do here for a bridge. A chip on Espressif's native USB (vendor 0x303a) is left to the library:
+   * there RTS is not wired to EN at all, and the USB-JTAG reset it already performs is the right
+   * one. If anything here throws, the caller logs it and the install still counts as done.
+   */
+  async function restart(hw) {
+    const nativeUsb = hw?.usbVendorId === 0x303a;
+    if (!nativeUsb && typeof transport?.setRTS === 'function') {
+      await transport.setRTS(true);          // EN low: the chip is held in reset
+      await new Promise((r) => setTimeout(r, 100));
+      await transport.setRTS(false);         // released: it boots what we just wrote
+      log('reset: pulsed the reset line');
+      return;
+    }
+    await loader.after('hard_reset');
+  }
+
+  /**
    * Diagnostics, never a decision: the device's own partition table, read after the security
    * check and reported to the page and to the log. Nothing downstream branches on the answer,
    * and a table that cannot be read is a log line — never a stop, never a failed install.
@@ -445,7 +471,7 @@ export function createInstaller(deps) {
     await checkDeclaredMd5(parts, patched ? (CHIPS[hw.chipFamily]?.bootloaderOffset ?? null) : null);
     // The image is written and MD5-verified by now; a failed reset is not a failed install.
     try {
-      await loader.after('hard_reset');
+      await restart(hw);
     } catch (e) {
       log('reset: ' + (e?.message ?? e) + '; press the reset button or unplug and replug the device');
     }

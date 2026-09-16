@@ -34,6 +34,8 @@ export function makeFakeEsptool({
   class Transport {
     constructor(...args) { this.args = args; this.port = args[0]; transports.push(this); calls.push(['transport']); }
     setDeviceLostCallback(fn) { this.lost = fn; }
+    // The reset line, so a test can see whether the device was actually pulsed or only released.
+    async setRTS(level) { calls.push(['setRTS', level]); if (failReset) throw new Error('Failed to reset device'); }
     async disconnect() { calls.push(['disconnect']); }
   }
   class ESPLoader {

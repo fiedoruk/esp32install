@@ -1,6 +1,6 @@
 {
   "name": "esp32install",
-  "version": "0.3.1",
+  "version": "0.3.2",
   "private": true,
   "type": "module",
   "description": "Browser-based ESP32 firmware installer. Static files, no build step, no CDN.",
