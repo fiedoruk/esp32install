@@ -5,6 +5,7 @@ import { runPreserve } from '../app/preserve.js';
 import { normalizeManifest } from '../app/manifest.js';
 import { makeFakeEsptool } from './helpers/fakeEsptool.js';
 import { sha256Hex } from '../app/verify.js';
+import { md5Hex } from '../app/md5.js';
 import { saveBackupWithHandle } from '../app/backup.js';
 import { table, DEFAULT_ENTRIES } from './helpers/partitionTable.js';
 
@@ -593,4 +594,34 @@ test('reset failure after a verified preserve write still resolves with verified
 test('eraseFlash is never called in preserve', () => {
   assert.ok(fakes.length >= 24, `expected the preserve scenarios above to have run (${fakes.length})`);
   for (const fake of fakes) assert.ok(!called(fake, 'eraseFlash'));
+});
+
+/* --- the release's own MD5, on top of the read-back that was always here ----- */
+
+/** The same manifest with `md5` on every part, which is what `tools/manifest.py` now writes. */
+async function manifestWithMd5(img, { app = APP, wrong = null } = {}) {
+  const m = await manifestFor(img, { app });
+  const bytes = { 'app.bin': app, 'table.bin': TABLE };
+  for (const p of m.builds[0].parts) p.md5 = wrong === p.path ? 'a'.repeat(32) : md5Hex(bytes[p.path]);
+  return m;
+}
+
+test('preserve asks the chip twice per part: once for what it sent, once for what the release declares', async () => {
+  const img = deviceImage();
+  const { inst, manifest, events, fake } = await setup({ img, manifest: await manifestWithMd5(img) });
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
+  assert.deepEqual(fake.calls.filter((c) => c[0] === 'flashMd5sum').map((c) => c.slice(1)),
+    [[0x20000, APP.length], [0x8000, TABLE.length], [0x20000, APP.length], [0x8000, TABLE.length]],
+    'the per-part read-back during the write, then the release cross-check after it');
+  const log = events.filter((e) => e.type === 'log').map((e) => e.line).join('\n');
+  assert.match(log, /md5 app\.bin: the chip reports the value the release declares/);
+  assert.match(log, /md5 table\.bin: the chip reports the value the release declares/);
+});
+
+test('a preserve part whose declared md5 is wrong never reaches the device', async () => {
+  const img = deviceImage();
+  const { inst, manifest, fake } = await setup({ img, manifest: await manifestWithMd5(img, { wrong: 'app.bin' }) });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'verify.md5');
+  assert.ok(!called(fake, 'writeFlash'), 'the download check comes long before the first write');
 });

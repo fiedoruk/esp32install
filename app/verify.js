@@ -1,4 +1,5 @@
 import { InstallError } from './errors.js';
+import { md5Hex } from './md5.js';
 
 /** Measured from esptool-js 0.6.1 lib/targets/*.js (2026-09-15). null = not declared by the library. */
 const row = (bootloaderOffset, imageChipId, esptoolChip) => Object.freeze({ bootloaderOffset, imageChipId, esptoolChip });
@@ -31,7 +32,12 @@ export async function checkFetchedPart(part, data, limits = {}) {
   if (part.size !== undefined && data.length !== part.size) fail('verify.size', { path: part.path, bytes: data.length, expected: part.size });
   const sha256 = await sha256Hex(data);
   if (part.sha256 !== undefined && sha256 !== String(part.sha256).toLowerCase()) fail('verify.sha256', { path: part.path, expected: part.sha256, actual: sha256 });
-  return { sha256 };
+  // The release's MD5, where it declares one. The device can answer for this number and for no
+  // other, so it is worth catching a manifest that disagrees with its own file here, before
+  // anything is opened, rather than after the write when the only honest report is "keep your copy".
+  const md5 = part.md5 === undefined ? undefined : md5Hex(data);
+  if (part.md5 !== undefined && md5 !== String(part.md5).toLowerCase()) fail('verify.md5', { path: part.path, expected: part.md5, actual: md5 });
+  return { sha256, md5 };
 }
 
 export function checkLayout(parts, flashBytes, limits = {}) {

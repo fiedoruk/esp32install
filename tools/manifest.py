@@ -211,6 +211,22 @@ def erase_spill(offset: int, size: int, others: Sequence[Tuple[int, int]],
     return None
 
 
+def md5_file(path: Path) -> str:
+    """MD5 of a file, read in chunks.
+
+    Not a security claim — SHA-256 is what holds the download to the release. This is the one
+    checksum the chip itself can compute: the flash's MD5 command reads it back after the write,
+    so a release that declares it gets a second, independent witness that what ended up on the
+    device is what was published, next to esptool-js's own comparison against the bytes the page
+    sent over the cable.
+    """
+    digest = hashlib.md5()
+    with path.open('rb') as handle:
+        for block in iter(lambda: handle.read(READ_CHUNK), b''):
+            digest.update(block)
+    return digest.hexdigest()
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open('rb') as handle:
@@ -279,6 +295,7 @@ class Options:
     improv: bool = False
     path_prefix: Optional[str] = None
     checksum_in_path: bool = True
+    md5: bool = True
     compat_regions: List[Region] = field(default_factory=list)
     first_regions: List[Region] = field(default_factory=list)
     first_empty: List[Region] = field(default_factory=list)
@@ -412,6 +429,7 @@ def measure(parts: Sequence[Part]) -> List[Dict[str, Any]]:
             'offset': part.offset,
             'size': size,
             'sha256': sha256_file(part.file),
+            'md5': md5_file(part.file),
             'head': head,
         })
     return measured
@@ -523,6 +541,7 @@ def build_manifest(parts: Sequence[Part], opts: Any) -> Dict[str, Any]:
         'offset': m['offset'],
         'size': m['size'],
         'sha256': m['sha256'],
+        **({'md5': m['md5']} if options.md5 else {}),
     } for m in measured]
 
     return {
@@ -646,6 +665,9 @@ def make_parser() -> argparse.ArgumentParser:
                         help='the firmware takes Wi-Fi credentials over Improv Serial after the install')
     parser.add_argument('--path-prefix', metavar='PREFIX',
                         help='put this in front of each file name instead of the path from the manifest')
+    parser.add_argument('--no-md5', dest='md5', action='store_false',
+                        help='do not write the MD5 of each part; the page then has nothing to hold '
+                             'the chip\'s own MD5 to after the write except the bytes it sent itself')
     parser.add_argument('--no-checksum-in-path', dest='checksum_in_path', action='store_false',
                         help='do not append ?sha256=... to each path; the address then stops changing '
                              'with the bytes, and a visitor who came before the release can be served '
@@ -671,7 +693,7 @@ def options_from_args(args: argparse.Namespace) -> Options:
         chip=args.chip, name=args.name, version=args.version, board=args.board, board_key=args.board_key,
         flash_mb=args.flash_mb, usb_vendor_id=vendor, usb_product_id=product, profile=args.profile,
         prompt_erase=args.prompt_erase, improv=args.improv, path_prefix=args.path_prefix,
-        checksum_in_path=args.checksum_in_path, compat_regions=args.compat_regions,
+        checksum_in_path=args.checksum_in_path, md5=args.md5, compat_regions=args.compat_regions,
         first_regions=args.first_regions, first_empty=args.first_empty, update_table=args.update_table,
         out=args.out)
 

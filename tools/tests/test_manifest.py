@@ -130,6 +130,25 @@ class GeneratorTest(unittest.TestCase):
         self.assertEqual([p['offset'] for p in parts], [0x1000, 0x10000])
         self.assertEqual([p['path'] for p in parts], [ref('demo.bin', self.bin), ref('app.bin', app)])
 
+    # --- the md5 the chip can be asked for ------------------------------
+
+    def test_every_part_carries_its_md5_by_default(self):
+        self.assertEqual(self.generate()[0], 0)
+        part = json.loads(self.out.read_text('utf-8'))['builds'][0]['parts'][0]
+        self.assertEqual(part['md5'], hashlib.md5(self.bin.read_bytes()).hexdigest())
+
+    def test_no_md5_leaves_the_key_out_entirely(self):
+        self.assertEqual(self.generate('--no-md5')[0], 0)
+        part = json.loads(self.out.read_text('utf-8'))['builds'][0]['parts'][0]
+        self.assertNotIn('md5', part)
+        self.assertIn('sha256', part, 'the checksum that holds the download is untouched')
+
+    def test_md5_file_reads_a_file_larger_than_one_chunk(self):
+        big = self.root / 'big.bin'
+        blob = bytes(range(256)) * (5 * 4096)
+        big.write_bytes(blob)
+        self.assertEqual(manifest.md5_file(big), hashlib.md5(blob).hexdigest())
+
     # --- the checksum in the address ------------------------------------
 
     def test_the_checksum_in_the_address_is_the_one_in_the_field(self):
@@ -601,3 +620,4 @@ class ChipTableTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+

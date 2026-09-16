@@ -1282,3 +1282,36 @@ class PathNameTest(unittest.TestCase):
         self.assertEqual(check.path_checksum('firmware.bin?v=3&sha256=' + 'a' * 64), 'a' * 64)
         self.assertEqual(check.path_checksum('firmware.bin?sha256=short'), '')
         self.assertEqual(check.path_checksum('firmware.bin?sha256='), '')
+
+
+class Md5FieldTest(SiteFixture):
+    """`md5` is checked exactly as `sha256` is: against the bytes the site actually serves."""
+
+    def rewrite(self, **over):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['builds'][0]['parts'][0].update(over)
+        self.manifest_path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+
+    def test_a_generated_manifest_carries_a_matching_md5(self):
+        part = json.loads(self.manifest_path.read_text('utf-8'))['builds'][0]['parts'][0]
+        self.assertEqual(part['md5'], hashlib.md5(self.bin.read_bytes()).hexdigest())
+        found = self.findings()
+        self.assertEqual(self.fails(found), [])
+        self.assertIn(check.OK, self.levels(found, 'md5'))
+
+    def test_a_wrong_md5_is_a_fail(self):
+        self.rewrite(md5='a' * 32)
+        self.assertTrue(any(what == 'md5' for what, _ in self.fails(self.findings())))
+
+    def test_a_malformed_md5_is_a_fail(self):
+        self.rewrite(md5='nope')
+        fails = self.fails(self.findings())
+        self.assertTrue(any('malformed md5' in detail for _, detail in fails), fails)
+
+    def test_a_manifest_without_one_is_not_judged_on_it(self):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        del data['builds'][0]['parts'][0]['md5']
+        self.manifest_path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+        found = self.findings()
+        self.assertEqual(self.fails(found), [])
+        self.assertEqual(self.levels(found, 'md5'), [])

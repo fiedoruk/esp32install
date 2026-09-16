@@ -47,6 +47,7 @@ EXIT_USAGE = 2
 USER_AGENT = 'esp32install-check/1.0'
 TIMEOUT = 30
 HEX64 = re.compile(r'[0-9a-f]{64}')
+HEX32 = re.compile(r'[0-9a-f]{32}')
 BOARD_KEY = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}')
 META_TAG = re.compile(r'<meta\b[^>]*>', re.IGNORECASE)
 META_ATTR = re.compile(r'([A-Za-z-]+)\s*=\s*("[^"]*"|\'[^\']*\'|[^\s">]+)')
@@ -673,6 +674,20 @@ def check_part(source: Source, manifest_ref: Any, part: Any, board: str,
                                 % (board, name)))
     else:
         findings.append(Finding(FAIL, 'sha256', '%s: %s declares a malformed checksum' % (board, name)))
+
+    # The release's MD5, where it declares one. It is the one number the chip itself can answer
+    # for after the write, so a wrong one is worth catching here rather than at the point where
+    # the only honest report left is "keep your copy".
+    declared_md5 = part.get('md5')
+    if declared_md5 is not None:
+        if not isinstance(declared_md5, str) or not HEX32.fullmatch(declared_md5.lower()):
+            findings.append(Finding(FAIL, 'md5', '%s: %s declares a malformed md5' % (board, name)))
+        elif hashlib.md5(fetched.data).hexdigest() != declared_md5.lower():
+            findings.append(Finding(FAIL, 'md5', '%s: %s is md5 %s, manifest says %s'
+                                    % (board, name, hashlib.md5(fetched.data).hexdigest(), declared_md5.lower())))
+        else:
+            findings.append(Finding(OK, 'md5', '%s: %s, which the chip can be asked for after the '
+                                    'write' % (board, name)))
 
     # The checksum in the address, if there is one. It is what makes a release reach a visitor who
     # came before it — the address changes with the bytes, so their browser cannot answer from its

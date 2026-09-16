@@ -95,6 +95,40 @@ developer has to hand. Both work.
 | `offset` | 1 | integer ≥ 0 | Where the file goes in flash. Must be a multiple of 4096 in a `preserve` manifest and on the own-file path, where the address is typed by hand; the chip erases whole 4 KiB sectors, so a part that starts mid-sector blanks whatever sits in front of it. A `factory` manifest may name any offset, because it is writing a whole layout and keeps nothing. |
 | `size` | 2 | integer > 0 | Exact byte count. Required by `preserve`. A length that is not a multiple of 4096 is normal and fine; what `preserve` refuses is a write whose erased sectors reach past the part into a declared region, another part or the end of the flash. |
 | `sha256` | 2 | 64 hex characters | Accepted in either case and compared lower-cased; the generator emits lowercase. Required by `preserve`. Without it the installer hashes the download anyway and writes the hash to the log, but nothing can compare it with anything, so `tools/check.py` reports a part without one as a FAIL (`--allow-unhashed` lowers that to a warning). |
+| `md5` | 2 | 32 hex characters | Optional. The one checksum the chip itself can be asked for, so it is the only one that can vouch for the flash after the write. See below. |
+
+### `md5`, the checksum the chip can answer for
+
+SHA-256 is what holds the download to the release, and nothing changes about
+that. `md5` is there for a different moment: after the bytes are on the chip.
+
+The flash has an MD5 command, and esptool-js already uses it — after each file it
+writes, it reads `flashMd5sum` back and compares it with the MD5 of the bytes the
+page handed it. That proves the cable and the write. It cannot prove that those
+bytes were the release, because both sides of that comparison come from this
+page.
+
+A part with `md5` gets a second comparison from a second party: the chip's own
+answer against the number the publisher wrote in the manifest. Two witnesses that
+share nothing but the device.
+
+* Absent: nothing extra happens, and the install is what it was before this field
+  existed.
+* Present and disagreeing with the downloaded file: the install stops at
+  `verify.md5`, before the device is opened. Nothing is erased and nothing is
+  written — a release that contradicts its own file is a release to report, not
+  one to flash.
+* Present and disagreeing with the chip after the write: `flash.verify`, naming
+  the part and its offset.
+
+One exception, and the page says so in the technical log rather than failing: a
+build that names `flashMode` or `flashFreq` has its bootloader image patched on
+the way to the chip, so what is at that offset is deliberately not the published
+file. That one part is not compared with the release's `md5`; every other part
+still is.
+
+`tools/manifest.py` writes `md5` by default and `--no-md5` leaves it out.
+`tools/check.py` compares it with the bytes the site serves.
 
 ### The checksum in the address
 

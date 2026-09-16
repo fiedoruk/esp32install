@@ -4,6 +4,7 @@ import { sha256Hex, CHIPS } from './verify.js';
 export const CHIP_FAMILIES = new Set(['ESP8266', 'ESP32', 'ESP32-S2', 'ESP32-S3', 'ESP32-C2', 'ESP32-C3',
   'ESP32-C5', 'ESP32-C6', 'ESP32-C61', 'ESP32-H2', 'ESP32-P4']);
 const HEX64 = /^[0-9a-f]{64}$/;
+const HEX32 = /^[0-9a-f]{32}$/;
 const KEY = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 /** One flash sector. The chip erases whole sectors, so it is also the alignment `preserve` needs. */
 const SECTOR = 0x1000;
@@ -97,6 +98,15 @@ function normalizePart(p, i, boardKey, base, allowOrigins, profile) {
     const h = String(p.sha256).toLowerCase();
     if (!HEX64.test(h)) fail('manifest.sha256', { boardKey, index: i + 1 });
     part.sha256 = h;
+  }
+  // Optional, and the only thing in a manifest the chip itself can answer for: the flash's own
+  // MD5 command reads it back off the device after the write. esptool-js already compares the
+  // chip against the bytes this page sent, which proves the cable; this compares the chip against
+  // the number the publisher wrote down, which is a different claim by a different party.
+  if (p.md5 !== undefined) {
+    const h = String(p.md5).toLowerCase();
+    if (!HEX32.test(h)) fail('manifest.md5', { boardKey, index: i + 1 });
+    part.md5 = h;
   }
   if (profile === 'preserve' && (part.size === undefined || part.sha256 === undefined)) {
     fail('manifest.preserveNeedsSize', { boardKey, index: i + 1 });

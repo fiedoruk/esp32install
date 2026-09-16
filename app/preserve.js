@@ -8,6 +8,7 @@
  * checks → download + verify → mandatory verified backup, saved where the user chooses and
  * read back from disk (or, without a save picker, downloaded and re-selected by the user)
  * → identity + header re-check → write part by part with an MD5 read-back →
+ * the release's own MD5 read back off the chip →
  * re-read of the header span, to prove that what the manifest makes claims about is either
  * unchanged or the 0xff a touched sector leaves behind → hard reset. Flash outside that span
  * is never read back: the per-part MD5 is what vouches for the parts themselves.
@@ -191,6 +192,9 @@ export async function runPreserve(ctx) {
   ctx.setWriting();
   await writeParts(loader(), parts, stage, now);
   stage('md5', 92);
+  // The second witness, where the release names one: the chip's MD5 against the manifest's, next
+  // to the read-back above, which compares the chip with the bytes this page sent.
+  await ctx.checkDeclaredMd5(parts);
   checkUntouched(header, await readRange(loader(), 0, headerSize), parts);
   // The parts are written and verified by now; a failed reset is not a failed install.
   try {

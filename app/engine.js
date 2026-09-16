@@ -3,7 +3,8 @@
  * through `createInstaller(deps)` so the whole flow runs against a fake in tests.
  *
  * Factory profile: connect → detect → match → security state → download + verify every part →
- * layout check → boot-image check → (optional verified backup) → (erase) → write with MD5 → hard reset.
+ * layout check → boot-image check → (optional verified backup) → (erase) → write with MD5 →
+ * the release's own MD5 read back off the chip → hard reset.
  * Nothing is erased or written until every verification step has passed.
  * Preserve profile: see preserve.js; it shares connect/pick/download and never erases.
  */
@@ -202,13 +203,40 @@ export function createInstaller(deps) {
       check();
       const { sha256 } = await checkFetchedPart(p, data);
       if (p.sha256 === undefined) log(`no checksum declared for ${p.path}; downloaded sha256 ${sha256}`);
-      parts.push({ offset: p.offset, data, path: p.path, sha256 });
+      parts.push({ offset: p.offset, data, path: p.path, sha256, md5: p.md5 });
     }
     stage('verifying', 32, { local });
     checkLayout(parts, hw.flashSizeMB * 1024 * 1024);
     checkBootImage(parts, hw.chipFamily);
     checkImageParts(parts, hw.chipFamily);
     return parts;
+  }
+
+  /**
+   * After the write: the chip's own MD5 of each part, held to the number the release declared.
+   *
+   * esptool-js already reads `flashMd5sum` back and compares it with the MD5 of the bytes this
+   * page handed it, which is what proves the cable and the write. This is the second witness and
+   * a different claim: that what is now on the device is what the publisher said the release was.
+   * Only a part with `md5` in the manifest is checked, so a release that declares none behaves
+   * exactly as it did before this existed.
+   *
+   * `patchedAt` is the one offset esptool-js may have rewritten on the way — the bootloader
+   * offset, where it patches the flash-parameter bytes when a build names `flashMode` or
+   * `flashFreq`. What is on the chip there is deliberately not the published file, so that part
+   * is reported and skipped rather than failed.
+   */
+  async function checkDeclaredMd5(parts, patchedAt = null) {
+    for (const p of parts) {
+      if (p.md5 === undefined) continue;
+      if (patchedAt !== null && p.offset <= patchedAt && patchedAt < p.offset + p.data.length) {
+        log(`md5 ${p.path}: not compared with the release, because the write patched its flash parameters`);
+        continue;
+      }
+      const onChip = String(await loader.flashMd5sum(p.offset, p.data.length)).toLowerCase();
+      if (onChip !== p.md5) throw new InstallError('flash.verify', { offset: '0x' + p.offset.toString(16), path: p.path, expected: p.md5, actual: onChip });
+      log(`md5 ${p.path}: the chip reports the value the release declares`);
+    }
   }
 
   async function erase() {
@@ -287,6 +315,7 @@ export function createInstaller(deps) {
     if (eraseFirst) await erase();
     await write(parts);
     stage('md5', 92);
+    await checkDeclaredMd5(parts);
     // The image is written and MD5-verified by now; a failed reset is not a failed install.
     try {
       await loader.after('hard_reset');
@@ -309,7 +338,7 @@ export function createInstaller(deps) {
       try {
         const profile = job.manifest.profile;
         const result = profile === 'preserve'
-          ? await runPreserve({ job, connect, pick, download, loader: () => loader, readLayout, stage, log, emit, check, deps, now, setWriting: () => { writing = true; changed = true; } })
+          ? await runPreserve({ job, connect, pick, download, loader: () => loader, readLayout, checkDeclaredMd5, stage, log, emit, check, deps, now, setWriting: () => { writing = true; changed = true; } })
           : await runFactory(job);
         await cleanup();
         emit({ type: 'done', result });

@@ -325,6 +325,7 @@ or its sentence drifts from the file.
 | `manifest.offset` | Build {boardKey}, file {index} has an invalid address. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.size` | Build {boardKey}, file {index} has an invalid size. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.sha256` | Build {boardKey}, file {index} has an invalid checksum. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.md5` | Build {boardKey}, file {index} has an invalid MD5. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.preserveNeedsSize` | Build {boardKey}, file {index} needs both a size and a checksum. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.alignment` | Build {boardKey}, file {index} is written to an address this way of installing cannot use, because writing there would wipe out part of what is being kept. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.duplicateBoardKey` | Two builds in the release file share the name {boardKey}. This is a problem with the release itself, not with your device. Tell whoever published it. |
@@ -354,6 +355,7 @@ by the manifest's profile and refuses a build that says otherwise.
 | `verify.tooLarge` | The file {path} is larger than this installer allows. Nothing was written. Tell whoever published this release. |
 | `verify.size` | The file {path} arrived with {bytes} bytes instead of {expected}. The download was stopped and nothing was written. Check your connection and try again. |
 | `verify.sha256` | The file {path} does not match the release and may have been damaged on the way. Nothing was written. Check your connection and try again. |
+| `verify.md5` | The file {path} does not match the second checksum the release declares for it. Nothing was written. Tell whoever published the release. |
 | `verify.overlap` | Two files in this release want the same place on the device. Nothing was written. Tell whoever published this release. |
 | `verify.beyondFlash` | This release needs more memory than this device has. Nothing was written. Check that you picked the right system for your device. |
 | `verify.totalTooLarge` | This release is larger than this installer allows. Nothing was written. Tell whoever published this release. |

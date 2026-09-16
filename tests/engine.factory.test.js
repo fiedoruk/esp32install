@@ -7,6 +7,7 @@ import { makeFakeEsptool } from './helpers/fakeEsptool.js';
 /** One bare loader, for the tests that drive a single command instead of a whole install. */
 const ESPLoaderFor = class { constructor(o) { return new (makeFakeEsptool(o).ESPLoader)({}); } };
 import { sha256Hex } from '../app/verify.js';
+import { md5Hex } from '../app/md5.js';
 
 function image(chipId) { const d = new Uint8Array(0x3000).fill(0xff); d[0x1000] = 0xe9; d[0x1000 + 12] = chipId; d[0x1000 + 13] = 0; return d; }
 
@@ -748,4 +749,55 @@ test('own files: one part whose chip id contradicts the others stops before any 
   assert.ok(!called(fake, 'eraseFlash'));
   assert.ok(!called(fake, 'writeFlash'));
   assert.ok(called(fake, 'disconnect'));
+});
+
+/* --- the release's own MD5, read back off the chip -------------------------- */
+
+test('a part with md5 is compared with the chip after the write, and the log says so', async () => {
+  const img = image(0);
+  const { inst, manifest, fake, events } = await setup({ img, over: {
+    builds: [{ chipFamily: 'ESP32', parts: [{ path: 'demo.bin', offset: 0, size: img.length, md5: md5Hex(img) }] }],
+  } });
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
+  const asked = fake.calls.filter((c) => c[0] === 'flashMd5sum');
+  assert.deepEqual(asked, [['flashMd5sum', 0, img.length]], 'asked once, for exactly the bytes the part covers');
+  assert.ok(fake.calls.findIndex((c) => c[0] === 'flashMd5sum') > fake.calls.findIndex((c) => c[0] === 'writeFlash'),
+    'after the write, not before');
+  const log = events.filter((e) => e.type === 'log').map((e) => e.line).join('\n');
+  assert.match(log, /md5 demo\.bin: the chip reports the value the release declares/);
+});
+
+test('a release that declares no md5 asks the chip for nothing extra', async () => {
+  const { inst, manifest, fake } = await setup();
+  await inst.run({ manifest, mode: 'first', options: {} });
+  assert.ok(!called(fake, 'flashMd5sum'), 'exactly the behaviour before this existed');
+});
+
+test('an md5 that disagrees with the file stops the install before the device is opened', async () => {
+  const img = image(0);
+  const { inst, manifest, fake, events } = await setup({ img, over: {
+    builds: [{ chipFamily: 'ESP32', parts: [{ path: 'demo.bin', offset: 0, size: img.length, md5: 'a'.repeat(32) }] }],
+  } });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'verify.md5');
+  assert.ok(!called(fake, 'eraseFlash') && !called(fake, 'writeFlash'), 'nothing erased, nothing written');
+  assert.equal(events.find((e) => e.type === 'error').changed, false);
+});
+
+test('an md5 the chip disagrees with after the write is a flash.verify that names the part', async () => {
+  const img = image(0);
+  // The file and the manifest agree; the flash comes back wrong, as a bad write would leave it.
+  const fake = makeFakeEsptool({ corruptAt: 0x20 });
+  const { inst, manifest, events } = await setup({ fake, img, over: {
+    builds: [{ chipFamily: 'ESP32', parts: [{ path: 'demo.bin', offset: 0, size: img.length, md5: md5Hex(img) }] }],
+  } });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }),
+    (e) => e.code === 'flash.verify' && e.params.path === 'demo.bin' && e.params.offset === '0x0');
+  assert.equal(events.find((e) => e.type === 'error').changed, true, 'the flash is not what it was');
+});
+
+test('a malformed md5 in the manifest is refused when the manifest is read', () => {
+  const bad = { name: 'Demo', version: '1.0', builds: [{ chipFamily: 'ESP32', parts: [{ path: 'demo.bin', offset: 0, md5: 'nope' }] }] };
+  assert.throws(() => normalizeManifest(bad, 'https://h/install/demo.json'),
+    (e) => e.code === 'manifest.md5' && e.params.index === 1);
 });
