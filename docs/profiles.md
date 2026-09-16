@@ -253,10 +253,13 @@ The parts are written in the order listed, so if the write fails during the
 application the old table is still on the device and a retry in *first
 installation* mode remains possible. Written the other way round, a failure
 between the two parts leaves a table that points at an application that is not
-there yet. Both tools enforce it: `tools/manifest.py` refuses a `preserve`
-command line whose `--update-table` binary is not given last, and `tools/check.py`
-reports `FAIL order` when the part at `update.tableOffset` is not the last part.
-The rising-offset warning applies to `factory` only.
+there yet. All three layers enforce it: `tools/manifest.py` refuses a `preserve`
+command line whose `--update-table` binary is not given last, `tools/check.py`
+reports `FAIL order` when the part at `update.tableOffset` is not the last part,
+and the page refuses such a manifest with `manifest.compatibility` before the
+device is opened. The page has to, because it is the only one of the three a
+hand-written manifest is guaranteed to meet: the publisher runs the checker, the
+visitor does not. The rising-offset warning applies to `factory` only.
 
 ## Stop conditions
 
@@ -305,7 +308,8 @@ an offset that is not a multiple of 4096, or when the sectors that part's write
 erases reach a declared region, another part or the end of the flash.
 `manifest.compatibility` is what it gets
 when a region carries no checksum, when it declares no region at all, when
-`update.tableOffset` is missing, or when it names an offset no part is written at. All of that is
+`update.tableOffset` is missing, when it names an offset no part is written at, or
+when the part written there is not the last one listed. All of that is
 decided when the manifest is read, before the device is opened. `manifest.profile`
 also covers a build whose `profile` differs from the manifest's: the page installs
 by the manifest's profile and refuses a build that says otherwise.

@@ -108,7 +108,9 @@ developer has to hand. Both work.
 All of this is checked when the manifest is read, before the device is opened,
 and each failure is `manifest.compatibility`: a region without `sha256` makes a
 claim the installer cannot check; a missing `update.tableOffset`, or one that no
-part is written at, leaves update mode with nothing to compare. The `preserve`
+part is written at, leaves update mode with nothing to compare; and a table that
+is not the last part listed would be written to the chip before the application
+it points at. The `preserve`
 profile also needs at least one region between `regions` and
 `firstInstall.regions`, it may not set `eraseAll`, and every one of its parts has
 to start on a 4 KiB boundary and none of them may erase, beyond the bytes it

@@ -55,7 +55,14 @@ function normalizeCompatibility(raw, boardKey, profile, parts) {
   };
   if (preserve) {
     if (out.regions.length + out.firstInstall.regions.length === 0) fail('manifest.compatibility', { boardKey });
-    if (tableOffset === undefined || !parts.some((p) => p.offset === tableOffset)) fail('manifest.compatibility', { boardKey });
+    // The table goes on the chip after the application it points at. Parts are written in the
+    // order the manifest lists them, so the table has to be the last of them: a write that fails
+    // during the application then leaves the old table in place and a retry is still possible,
+    // where the other order leaves a table pointing at an image that is not there. `manifest.py`
+    // refuses to emit any other order and `check.py` reports it as `FAIL order`, but a manifest
+    // written by hand reaches neither of them, and the page is the last thing between it and the
+    // device.
+    if (tableOffset === undefined || parts[parts.length - 1].offset !== tableOffset) fail('manifest.compatibility', { boardKey });
   }
   return out;
 }

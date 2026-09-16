@@ -226,12 +226,13 @@ test('preserve refuses a blanked tail that reaches a declared compatibility regi
 test('preserve refuses a footprint that reaches the next part', () => {
   const raw = load('manifest-v2-preserve.json');
   raw.builds[0].parts[0].size = 0x1001; // 0x20000..0x21001, so the chip erases through 0x22000
-  raw.builds[0].parts.push({ path: 'extra.bin', offset: 0x21000, size: 0x100, sha256: 'c'.repeat(64) });
+  // Spliced in before the table, which has to stay the last part listed.
+  raw.builds[0].parts.splice(1, 0, { path: 'extra.bin', offset: 0x21000, size: 0x100, sha256: 'c'.repeat(64) });
   assert.throws(() => normalizeManifest(raw, URL_M), (e) => e.code === 'manifest.alignment');
   // Control: the same part one sector further on is clear of the erased footprint.
   const ok = load('manifest-v2-preserve.json');
   ok.builds[0].parts[0].size = 0x1001;
-  ok.builds[0].parts.push({ path: 'extra.bin', offset: 0x22000, size: 0x100, sha256: 'c'.repeat(64) });
+  ok.builds[0].parts.splice(1, 0, { path: 'extra.bin', offset: 0x22000, size: 0x100, sha256: 'c'.repeat(64) });
   assert.equal(normalizeManifest(ok, URL_M).builds[0].parts.length, 3);
 });
 
@@ -348,6 +349,31 @@ test('preserve requires update.tableOffset and a part written at exactly that of
   assert.throws(() => normalizeManifest(partRemoved, URL_M), code('manifest.compatibility'));
   // Positive control: the fixture as shipped has both.
   assert.equal(normalizeManifest(load('manifest-v2-preserve.json'), URL_M).builds[0].compatibility.update.tableOffset, 32768);
+});
+
+/**
+ * The order rule, on the page. `tools/manifest.py` refuses to write this manifest and
+ * `tools/check.py` calls it `FAIL order`, but a hand-written file meets neither of them: the
+ * publisher runs the checker, the visitor does not. Written table-first, a write that fails
+ * during the application leaves a new table pointing at an image that is not on the chip.
+ */
+test('preserve refuses a manifest whose partition table is not the last part listed', () => {
+  const tableFirst = load('manifest-v2-preserve.json');
+  tableFirst.builds[0].parts.reverse();
+  assert.throws(() => normalizeManifest(tableFirst, URL_M), code('manifest.compatibility'));
+  // Three parts, table in the middle: refused for the same reason.
+  const middle = load('manifest-v2-preserve.json');
+  const [app, table] = middle.builds[0].parts;
+  middle.builds[0].parts = [app, table, { path: 'extra.bin', offset: 0x200000, size: 0x1000, sha256: 'c'.repeat(64) }];
+  assert.throws(() => normalizeManifest(middle, URL_M), code('manifest.compatibility'));
+  // Positive control: the shipped order, application first and table last, is accepted.
+  const ok = normalizeManifest(load('manifest-v2-preserve.json'), URL_M).builds[0];
+  assert.equal(ok.parts[ok.parts.length - 1].offset, ok.compatibility.update.tableOffset);
+  // And `factory` is not held to it: it writes a whole layout and keeps nothing.
+  const factory = load('manifest-v2-factory.json');
+  factory.builds[1].parts[0].sha256 = 'a'.repeat(64);
+  factory.builds[0].parts.reverse();
+  assert.equal(normalizeManifest(factory, URL_M).builds[0].parts.length, factory.builds[0].parts.length);
 });
 
 test('preserve requires sha256 on every region and every firstInstall region; empty ranges carry none', () => {
