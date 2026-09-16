@@ -130,6 +130,41 @@ class GeneratorTest(unittest.TestCase):
         self.assertEqual([p['offset'] for p in parts], [0x1000, 0x10000])
         self.assertEqual([p['path'] for p in parts], [ref('demo.bin', self.bin), ref('app.bin', app)])
 
+    # --- how the chip reads the image back, and how fast the cable runs --
+
+    def test_keep_is_the_default_and_writes_nothing(self):
+        self.assertEqual(self.generate()[0], 0)
+        data = json.loads(self.out.read_text('utf-8'))
+        self.assertNotIn('flashMode', data['builds'][0])
+        self.assertNotIn('flashFreq', data['builds'][0])
+        self.assertNotIn('baudRate', data)
+
+    def test_the_values_are_written_where_they_belong(self):
+        code, text = self.generate('--flash-mode', 'dio', '--flash-freq', '80m', '--baud-rate', '921600')
+        self.assertEqual(code, 0, text)
+        data = json.loads(self.out.read_text('utf-8'))
+        self.assertEqual(data['builds'][0]['flashMode'], 'dio')
+        self.assertEqual(data['builds'][0]['flashFreq'], '80m')
+        self.assertEqual(data['baudRate'], 921600,
+                         'the port opens once, before a build is matched, so it is the release\'s')
+
+    def test_an_unknown_mode_or_speed_is_a_usage_error(self):
+        self.assertEqual(self.generate('--flash-mode', 'qspi')[0], 2)
+        self.assertEqual(self.generate('--flash-freq', '160m')[0], 2)
+
+    def test_a_baud_rate_nothing_can_reach_is_refused(self):
+        for rate in ('1200', '4000000'):
+            code, text = self.generate('--baud-rate', rate)
+            self.assertEqual(code, 2, text)
+            self.assertIn('--baud-rate', text)
+
+    def test_preserve_refuses_them_because_it_never_writes_where_they_apply(self):
+        with self.assertRaises(manifest.UsageError) as caught:
+            manifest.build_manifest([manifest.Part(self.bin, 0x10000)], {
+                'chip': 'ESP32', 'name': 'D', 'version': '1', 'profile': 'preserve',
+                'flash_mode': 'dio', 'out': self.out})
+        self.assertIn('bootloader offset', str(caught.exception))
+
     # --- the md5 the chip can be asked for ------------------------------
 
     def test_every_part_carries_its_md5_by_default(self):

@@ -1315,3 +1315,45 @@ class Md5FieldTest(SiteFixture):
         found = self.findings()
         self.assertEqual(self.fails(found), [])
         self.assertEqual(self.levels(found, 'md5'), [])
+
+
+class FlashParamsTest(SiteFixture):
+    """`flashMode`, `flashFreq` and `baudRate`: what the page will accept, said before it is asked."""
+
+    def set_build(self, **over):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['builds'][0].update(over)
+        self.manifest_path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+
+    def set_top(self, **over):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data.update(over)
+        self.manifest_path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+
+    def test_known_values_pass_and_are_reported(self):
+        self.set_build(flashMode='dio', flashFreq='80m')
+        self.set_top(baudRate=921600)
+        found = self.findings()
+        self.assertEqual(self.fails(found), [])
+        self.assertEqual(self.levels(found, 'flash'), [check.OK, check.OK])
+        self.assertEqual(self.levels(found, 'baud'), [check.OK])
+
+    def test_an_unknown_mode_is_a_fail(self):
+        self.set_build(flashMode='qspi')
+        self.assertTrue(any(what == 'flash' for what, _ in self.fails(self.findings())))
+
+    def test_a_baud_rate_nothing_can_reach_is_a_fail(self):
+        for rate in (1200, 4000000, '460800', True):
+            self.set_top(baudRate=rate)
+            self.assertTrue(any(what == 'baud' for what, _ in self.fails(self.findings())), rate)
+
+    def test_absent_is_not_judged(self):
+        found = self.findings()
+        self.assertEqual(self.levels(found, 'flash'), [])
+        self.assertEqual(self.levels(found, 'baud'), [])
+
+    def test_a_preserve_build_that_states_one_is_a_fail(self):
+        findings = check.flash_param_problems({'flashMode': 'dio'}, 'demo', 'preserve')
+        self.assertEqual([f.level for f in findings], [check.FAIL])
+        self.assertIn('bootloader offset', findings[0].detail)
+        self.assertEqual(check.flash_param_problems({'flashMode': 'keep'}, 'demo', 'preserve')[0].level, check.OK)

@@ -8,6 +8,15 @@ const HEX32 = /^[0-9a-f]{32}$/;
 const KEY = /^[A-Za-z0-9][A-Za-z0-9._-]{0,79}$/;
 /** One flash sector. The chip erases whole sectors, so it is also the alignment `preserve` needs. */
 const SECTOR = 0x1000;
+// What esptool-js 0.6.1 accepts for the two image parameters, measured in the vendored bundle
+// (`docs/esptool-js-contract.md`). `keep` means leave the image's own header alone, which is what
+// every release did before these keys existed and what a manifest that says nothing still gets.
+const FLASH_MODES = new Set(['keep', 'qio', 'qout', 'dio', 'dout']);
+const FLASH_FREQS = new Set(['keep', '80m', '40m', '26m', '20m']);
+// The cable, not the image. Below 9600 nothing talks; above 2 Mbd no USB-serial bridge on these
+// boards keeps up, and a baud rate nothing can reach is a release nobody can install.
+const BAUD_MIN = 9600;
+const BAUD_MAX = 2000000;
 
 const isInt = (v) => Number.isSafeInteger(v);
 const fail = (code, params) => { throw new InstallError(code, params); };
@@ -185,6 +194,21 @@ function normalizeBuild(b, i, manifest, base, allowOrigins) {
   if (b.profile !== undefined && b.profile !== profile) fail('manifest.profile', { boardKey });
   const eraseAll = Boolean(b.eraseAll ?? manifest.eraseAll);
   if (profile === 'preserve' && eraseAll) fail('manifest.preserveNoErase', { boardKey });
+  // How the chip is to read this image back: properties of the binary, so they belong to the
+  // build that ships it and not to the page that writes it. Absent is `keep`, which is what the
+  // page always did. esptool-js applies them by patching the flash-parameter bytes of the image
+  // written at the chip's bootloader offset, and nothing else.
+  const flashParam = (v, allowed, code) => {
+    if (v === undefined || v === null) return 'keep';
+    const value = String(v).toLowerCase();
+    if (typeof v !== 'string' || !allowed.has(value)) fail(code, { boardKey, value: String(v) });
+    return value;
+  };
+  const flashMode = flashParam(b.flashMode, FLASH_MODES, 'manifest.flashMode');
+  const flashFreq = flashParam(b.flashFreq, FLASH_FREQS, 'manifest.flashFreq');
+  // `preserve` keeps the device's own bootloader and never writes at the bootloader offset, so
+  // these could only ever be a claim it cannot carry out. Refused rather than silently ignored.
+  if (profile === 'preserve' && (flashMode !== 'keep' || flashFreq !== 'keep')) fail('manifest.preserveNoFlashParams', { boardKey });
   const optInt = (v, code, max, min = 0) => {
     if (v === undefined || v === null) return undefined;
     if (!isInt(v) || v < min || v > max) fail(code, { boardKey });
@@ -214,6 +238,8 @@ function normalizeBuild(b, i, manifest, base, allowOrigins) {
     featuresAll: strList(b.featuresAll, 'manifest.filters'),
     profile,
     eraseAll,
+    flashMode,
+    flashFreq,
     improv: typeof b.improv === 'boolean' ? b.improv : undefined,
     compatibility,
     parts,
@@ -247,6 +273,12 @@ export function normalizeManifest(raw, manifestUrl, policy = {}) {
     builds: [],
   };
   if (manifest.profile !== 'factory' && manifest.profile !== 'preserve') fail('manifest.profile', { boardKey: '*' });
+  // The port opens once, before any build is matched, so this is the release's and not a build's.
+  // Absent leaves the page's own default in place.
+  if (raw.baudRate !== undefined && raw.baudRate !== null) {
+    if (!isInt(raw.baudRate) || raw.baudRate < BAUD_MIN || raw.baudRate > BAUD_MAX) fail('manifest.baudRate', { baudRate: String(raw.baudRate) });
+    manifest.baudRate = raw.baudRate;
+  }
   const seen = new Set();
   manifest.builds = raw.builds.map((b, i) => {
     const nb = normalizeBuild(b, i, manifest, base, allowOrigins);
@@ -298,7 +330,8 @@ export async function localManifest({ name, chipFamily, parts, profile = 'factor
       boardKey: 'local', board: chipFamily, chipFamily,
       flashSizeMB: undefined, usbVendorId: undefined, usbProductId: undefined,
       chipDescriptionIncludes: [], featuresAll: [],
-      profile: 'factory', eraseAll: false, improv: undefined, compatibility: undefined,
+      profile: 'factory', eraseAll: false, flashMode: 'keep', flashFreq: 'keep',
+      improv: undefined, compatibility: undefined,
       parts: out,
     }],
   };

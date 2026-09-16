@@ -10,7 +10,7 @@
  */
 import { InstallError } from './errors.js';
 import { compatibleBuilds, mismatchReasons } from './match.js';
-import { checkFetchedPart, checkLayout, checkBootImage, checkImageParts, sha256Hex } from './verify.js';
+import { checkFetchedPart, checkLayout, checkBootImage, checkImageParts, sha256Hex, CHIPS } from './verify.js';
 import { md5Hex } from './md5.js';
 import { runPreserve } from './preserve.js';
 import { checkSecurity } from './security.js';
@@ -18,6 +18,7 @@ import { verifiedBackup, backupFilename } from './backup.js';
 import { readPartitionTable, entryLine } from './partitions.js';
 import { etaSeconds } from './progress.js';
 
+/** The page's own baud rate, used unless a release names one. */
 const BAUD = 460800;
 const PART_MAX = 32 * 1024 * 1024;
 
@@ -114,6 +115,9 @@ export function createInstaller(deps) {
   // `changed` flips the moment an erase or a write begins: from then on the flash is no longer what
   // it was, and the page must not tell the person their device is unchanged.
   let busy = false, transport = null, loader = null, cancelled = false, lost = false, writing = false, changed = false;
+  // The release's baud rate, read once per run: the port opens before any build is matched, so
+  // this cannot belong to a build. `BAUD` unless the manifest says otherwise.
+  let baud = BAUD;
   const emit = (e) => { try { onEvent?.(e); } catch { /* UI errors must not break the flow */ } };
   const stage = (s, percent, params = {}, eta) => emit({ type: 'stage', stage: s, percent, params, eta });
   const log = (line) => emit({ type: 'log', line: String(line) });
@@ -134,7 +138,7 @@ export function createInstaller(deps) {
     check(); // a cancel during the port picker must not reset the device
     transport = new esptool.Transport(port, false, true);
     transport.setDeviceLostCallback?.(() => { lost = true; log('device lost'); });
-    loader = new esptool.ESPLoader({ transport, baudrate: BAUD, terminal, debugLogging: false });
+    loader = new esptool.ESPLoader({ transport, baudrate: baud, terminal, debugLogging: false });
     const description = await loader.main('default_reset');
     check();
     stage('detecting', 8);
@@ -148,7 +152,7 @@ export function createInstaller(deps) {
     const info = port.getInfo?.() ?? {};
     const hw = { chipFamily, chipDescription, features, flashSizeMB, usbVendorId: info.usbVendorId, usbProductId: info.usbProductId };
     emit({ type: 'hardware', hw });
-    log(`chip ${chipDescription}; flash ${flashSizeMB} MB; usb ${info.usbVendorId?.toString(16) ?? '-'}:${info.usbProductId?.toString(16) ?? '-'}`);
+    log(`chip ${chipDescription}; flash ${flashSizeMB} MB; usb ${info.usbVendorId?.toString(16) ?? '-'}:${info.usbProductId?.toString(16) ?? '-'}; baud ${baud}`);
     return hw;
   }
 
@@ -221,15 +225,19 @@ export function createInstaller(deps) {
    * Only a part with `md5` in the manifest is checked, so a release that declares none behaves
    * exactly as it did before this existed.
    *
-   * `patchedAt` is the one offset esptool-js may have rewritten on the way — the bootloader
-   * offset, where it patches the flash-parameter bytes when a build names `flashMode` or
-   * `flashFreq`. What is on the chip there is deliberately not the published file, so that part
-   * is reported and skipped rather than failed.
+   * `patchedAt` is the one offset esptool-js may have rewritten on the way. When a build names
+   * `flashMode` or `flashFreq`, the library patches the flash-parameter bytes of the image written
+   * at exactly the chip's bootloader offset — measured in the bundle: the address has to equal
+   * `BOOTLOADER_FLASH_OFFSET`, so an image at 0 on a chip that boots from 0x1000 is untouched.
+   * What is on the chip there is then deliberately not the published file, so that one part is
+   * reported and skipped. It is skipped even where the library would have declined to patch it
+   * (a part that is not an image it recognises): a check this page cannot be sure of is worth
+   * less than a log line that says which part went unexamined and why.
    */
   async function checkDeclaredMd5(parts, patchedAt = null) {
     for (const p of parts) {
       if (p.md5 === undefined) continue;
-      if (patchedAt !== null && p.offset <= patchedAt && patchedAt < p.offset + p.data.length) {
+      if (patchedAt !== null && p.offset === patchedAt) {
         log(`md5 ${p.path}: not compared with the release, because the write patched its flash parameters`);
         continue;
       }
@@ -250,15 +258,22 @@ export function createInstaller(deps) {
     }
   }
 
-  /** Writes the verified parts. Erase is a separate step, so `eraseAll` is always false here. */
-  async function write(parts) {
+  /**
+   * Writes the verified parts. Erase is a separate step, so `eraseAll` is always false here.
+   *
+   * `flashMode` and `flashFreq` come from the build and default to `keep`, which is what every
+   * release got before those keys existed: esptool-js then leaves the image exactly as published.
+   * `flashSize` is always `keep` — the size is read off the chip and the layout is checked against
+   * it, and letting a manifest restate it would only be a way to disagree with the device.
+   */
+  async function write(parts, build) {
     const total = parts.reduce((n, p) => n + p.data.length, 0);
     let done = 0, startedAt = 0;
     writing = true;
     changed = true;
     await loader.writeFlash({
       fileArray: parts.map((p) => ({ data: p.data, address: p.offset })),
-      flashMode: 'keep', flashFreq: 'keep', flashSize: 'keep', eraseAll: false, compress: true,
+      flashMode: build.flashMode, flashFreq: build.flashFreq, flashSize: 'keep', eraseAll: false, compress: true,
       calculateMD5Hash: (image) => md5Hex(image),
       // esptool-js reports `written`/`partTotal` in compressed bytes; scale the per-part
       // fraction to the uncompressed size so the overall ratio stays in uncompressed bytes.
@@ -313,9 +328,14 @@ export function createInstaller(deps) {
     // Last cancellation point. Once the erase has started the flash is already blank, so
     // stopping here would leave a dead device; the write runs to completion regardless.
     if (eraseFirst) await erase();
-    await write(parts);
+    await write(parts, build);
     stage('md5', 92);
-    await checkDeclaredMd5(parts);
+    // esptool-js rewrites the flash-parameter bytes of the image written at the chip's bootloader
+    // offset, and only of that one, when a build names either parameter. What is on the chip there
+    // is then deliberately not the published file, so that part is left out of the comparison with
+    // the release's own MD5 rather than failed on it.
+    const patched = build.flashMode !== 'keep' || build.flashFreq !== 'keep';
+    await checkDeclaredMd5(parts, patched ? (CHIPS[hw.chipFamily]?.bootloaderOffset ?? null) : null);
     // The image is written and MD5-verified by now; a failed reset is not a failed install.
     try {
       await loader.after('hard_reset');
@@ -337,6 +357,7 @@ export function createInstaller(deps) {
       busy = true; cancelled = false; lost = false; writing = false; changed = false;
       try {
         const profile = job.manifest.profile;
+        baud = job.manifest.baudRate ?? BAUD;
         const result = profile === 'preserve'
           ? await runPreserve({ job, connect, pick, download, loader: () => loader, readLayout, checkDeclaredMd5, stage, log, emit, check, deps, now, setWriting: () => { writing = true; changed = true; } })
           : await runFactory(job);

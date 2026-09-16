@@ -48,6 +48,11 @@ USER_AGENT = 'esp32install-check/1.0'
 TIMEOUT = 30
 HEX64 = re.compile(r'[0-9a-f]{64}')
 HEX32 = re.compile(r'[0-9a-f]{32}')
+# Mirrors FLASH_MODES / FLASH_FREQS and the baud range in app/manifest.js and tools/manifest.py.
+FLASH_MODES = ('keep', 'qio', 'qout', 'dio', 'dout')
+FLASH_FREQS = ('keep', '80m', '40m', '26m', '20m')
+BAUD_MIN = 9600
+BAUD_MAX = 2000000
 BOARD_KEY = re.compile(r'[A-Za-z0-9][A-Za-z0-9._-]{0,79}')
 META_TAG = re.compile(r'<meta\b[^>]*>', re.IGNORECASE)
 META_ATTR = re.compile(r'([A-Za-z-]+)\s*=\s*("[^"]*"|\'[^\']*\'|[^\s">]+)')
@@ -816,6 +821,7 @@ def check_build(source: Source, manifest_ref: Any, build: Dict[str, Any], board:
     elif improv is True:
         findings.append(Finding(OK, 'improv', '%s: takes Wi-Fi credentials over Improv Serial after the install'
                                 % board))
+    findings.extend(flash_param_problems(build, board, profile))
     parts = build.get('parts')
     if not isinstance(parts, list) or not parts:
         return findings + [Finding(FAIL, 'manifest', '%s: no parts' % board)]
@@ -885,6 +891,41 @@ def check_build(source: Source, manifest_ref: Any, build: Dict[str, Any], board:
     return findings
 
 
+def flash_param_problems(build: Dict[str, Any], board: str, profile: str) -> List[Finding]:
+    """`flashMode` and `flashFreq`: properties of the image, refused by the page when unknown.
+
+    The preserve profile refuses them outright. It keeps the device's own bootloader and never
+    writes at the bootloader offset, which is the only image esptool-js applies them to, so naming
+    one there is a claim nothing carries out — the page stops on `manifest.preserveNoFlashParams`.
+    """
+    findings: List[Finding] = []
+    for key, allowed in (('flashMode', FLASH_MODES), ('flashFreq', FLASH_FREQS)):
+        value = build.get(key)
+        if value is None:
+            continue
+        if not isinstance(value, str) or value.lower() not in allowed:
+            findings.append(Finding(FAIL, 'flash', '%s: %s is %r; the page knows %s'
+                                    % (board, key, value, ', '.join(allowed))))
+        elif profile == 'preserve' and value.lower() != 'keep':
+            findings.append(Finding(FAIL, 'flash', '%s: %s is set on a preserve build, which never writes '
+                                    'at the bootloader offset and so can never apply it; the page refuses '
+                                    'the release' % (board, key)))
+        else:
+            findings.append(Finding(OK, 'flash', '%s: %s %s' % (board, key, value.lower())))
+    return findings
+
+
+def baud_rate_problems(manifest: Dict[str, Any], subject: str) -> List[Finding]:
+    """`baudRate` belongs to the release: the port opens once, before any build is matched."""
+    value = manifest.get('baudRate')
+    if value is None:
+        return []
+    if not isinstance(value, int) or isinstance(value, bool) or not BAUD_MIN <= value <= BAUD_MAX:
+        return [Finding(FAIL, 'baud', '%s: baudRate is %r; the page takes a whole number between %d '
+                        'and %d' % (subject, value, BAUD_MIN, BAUD_MAX))]
+    return [Finding(OK, 'baud', '%s: the port is opened at %d' % (subject, value))]
+
+
 def check_manifest(source: Source, ref: Any, subject: str, allow_unhashed: bool = False) -> List[Finding]:
     fetched, problems = read_or_report(source, ref, subject)
     if fetched is None:
@@ -908,6 +949,7 @@ def check_manifest(source: Source, ref: Any, subject: str, allow_unhashed: bool 
     if profile not in ('factory', 'preserve'):
         findings.append(Finding(FAIL, 'manifest', '%s declares profile %r; the page accepts '
                                 'factory and preserve' % (subject, profile)))
+    findings.extend(baud_rate_problems(data, subject))
     builds = data.get('builds')
     if not isinstance(builds, list) or not builds:
         return findings + [Finding(FAIL, 'manifest', '%s has no builds' % subject)]

@@ -314,7 +314,11 @@ or its sentence drifts from the file.
 | `manifest.chipFamily` | Build {boardKey} names a device this installer does not know ({chipFamily}). This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.profile` | Build {boardKey} asks for a way of installing this installer does not know. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.preserveNoErase` | Build {boardKey} asks to clear the whole device, which is not allowed when settings have to be kept. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.preserveNoFlashParams` | Build {boardKey} wants to change how the device reads its memory, which is not allowed when settings have to be kept. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.flashSizeMB` | Build {boardKey} states an invalid memory size. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.baudRate` | The release asks for a connection speed no cable can use ({baudRate}). This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.flashFreq` | Build {boardKey} states an unknown memory speed ({value}). This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.flashMode` | Build {boardKey} states an unknown memory read mode ({value}). This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.usb` | Build {boardKey} states invalid USB identifiers. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.filters` | Build {boardKey} has invalid matching rules. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.compatibility` | Build {boardKey} has invalid compatibility data. This is a problem with the release itself, not with your device. Tell whoever published it. |

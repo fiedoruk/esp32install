@@ -2,7 +2,8 @@
 
 Verified against the npm package (lib/esploader.d.ts, lib/targets/*.js) on 2026-09-15.
 The two `command` entries below were re-read in the vendored bundle on 2026-09-16, when the
-security gate stopped using `checkCommand`.
+security gate stopped using `checkCommand`, and `_updateImageFlashParams` was read there the
+same day, when `flashMode` and `flashFreq` became manifest keys (finding 5).
 
 - `new Transport(port: SerialPort, tracing=false, enableSlipReader=true)`; `transport.setDeviceLostCallback(fn)`; `transport.disconnect()`.
 - `new ESPLoader({ transport, baudrate, terminal: {clean, write, writeLine}, debugLogging })`.
@@ -29,7 +30,9 @@ security gate stopped using `checkCommand`.
   has no command 0x14.
 - `loader.readFlash(addr, size, onPacket?)` → Uint8Array.
 - `loader.eraseFlash()` → whole-chip erase (stub required).
-- `loader.writeFlash({ fileArray:[{data, address}], flashMode:'keep', flashFreq:'keep', flashSize:'keep', eraseAll:false, compress:true, reportProgress(fileIndex, written, total), calculateMD5Hash(image)→hex })`.
+- `loader.writeFlash({ fileArray:[{data, address}], flashMode, flashFreq, flashSize:'keep', eraseAll:false, compress:true, reportProgress(fileIndex, written, total), calculateMD5Hash(image)→hex })`.
+  `flashMode` is one of `keep|qio|qout|dio|dout`, `flashFreq` one of `keep|80m|40m|26m|20m`; the installer
+  passes what the build declares and `keep` when it declares nothing. `flashSize` is always `keep`.
   When `calculateMD5Hash` is given, esptool-js compares it with `flashMd5sum` read from the chip after each file and throws on mismatch.
 - `loader.after('hard_reset')`.
 - `loader.flashMd5sum(addr, size)` → hex string (used by the preserve profile for read-back cross-check).
@@ -75,6 +78,23 @@ whose `CHIP_NAME="ESP8266"` (2026-09-15): the offset is declared as `0`, the chi
 absent (the ESP8266 image header has no chip id field). `verify.js` therefore checks
 only the `0xE9` magic for ESP8266 and skips the chip id comparison. `ESP32-C61` is the
 only class in the bundle without a `BOOTLOADER_FLASH_OFFSET`.
+
+**5. `_updateImageFlashParams` patches one part and only one.** Measured in the
+vendored bundle on 2026-09-16, when `flashMode` and `flashFreq` became manifest
+keys. The method returns the image unchanged unless every one of these holds: the
+image is at least 8 bytes; the write address **equals**
+`this.chip.BOOTLOADER_FLASH_OFFSET` (`t != … return A`, so covering the offset is
+not enough — a merged image at `0` on an ESP32 is untouched); at least one of
+`flashSize`, `flashMode`, `flashFreq` is not `keep`; the first byte is
+`ESP_IMAGE_MAGIC`; and the image parses as one for this chip. Where it does
+patch, it rewrites bytes 2 and 3 and, for an image with an appended SHA-256
+digest (`chip != ESP8266 && image[23] === 0x31`), recomputes that digest.
+
+The consequence the installer acts on: with either key set, what ends up at the
+bootloader offset is not byte-for-byte the published file, so the release's own
+`md5` cannot be compared with the chip for that one part. `engine.js` skips it
+with a log line and compares every other part. With both keys `keep` — the
+default — the method returns early and every byte written is the file's.
 
 ## Consequences for `engine.js`
 

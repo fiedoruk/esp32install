@@ -53,6 +53,12 @@ MAX_FLASH_MB = 1024
 READ_CHUNK = 1 << 20
 # One flash sector, the unit the chip erases in. Mirrors SECTOR in app/manifest.js.
 SECTOR = 0x1000
+# What esptool-js 0.6.1 accepts for the two image parameters, and what the page validates.
+# Mirrors FLASH_MODES / FLASH_FREQS in app/manifest.js.
+FLASH_MODES = ('keep', 'qio', 'qout', 'dio', 'dout')
+FLASH_FREQS = ('keep', '80m', '40m', '26m', '20m')
+BAUD_MIN = 9600
+BAUD_MAX = 2000000
 
 
 @dataclass(frozen=True)
@@ -291,6 +297,9 @@ class Options:
     usb_vendor_id: Optional[int] = None
     usb_product_id: Optional[int] = None
     profile: str = 'factory'
+    flash_mode: str = 'keep'
+    flash_freq: str = 'keep'
+    baud_rate: Optional[int] = None
     prompt_erase: bool = False
     improv: bool = False
     path_prefix: Optional[str] = None
@@ -411,6 +420,27 @@ def validate_options(opts: Options) -> None:
                              'and a part written at exactly that offset')
 
 
+def validate_flash_params(opts: Options) -> None:
+    """How the chip is to read the image back, and how fast the cable runs.
+
+    These are properties of the binary and of the board, not of the page that writes them, which
+    is why they live in the manifest at all. `keep` means the image's own header is left alone,
+    and that is what every release got before these existed. The preserve profile refuses them:
+    it never writes at the bootloader offset, which is the only place esptool-js applies them, so
+    naming one there would be a claim nothing carries out.
+    """
+    if opts.flash_mode not in FLASH_MODES:
+        raise UsageError('--flash-mode must be one of %s' % ', '.join(FLASH_MODES))
+    if opts.flash_freq not in FLASH_FREQS:
+        raise UsageError('--flash-freq must be one of %s' % ', '.join(FLASH_FREQS))
+    if opts.profile == 'preserve' and (opts.flash_mode != 'keep' or opts.flash_freq != 'keep'):
+        raise UsageError('the preserve profile keeps the device\'s own bootloader and never writes at '
+                         'the bootloader offset, which is the only image these settings reach; leave '
+                         '--flash-mode and --flash-freq alone for it')
+    if opts.baud_rate is not None and not (BAUD_MIN <= opts.baud_rate <= BAUD_MAX):
+        raise UsageError('--baud-rate must be between %d and %d' % (BAUD_MIN, BAUD_MAX))
+
+
 def measure(parts: Sequence[Part]) -> List[Dict[str, Any]]:
     """Read every binary once: size, checksum and enough head bytes for the image header."""
     measured: List[Dict[str, Any]] = []
@@ -458,6 +488,7 @@ def build_manifest(parts: Sequence[Part], opts: Any) -> Dict[str, Any]:
     themselves do not hold up.
     """
     options = as_options(opts)
+    validate_flash_params(options)
     validate_options(options)
     if not parts:
         raise UsageError('give at least one binary')
@@ -530,6 +561,10 @@ def build_manifest(parts: Sequence[Part], opts: Any) -> Dict[str, Any]:
     if options.usb_vendor_id is not None:
         build['usbVendorId'] = options.usb_vendor_id
         build['usbProductId'] = options.usb_product_id
+    if options.flash_mode != 'keep':
+        build['flashMode'] = options.flash_mode
+    if options.flash_freq != 'keep':
+        build['flashFreq'] = options.flash_freq
     if options.improv:
         build['improv'] = True
     compat = compatibility_json(options)
@@ -544,14 +579,17 @@ def build_manifest(parts: Sequence[Part], opts: Any) -> Dict[str, Any]:
         **({'md5': m['md5']} if options.md5 else {}),
     } for m in measured]
 
-    return {
+    data: Dict[str, Any] = {
         'schema': 2,
         'name': options.name,
         'version': options.version,
         'profile': options.profile,
         'new_install_prompt_erase': bool(options.prompt_erase),
-        'builds': [build],
     }
+    if options.baud_rate is not None:
+        data['baudRate'] = options.baud_rate
+    data['builds'] = [build]
+    return data
 
 
 def write_manifest(data: Dict[str, Any], out: Path) -> None:
@@ -659,6 +697,13 @@ def make_parser() -> argparse.ArgumentParser:
                         help='USB ids of the board, hexadecimal, for example 1a86:55d4')
     parser.add_argument('--profile', choices=PROFILES, default='factory',
                         help='factory writes the whole layout, preserve keeps user data (default: factory)')
+    parser.add_argument('--flash-mode', choices=FLASH_MODES, default='keep',
+                        help='how the chip reads the image back; keep leaves the image alone (default: keep)')
+    parser.add_argument('--flash-freq', choices=FLASH_FREQS, default='keep',
+                        help='the memory clock the image asks for; keep leaves the image alone (default: keep)')
+    parser.add_argument('--baud-rate', type=number_argument, metavar='RATE',
+                        help='the speed the page opens the port at, for the whole release '
+                             '(default: the page\'s own 460800)')
     parser.add_argument('--prompt-erase', action='store_true',
                         help='offer a full erase before a first install')
     parser.add_argument('--improv', action='store_true',
@@ -692,6 +737,7 @@ def options_from_args(args: argparse.Namespace) -> Options:
     return Options(
         chip=args.chip, name=args.name, version=args.version, board=args.board, board_key=args.board_key,
         flash_mb=args.flash_mb, usb_vendor_id=vendor, usb_product_id=product, profile=args.profile,
+        flash_mode=args.flash_mode, flash_freq=args.flash_freq, baud_rate=args.baud_rate,
         prompt_erase=args.prompt_erase, improv=args.improv, path_prefix=args.path_prefix,
         checksum_in_path=args.checksum_in_path, md5=args.md5, compat_regions=args.compat_regions,
         first_regions=args.first_regions, first_empty=args.first_empty, update_table=args.update_table,

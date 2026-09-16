@@ -68,6 +68,7 @@ developer has to hand. Both work.
 | `builds` | 1 | array | At least one entry. Each entry is one board. |
 | `new_install_prompt_erase` | 1 | boolean | Offer a full erase before installing. `factory` only. |
 | `profile` | 2 | `"factory"` or `"preserve"` | The profile for the whole release. Absent means `factory`. |
+| `baudRate` | 2 | integer 9600–2000000 | The speed the page opens the port at. It belongs to the release and not to a build, because the port opens before any build has been matched. Absent means the page's own 460800. |
 | `eraseAll` | 2 | boolean | Default for every build. The whole chip is erased before the write, in *update* mode as well; the page still shows the erase dialog first, and it says that nothing can be kept. Refused by `preserve`. |
 
 ### A build
@@ -84,6 +85,8 @@ developer has to hand. Both work.
 | `featuresAll` | 2 | array of strings | Every string must appear in one of the chip's feature strings. |
 | `profile` | 2 | as above | May repeat the top-level value, never change it. A build whose profile differs from the manifest's is refused with `manifest.profile`. |
 | `eraseAll` | 2 | as above | Per-build override of the top-level value. |
+| `flashMode` | 2 | `keep`, `qio`, `qout`, `dio`, `dout` | How the chip reads this image back. Absent means `keep`: the image is written exactly as published. Refused by `preserve`. See below. |
+| `flashFreq` | 2 | `keep`, `80m`, `40m`, `26m`, `20m` | The memory clock this image asks for. Absent means `keep`. Refused by `preserve`. See below. |
 | `improv` | 1 | boolean | The firmware takes Wi-Fi credentials over [Improv Serial](https://www.improv-wifi.com/serial/) once it boots. Same key as esp-web-tools. See below. |
 | `compatibility` | 2 | object | Required by `preserve`, ignored by `factory`. See below. |
 
@@ -181,6 +184,37 @@ writes, anything the manifest declares (`manifest.alignment` otherwise; see
 `docs/profiles.md` for the footprint rule). `tools/manifest.py`
 refuses to write a `preserve` manifest that breaks any of these rules, and
 `tools/check.py` reports one that does.
+
+### `flashMode` and `flashFreq`, which belong to the image
+
+How a chip clocks and addresses its flash is written into the first bytes of the
+image it boots from, by whatever built it. Those two bytes are properties of the
+binary, not of the page that writes it, which is why they are stated by the
+release and not by the installer.
+
+`keep` — the default, and what every release got before these keys existed —
+means the image is written exactly as published and nothing is touched. Naming
+anything else makes esptool-js patch the flash-parameter bytes, and it does that
+in one place only: the part written at **exactly** the chip's bootloader offset.
+A merged image at `0` on an ESP32, which boots from `0x1000`, is not patched;
+neither is any application, data partition or table.
+
+Two consequences worth knowing before you use them:
+
+* The bytes at that offset are then deliberately not the published file, so that
+  one part is left out of the `md5` cross-check described above. The technical
+  log says which part and why; every other part is still compared.
+* `flashSize` is not a manifest key and never will be. The size is read off the
+  chip and the whole layout is checked against it, so a manifest restating it
+  could only be a way to disagree with the device that is plugged in.
+
+The `preserve` profile refuses both keys (`manifest.preserveNoFlashParams`). It
+keeps the device's own bootloader and never writes at the bootloader offset, so a
+value there would be a claim nothing carries out — and a claim nothing carries
+out is worse than no claim.
+
+`tools/manifest.py` takes `--flash-mode`, `--flash-freq` and `--baud-rate` and
+writes a key only when it is not the default. `tools/check.py` reports all three.
 
 ### `improv`, Wi-Fi setup after the install
 

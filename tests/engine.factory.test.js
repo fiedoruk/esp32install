@@ -801,3 +801,86 @@ test('a malformed md5 in the manifest is refused when the manifest is read', () 
   assert.throws(() => normalizeManifest(bad, 'https://h/install/demo.json'),
     (e) => e.code === 'manifest.md5' && e.params.index === 1);
 });
+
+/* --- flashMode, flashFreq and baudRate: the release's properties, not the page's --- */
+
+test('by default nothing changes: keep on both parameters and the page\'s own baud rate', async () => {
+  const { inst, manifest, fake, events } = await setup();
+  await inst.run({ manifest, mode: 'first', options: {} });
+  const opts = fake.writes[0];
+  assert.equal(opts.flashMode, 'keep');
+  assert.equal(opts.flashFreq, 'keep');
+  assert.equal(opts.flashSize, 'keep', 'the size is read off the chip and never restated by a manifest');
+  assert.equal(fake.loaders[0].opts.baudrate, 460800);
+  assert.match(events.filter((e) => e.type === 'log').map((e) => e.line).join('\n'), /baud 460800/);
+});
+
+test('a build\'s flashMode and flashFreq reach esptool-js as written', async () => {
+  const img = image(0);
+  const { inst, manifest, fake } = await setup({ img, over: {
+    builds: [{ chipFamily: 'ESP32', flashMode: 'DIO', flashFreq: '80m', parts: [{ path: 'demo.bin', offset: 0, size: img.length }] }],
+  } });
+  await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(fake.writes[0].flashMode, 'dio', 'lower-cased, which is what the library\'s table is keyed on');
+  assert.equal(fake.writes[0].flashFreq, '80m');
+});
+
+test('a release\'s baudRate opens the port, because the port opens before a build is picked', async () => {
+  const { inst, manifest, fake, events } = await setup({ over: { baudRate: 921600 } });
+  await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(fake.loaders[0].opts.baudrate, 921600);
+  assert.match(events.filter((e) => e.type === 'log').map((e) => e.line).join('\n'), /baud 921600/);
+});
+
+test('unusable values are refused when the manifest is read, with the value in the stop', () => {
+  const build = (over) => ({ name: 'Demo', version: '1.0', builds: [{ chipFamily: 'ESP32', parts: [{ path: 'd.bin', offset: 0 }], ...over }] });
+  assert.throws(() => normalizeManifest(build({ flashMode: 'qspi' }), 'https://h/i/m.json'),
+    (e) => e.code === 'manifest.flashMode' && e.params.value === 'qspi');
+  assert.throws(() => normalizeManifest(build({ flashFreq: '160m' }), 'https://h/i/m.json'),
+    (e) => e.code === 'manifest.flashFreq' && e.params.value === '160m');
+  assert.throws(() => normalizeManifest(build({ flashMode: 40 }), 'https://h/i/m.json'), (e) => e.code === 'manifest.flashMode');
+  for (const rate of [9599, 2000001, 115200.5, '460800', true]) {
+    assert.throws(() => normalizeManifest({ ...build({}), baudRate: rate }, 'https://h/i/m.json'),
+      (e) => e.code === 'manifest.baudRate', String(rate));
+  }
+  assert.equal(normalizeManifest({ ...build({}), baudRate: 9600 }, 'https://h/i/m.json').baudRate, 9600);
+  assert.equal(normalizeManifest(build({}), 'https://h/i/m.json').baudRate, undefined, 'absent stays absent');
+});
+
+test('a patched bootloader image is left out of the release MD5 check, and said so in the log', async () => {
+  // ESP32 boots from 0x1000, so this is the part esptool-js patches and this is the one skipped.
+  const boot = new Uint8Array(0x1000).fill(0xff); boot[0] = 0xe9; boot[12] = 0; boot[13] = 0;
+  const app = new Uint8Array(0x1000).fill(0x5a);
+  const fetchFor = async (url) => ({ ok: true, status: 200, arrayBuffer: async () => (url.endsWith('boot.bin') ? boot : app).buffer.slice(0) });
+  const { inst, manifest, fake, events } = await setup({ fetch: fetchFor, over: {
+    builds: [{ chipFamily: 'ESP32', flashMode: 'dio', parts: [
+      { path: 'boot.bin', offset: 0x1000, size: boot.length, md5: md5Hex(boot) },
+      { path: 'app.bin', offset: 0x10000, size: app.length, md5: md5Hex(app) },
+    ] }],
+  } });
+  await inst.run({ manifest, mode: 'first', options: {} });
+  assert.deepEqual(fake.calls.filter((c) => c[0] === 'flashMd5sum').map((c) => c.slice(1)), [[0x10000, app.length]],
+    'only the part the write could not have altered');
+  const log = events.filter((e) => e.type === 'log').map((e) => e.line).join('\n');
+  assert.match(log, /md5 boot\.bin: not compared with the release, because the write patched its flash parameters/);
+  assert.match(log, /md5 app\.bin: the chip reports the value the release declares/);
+});
+
+test('a part merely covering the bootloader offset is still compared: the library patches only an exact match', async () => {
+  // A merged image at 0 on an ESP32 covers 0x1000 but is not written at it, so nothing is patched.
+  const img = image(0);
+  const { inst, manifest, fake } = await setup({ img, over: {
+    builds: [{ chipFamily: 'ESP32', flashMode: 'dio', parts: [{ path: 'merged.bin', offset: 0, size: img.length, md5: md5Hex(img) }] }],
+  } });
+  await inst.run({ manifest, mode: 'first', options: {} });
+  assert.deepEqual(fake.calls.filter((c) => c[0] === 'flashMd5sum').map((c) => c.slice(1)), [[0, img.length]]);
+});
+
+test('preserve refuses to state them at all, because it never writes where they would apply', () => {
+  assert.throws(() => normalizeManifest({
+    schema: 2, name: 'x', version: '1', profile: 'preserve',
+    builds: [{ chipFamily: 'ESP32', flashMode: 'dio',
+      compatibility: { regions: [{ offset: 0, size: 0x1000, sha256: 'a'.repeat(64) }], update: { tableOffset: 0 } },
+      parts: [{ path: 'a.bin', offset: 0, size: 16, sha256: 'b'.repeat(64) }] }],
+  }, 'https://h/i/m.json'), (e) => e.code === 'manifest.preserveNoFlashParams');
+});

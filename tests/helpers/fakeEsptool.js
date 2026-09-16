@@ -23,6 +23,8 @@ export function makeFakeEsptool({
 } = {}) {
   const calls = [];
   const transports = [];
+  const loaders = [];   // every ESPLoader made, so a test can read the baud rate the page asked for
+  const writes = [];    // every writeFlash options object, whole: flashMode, flashFreq, flashSize
   const flash = new Uint8Array(flashBytes).fill(0xff);
   if (flashImage) flash.set(flashImage.subarray(0, flashBytes), 0);
   let macCalls = 0, readCalls = 0;
@@ -34,6 +36,7 @@ export function makeFakeEsptool({
   class ESPLoader {
     constructor(opts) {
       this.opts = opts;
+      loaders.push(this);
       this.flash = flash;
       this.DETECTED_FLASH_SIZES = { 0x14: '1MB', 0x15: '2MB', 0x16: '4MB', 0x17: '8MB', 0x18: '16MB' };
     }
@@ -109,6 +112,7 @@ export function makeFakeEsptool({
       flash.fill(0xff);
     }
     async writeFlash(o) {
+      writes.push(o);
       calls.push(['writeFlash', o.fileArray.map((f) => [f.address, f.data.length]), o.eraseAll, o.compress]);
       if (o.eraseAll) flash.fill(0xff);
       for (let i = 0; i < o.fileArray.length; i++) {
@@ -130,5 +134,5 @@ export function makeFakeEsptool({
       if (failReset) throw new Error('Failed to reset device');
     }
   }
-  return { ESPLoader, Transport, calls, transports, flash };
+  return { ESPLoader, Transport, calls, transports, loaders, writes, flash };
 }
