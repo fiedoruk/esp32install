@@ -429,6 +429,11 @@ Nothing is required. One `site.json` serves every language, exactly as before;
 the extra file is there for the publisher who wants the tagline and the column
 headings to read properly in each one.
 
+One thing to expect on a copy that ships only `site.json`: the browser's console
+shows a 404 for `site.<language>.json` on each visit. That is the page looking
+for a translation you have not written, finding none and using `site.json`;
+nothing is broken and no visitor sees it. Add the file or ignore the line.
+
 Two rules the page applies to what you write there:
 
 * **Every `href` is filtered** the same way a `guide` link from the catalog is:

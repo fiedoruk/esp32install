@@ -604,13 +604,16 @@ def checksum_in_path_findings(board: str, name: str, in_path: Optional[str], dig
     directory on disk sends no headers and is not judged on that.
     """
     if in_path is None:
-        problem = stale_cache_problem(headers)
-        if problem is None:
+        if stale_cache_problem(headers) is None:
             return []
-        return [Finding(WARN, 'cache', '%s: %s has no checksum in its address and %s Write the '
-                        'address as %s?sha256=%s and a new release reaches them whatever the host '
-                        'sends — tools/manifest.py does it by default'
-                        % (board, name, problem.split(';')[0] + ';', name, digest))]
+        age = re.search(r'max-age\s*=\s*(\d+)', (headers or {}).get('cache-control', '').lower())
+        how = ('the host tells the browser to keep it for %s seconds' % age.group(1) if age
+               else 'the host sends no Cache-Control, leaving the browser to decide how long to keep it')
+        return [Finding(WARN, 'cache', '%s: the address of %s never changes and %s, so somebody who '
+                        'downloaded an earlier release can be served it again in place of this one. '
+                        'Write the address as %s?sha256=%s and it changes with the bytes; '
+                        'tools/manifest.py does that by default'
+                        % (board, name, how, name, digest))]
     if in_path != digest:
         return [Finding(FAIL, 'sha256', '%s: the address of %s says sha256=%s, but what it serves '
                         'is %s' % (board, name, in_path, digest))]
