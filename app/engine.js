@@ -69,6 +69,33 @@ export async function fetchBytes(fetchFn, url, max) {
   return new Uint8Array(buf);
 }
 
+/**
+ * The own-file path by address: one URL the user typed, fetched with the same size limit as a
+ * part and the same final-origin rule. The origin policy here is the user's own decision and the
+ * page's `connect-src` decides what the browser will read; a fetch the browser refused (policy,
+ * CORS, no network) is reported as `own.blocked`, an HTTP error stays `manifest.fetch`. The
+ * bytes then go through `localManifest` and the identical check chain.
+ */
+export async function fetchOwnFile(fetchFn, address, base, max = PART_MAX) {
+  let url;
+  try { url = new URL(String(address ?? '').trim(), base); } catch (err) { throw new InstallError('own.blocked', {}, err); }
+  if (url.protocol !== 'https:' && url.protocol !== 'http:') throw new InstallError('own.blocked', {});
+  url.username = '';
+  url.password = '';
+  let bytes;
+  try {
+    bytes = await fetchBytes(fetchFn, url.href, max);
+  } catch (err) {
+    if (err instanceof InstallError && err.code === 'manifest.fetch' && err.params.status === 0) throw new InstallError('own.blocked', {}, err);
+    throw err;
+  }
+  let name = url.pathname.split('/').pop() || '';
+  try { name = decodeURIComponent(name); } catch { /* keep as written */ }
+  name ||= url.hostname;
+  if (bytes.length === 0) throw new InstallError('verify.empty', { path: name });
+  return { name, url: url.href, bytes };
+}
+
 export function createInstaller(deps) {
   const { esptool, requestPort, fetchFn, onEvent, chooseBuild, confirmErase, saveBackup } = deps;
   const now = deps.now ?? Date.now; // injectable clock, so a test can see an ETA without waiting

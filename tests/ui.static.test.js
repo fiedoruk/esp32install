@@ -165,6 +165,9 @@ test('the own-file path: an entry under the list, a block on the prepare screen 
   assert.match(html, /<section class="screen" id="screen-prepare"[\s\S]*?<div class="own" id="own" hidden>[\s\S]*?<\/section>/, 'the block lives on the prepare screen');
   assert.match(html, /<label class="file" for="own-file"><span data-i18n="simple\.own\.choose"><\/span><input type="file" id="own-file" accept="\.bin,application\/octet-stream"><\/label>/);
   assert.match(html, /<div class="own-read" id="own-read" hidden>/, 'what was read stays hidden until a file is chosen');
+  assert.match(html, /<div class="own-url">\s*<label class="field" for="own-url"><span data-i18n="simple\.own\.url"><\/span><input type="text" id="own-url" spellcheck="false" autocomplete="off" autocapitalize="off"><\/label>\s*<button type="button" class="small" id="own-url-go" data-i18n="simple\.own\.urlGo"><\/button>\s*<\/div>\s*<p class="own-hint" data-i18n="simple\.own\.urlHint"><\/p>/, 'the address field sits beside the file input');
+  assert.match(read('app/main.js'), /fetchOwnFile\(fetch\.bind\(window\), address, document\.baseURI\)/, 'a typed address is fetched by the page, never by a manifest');
+  assert.doesNotMatch(read('app/manifest.js'), /own\.blocked|fetchOwnFile/, 'the manifest layer keeps its origin policy');
   assert.match(html, /<div class="doors" role="radiogroup" data-i18n-attr="aria-label:simple\.own\.where">/);
   for (const [id, key] of [['own-whole', 'whole'], ['own-app', 'app']]) {
     assert.match(html, new RegExp(`<label class="door" for="${id}">\\s*<input type="radio" name="own-where" id="${id}" value="${key}">[\\s\\S]*?<b data-i18n="simple\\.own\\.${key}"><\\/b><small data-i18n="simple\\.own\\.${key}Hint">`), id);

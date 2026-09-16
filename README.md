@@ -11,13 +11,23 @@ Live demo: <https://esp32ai.me/install>
 ## Install your own file
 
 Open the page with `?own=1` (the list of systems links there too, under *Install
-your own file*), choose a `.bin` from your disk and click the button. Nothing is
-uploaded: the file is read in the browser, its header is inspected, and it goes
-through the same checks as a catalogued release: not empty, within the size
-limits, held to the size and SHA-256 measured when it was read, nothing past the
-end of the flash the chip reports, and the image chip id must be the chip that
-is plugged in. Then it is written with esptool-js's MD5 read-back and the device
-is reset.
+your own file*). Two ways in, side by side: choose a `.bin` from your disk, or
+paste the address of one (a path on the same site such as
+`/os/emini-home/0.4.4/emini-home-0.4.4-note4c.bin`, or a full URL) and press
+*Read it*. Nothing is uploaded: the bytes are read into the browser, the header
+is inspected, and they go through the same checks as a catalogued release: not
+empty, within the size limits, held to the size and SHA-256 measured when they
+were read, nothing past the end of the flash the chip reports, and the image
+chip id must be the chip that is plugged in. Then they are written with
+esptool-js's MD5 read-back and the device is reset.
+
+An address on this site always works. An address on another site is usually
+refused by the page's own policy (`connect-src 'self'`) or by that site's CORS
+headers; the page then says so and suggests downloading the file and choosing
+it from disk. A host that wants any `https:` address to work can widen
+`connect-src`, with the trade-off described in
+[docs/replicate.md](docs/replicate.md). A typed address is the visitor's own
+decision and is not held to the catalog's `allowOrigins`; a manifest still is.
 
 Two things a file cannot decide for itself are shown before the install starts,
 with the defaults the file suggests. **Where it goes:** a merged image

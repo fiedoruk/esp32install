@@ -74,7 +74,7 @@ const REQUIRED = [
   'tech.title', 'tech.chip', 'tech.flash', 'tech.board', 'tech.release', 'tech.checksum', 'tech.log', 'tech.file',
   'simple.own.title', 'simple.own.instead', 'simple.own.hint', 'simple.own.choose', 'simple.own.read', 'simple.own.where',
   'simple.own.whole', 'simple.own.wholeHint', 'simple.own.app', 'simple.own.appHint', 'simple.own.address', 'simple.own.device',
-  'simple.own.pickDevice', 'simple.own.plan', 'simple.own.unknownDevice', 'simple.own.badAddress',
+  'simple.own.pickDevice', 'simple.own.plan', 'simple.own.unknownDevice', 'simple.own.badAddress', 'simple.own.url', 'simple.own.urlHint', 'simple.own.urlGo',
   'pick.title', 'pick.hint',
   'erase.title', 'erase.textFirst', 'erase.textUpdate', 'erase.yes', 'erase.no',
   'hint.open', 'hint.close',

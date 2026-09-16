@@ -57,6 +57,28 @@ links to it under the button. `check.py` still reports a missing catalog as a
 FAIL, because a site that publishes releases is expected to have one; on a copy
 that deliberately has none, that one finding is the expected one.
 
+The own-file path also takes an address. A relative path or a URL on the same
+origin is fetched and checked like a downloaded part. A URL on another origin
+is blocked by the shipped policy, `connect-src 'self'`, before any request is
+made, and by that origin's CORS headers if it were not; the page reports
+`own.blocked` and suggests downloading the file and choosing it from disk. A
+host that wants any `https:` address to work must widen the policy in
+`index.html`:
+
+```
+connect-src 'self' https:
+```
+
+The trade-off: the page can then read any `https:` address the visitor types,
+and the visitor may reach a file they would not have found on their own. Every
+byte is still measured, its SHA-256 shown in the technical layer and held to
+before the first write, and the image is still checked against the chip that is
+plugged in. The catalog path is unaffected: a manifest's parts are still held to
+the manifest's origin and `allowOrigins`; only a typed address bypasses that
+list. `check.py` will report the widened `connect-src` unless the origins are
+passed with `--allow-origin`; `https:` as a bare scheme is not an origin, so on
+such a host that finding is expected too.
+
 ## Apache
 
 Copying the directory into the document root is normally all it takes. If the

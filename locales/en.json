@@ -92,6 +92,9 @@
       "instead": "Install your own file instead",
       "hint": "Choose a file from this computer. Nothing is uploaded anywhere.",
       "choose": "Choose the file",
+      "url": "Or give the address of a file",
+      "urlHint": "Paste a link to a file on this site, or anywhere that allows it.",
+      "urlGo": "Read it",
       "read": "{name}, {size}.",
       "where": "What is in the file?",
       "whole": "The whole system",
@@ -203,6 +206,7 @@
     "flash.verify": "What is on the device does not match the release. Keep your copy and try again.",
     "engine.load": "The part of this page that talks to devices could not be loaded. Reload the page and try again.",
     "engine.busy": "Something else is still running. Wait for it to finish and try again.",
-    "engine.unexpected": "Something unexpected stopped the installer before anything was written. Reload the page and try again."
+    "engine.unexpected": "Something unexpected stopped the installer before anything was written. Reload the page and try again.",
+    "own.blocked": "This browser may not read that address from this page. Download the file and choose it from your computer instead."
   }
 }

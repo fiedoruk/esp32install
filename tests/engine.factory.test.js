@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { createInstaller, mapSerialError, flashSizeFromId } from '../app/engine.js';
+import { createInstaller, mapSerialError, flashSizeFromId, fetchOwnFile } from '../app/engine.js';
 import { normalizeManifest, localManifest } from '../app/manifest.js';
 import { makeFakeEsptool } from './helpers/fakeEsptool.js';
 import { sha256Hex } from '../app/verify.js';
@@ -371,4 +371,80 @@ test('own file: the optional backup runs for a local install exactly as for a re
   const names = fake.calls.map((c) => c[0]);
   assert.ok(names.indexOf('saveBackup') < names.indexOf('eraseFlash'));
   assert.match(saved[0], /^mine\.bin-backup-[0-9a-f]{8}\.bin$/);
+});
+
+/* --- the own-file path by address --------------------------------------- */
+
+const okResponse = (img, url = '') => async (u) => ({ ok: true, status: 200, url: url || u, arrayBuffer: async () => img.buffer.slice(0) });
+
+test('own file by address: a relative same-origin address is fetched once, then installs from memory through the full chain', async () => {
+  const img = image(0);
+  const seen = [];
+  const fetchFn = async (url, opts) => { seen.push([url, opts]); return okResponse(img)(url); };
+  const got = await fetchOwnFile(fetchFn, '/os/emini-home/0.4.4/emini-home-0.4.4-note4c.bin', 'https://h/install/');
+  assert.equal(got.name, 'emini-home-0.4.4-note4c.bin');
+  assert.equal(got.url, 'https://h/os/emini-home/0.4.4/emini-home-0.4.4-note4c.bin');
+  assert.equal(seen.length, 1);
+  assert.equal(seen[0][0], got.url);
+  assert.equal(seen[0][1].credentials, 'same-origin');
+  assert.equal(seen[0][1].cache, 'no-store');
+  assert.equal(got.bytes.length, img.length);
+  const manifest = await localManifest({ name: got.name, chipFamily: 'ESP32', parts: [{ path: got.name, offset: 0, bytes: got.bytes }] });
+  assert.equal(manifest.builds[0].parts[0].sha256, await sha256Hex(img));
+  const fake = makeFakeEsptool();
+  const inst = createInstaller({ esptool: fake, requestPort: async () => ({ getInfo: () => ({}) }),
+    fetchFn: async () => { throw new Error('the engine must not fetch again'); },
+    chooseBuild: async (b) => b[0], confirmErase: async () => true, saveBackup: async () => {} });
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.ok(fake.flash.subarray(0, img.length).every((b, i) => b === img[i]));
+});
+
+test('own file by address: bytes fetched by address go through the same image checks as a local file', async () => {
+  const got = await fetchOwnFile(okResponse(image(9)), 'other.bin', 'https://h/install/'); // an ESP32-S3 image
+  const manifest = await localManifest({ name: got.name, chipFamily: 'ESP32', parts: [{ path: got.name, offset: 0, bytes: got.bytes }] });
+  const fake = makeFakeEsptool();
+  const inst = createInstaller({ esptool: fake, requestPort: async () => ({ getInfo: () => ({}) }),
+    fetchFn: async () => { throw new Error('no'); }, chooseBuild: async (b) => b[0], confirmErase: async () => true, saveBackup: async () => {} });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'verify.wrongChip' && e.params.found === 'ESP32-S3');
+  assert.ok(!called(fake, 'eraseFlash'));
+  assert.ok(!called(fake, 'writeFlash'));
+  // and the measured sha256 is held to, exactly like a file from disk
+  const got2 = await fetchOwnFile(okResponse(image(0)), 'a.bin', 'https://h/');
+  const m2 = await localManifest({ name: 'a.bin', chipFamily: 'ESP32', parts: [{ offset: 0, bytes: got2.bytes }] });
+  got2.bytes[0x2000] ^= 0xff;
+  const fake2 = makeFakeEsptool();
+  const inst2 = createInstaller({ esptool: fake2, requestPort: async () => ({ getInfo: () => ({}) }),
+    fetchFn: async () => { throw new Error('no'); }, chooseBuild: async (b) => b[0], confirmErase: async () => true, saveBackup: async () => {} });
+  await assert.rejects(inst2.run({ manifest: m2, mode: 'first', options: {} }), (e) => e.code === 'verify.sha256');
+  assert.ok(!called(fake2, 'writeFlash'));
+});
+
+test('own file by address: an HTTP error is manifest.fetch with its status; a fetch the browser refused is own.blocked', async () => {
+  await assert.rejects(fetchOwnFile(async () => ({ ok: false, status: 404 }), '/missing.bin', 'https://h/'),
+    (e) => e.code === 'manifest.fetch' && e.params.status === 404);
+  await assert.rejects(fetchOwnFile(async () => ({ ok: false, status: 500 }), '/broken.bin', 'https://h/'),
+    (e) => e.code === 'manifest.fetch' && e.params.status === 500);
+  const refused = new TypeError('Failed to fetch'); // what Chrome throws for a CSP or CORS block, and offline
+  await assert.rejects(fetchOwnFile(async () => { throw refused; }, 'https://other.example/fw.bin', 'https://h/'),
+    (e) => e.code === 'own.blocked' && e.cause?.cause === refused);
+  await assert.rejects(fetchOwnFile(async () => { throw refused; }, '/same-origin.bin', 'https://h/'), (e) => e.code === 'own.blocked');
+});
+
+test('own file by address: only http(s) addresses are tried, credentials are stripped, and the empty, oversized and redirected cases fail as parts do', async () => {
+  const seen = [];
+  await assert.rejects(fetchOwnFile(async (u) => { seen.push(u); }, 'ftp://x/y.bin', 'https://h/'), (e) => e.code === 'own.blocked');
+  await assert.rejects(fetchOwnFile(async (u) => { seen.push(u); }, 'file:///etc/passwd', 'https://h/'), (e) => e.code === 'own.blocked');
+  await assert.rejects(fetchOwnFile(async (u) => { seen.push(u); return { ok: false, status: 404 }; }, '', 'https://h/install/'), (e) => e.code === 'manifest.fetch' && e.params.status === 404, 'an empty address is the page itself, reported like any HTTP miss');
+  assert.deepEqual(seen.filter((u) => /^(ftp|file):/.test(u)), [], 'nothing but http(s) reaches fetch');
+  const img = image(0);
+  const got = await fetchOwnFile(okResponse(img), 'https://user:pw@other.example/fw%20v1.bin', 'https://h/');
+  assert.equal(got.url, 'https://other.example/fw%20v1.bin');
+  assert.equal(got.name, 'fw v1.bin');
+  await assert.rejects(fetchOwnFile(okResponse(new Uint8Array(0)), '/empty.bin', 'https://h/'), (e) => e.code === 'verify.empty' && e.params.path === 'empty.bin');
+  await assert.rejects(fetchOwnFile(okResponse(img), '/big.bin', 'https://h/', 0x100), (e) => e.code === 'verify.tooLarge');
+  await assert.rejects(fetchOwnFile(okResponse(img, 'https://cdn.example/fw.bin'), '/fw.bin', 'https://h/'), (e) => e.code === 'manifest.origin', 'a redirect to another origin is refused as for a part');
+  const hostOnly = await fetchOwnFile(okResponse(img), 'https://other.example', 'https://h/');
+  assert.equal(hostOnly.name, 'other.example', 'no path segment: the host names the file');
 });

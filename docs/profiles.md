@@ -233,6 +233,16 @@ bootloader offset, and every other part that starts with the image magic `0xE9`.
 The second one is what catches an application built for another chip in a
 `preserve` release, where nothing is written at the bootloader offset.
 
+### Your own file, by address
+
+| Code | Message |
+|---|---|
+| `own.blocked` | This browser may not read that address from this page. Download the file and choose it from your computer instead. |
+
+Raised only on the own-file path, when the browser refused the fetch before any
+response arrived: the page's `connect-src`, the other origin's CORS headers, or
+no network. An HTTP error for a typed address stays `manifest.fetch`.
+
 ### The device is not the one this release expects
 
 | Code | Message |

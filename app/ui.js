@@ -208,6 +208,14 @@ export function mountUi({ i18n, system }) {
     bindOwnFile(fn) {
       $('own-file').addEventListener('change', () => { const f = $('own-file').files?.[0]; if (f) fn(f); });
     },
+    /** The address field: its button, or Enter inside it. */
+    bindOwnUrl(fn) {
+      const go = () => fn($('own-url').value);
+      $('own-url-go').addEventListener('click', go);
+      $('own-url').addEventListener('keydown', (e) => { if (e.key === 'Enter') { e.preventDefault(); go(); } });
+    },
+    /** While an address is being read: no second read, no other file. */
+    setOwnReading(on) { for (const id of ['own-url', 'own-url-go', 'own-file']) $(id).disabled = on; },
     bindOwnChange(fn) { onOwnChange = fn; },
     /** What was read, and the defaults the file itself suggests. Both stay editable and visible. */
     setOwnFile({ name, size, sha256, chipFamily, whole }) {
@@ -231,7 +239,7 @@ export function mountUi({ i18n, system }) {
       $('connect').disabled = on || !ownReady();
       $('connect-label').textContent = on ? t('action.connecting') : t('action.connect');
       for (const r of document.querySelectorAll('input[name="mode"], input[name="own-where"]')) r.disabled = on;
-      for (const id of ['backup', 'own-file', 'own-address', 'own-chip']) $(id).disabled = on;
+      for (const id of ['backup', 'own-file', 'own-url', 'own-url-go', 'own-address', 'own-chip']) $(id).disabled = on;
     },
     /** Resets screen 2 and shows it. */
     startInstall() {

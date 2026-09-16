@@ -8,7 +8,7 @@
 import { detectLang, createI18n } from './i18n.js';
 import { pickRelease } from './catalog.js';
 import { CHIP_FAMILIES, normalizeManifest, localManifest } from './manifest.js';
-import { createInstaller, fetchBytes } from './engine.js';
+import { createInstaller, fetchBytes, fetchOwnFile } from './engine.js';
 import { esptoolCommand, inspectImage, sha256Hex } from './verify.js';
 import { saveBlob, saveBackupWithHandle } from './backup.js';
 import { mountUi, translateDom, fileNameOf, hideHatches } from './ui.js';
@@ -109,29 +109,39 @@ async function startOwn(lang) {
   ui.setBackupAvailable(true); // the own-file path is always the factory profile
   const esptool = await loadEngine(ui);
   if (!esptool) return;
-  let picked = null; // { name, bytes, sha256 }
+  let picked = null; // { name, bytes, sha256, url? }
   const run = makeInstaller({ esptool, ui, fw: 'local', nameOf: () => picked?.name ?? '' });
-  ui.bindOwnFile(async (file) => {
-    let bytes;
-    try { bytes = new Uint8Array(await file.arrayBuffer()); }
-    catch (e) { ui.setError(new InstallError('engine.unexpected', { detail: String(e?.message ?? e) }, e)); return; }
-    if (bytes.length === 0) return ui.setError(new InstallError('verify.empty', { path: file.name }));
-    if (bytes.length > PART_MAX) return ui.setError(new InstallError('verify.tooLarge', { path: file.name, bytes: bytes.length, max: PART_MAX }));
+  const report = (e) => ui.setError(e instanceof InstallError ? e : new InstallError('engine.unexpected', { detail: String(e?.message ?? e) }, e));
+  // Both ways in end here: bytes in memory, inspected, shown with the defaults they suggest.
+  const accept = async (name, bytes, url) => {
+    if (bytes.length === 0) throw new InstallError('verify.empty', { path: name });
+    if (bytes.length > PART_MAX) throw new InstallError('verify.tooLarge', { path: name, bytes: bytes.length, max: PART_MAX });
     const { chipFamily, whole } = inspectImage(bytes);
-    picked = { name: file.name, bytes, sha256: await sha256Hex(bytes) };
-    document.title = i18n.t('app.title', { system: file.name });
-    ui.setOwnFile({ name: file.name, size: bytes.length, sha256: picked.sha256, chipFamily, whole });
+    picked = { name, bytes, sha256: await sha256Hex(bytes), url };
+    document.title = i18n.t('app.title', { system: name });
+    ui.setOwnFile({ name, size: bytes.length, sha256: picked.sha256, chipFamily, whole });
+  };
+  ui.bindOwnFile(async (file) => {
+    try { await accept(file.name, new Uint8Array(await file.arrayBuffer())); } catch (e) { report(e); }
+  });
+  ui.bindOwnUrl(async (address) => {
+    if (!String(address ?? '').trim()) return;
+    ui.setOwnReading(true);
+    try {
+      const { name, url, bytes } = await fetchOwnFile(fetch.bind(window), address, document.baseURI);
+      await accept(name, bytes, url);
+    } catch (e) { report(e); } finally { ui.setOwnReading(false); }
   });
   ui.bindOwnChange((choice) => {
     if (!choice || !picked) return;
-    ui.setAltRoute({ cmd: esptoolCommand(choice.chipFamily, [{ offset: choice.offset }], [picked.name]), files: [{ name: picked.name, sha256: picked.sha256 }] });
+    ui.setAltRoute({ cmd: esptoolCommand(choice.chipFamily, [{ offset: choice.offset }], [picked.name]), files: [{ name: picked.name, url: picked.url, sha256: picked.sha256 }] });
   });
   ui.bindConnect(async () => {
     const choice = ui.ownChoice();
     if (!picked || !choice) return;
     let manifest;
     try { manifest = await localManifest({ name: picked.name, chipFamily: choice.chipFamily, parts: [{ path: picked.name, offset: choice.offset, bytes: picked.bytes }] }); }
-    catch (e) { ui.setError(e instanceof InstallError ? e : new InstallError('engine.unexpected', { detail: String(e?.message ?? e) }, e)); return; }
+    catch (e) { report(e); return; }
     await run.run(manifest, ui.mode(), { backup: ui.wantsBackup() });
   });
   ui.bindRetry(() => ui.showScreen('prepare'));

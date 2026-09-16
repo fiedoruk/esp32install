@@ -92,6 +92,9 @@
       "instead": "Albo zainstaluj własny plik",
       "hint": "Wskaż plik z tego komputera. Nic nigdzie nie jest wysyłane.",
       "choose": "Wybierz plik",
+      "url": "Albo podaj adres pliku",
+      "urlHint": "Wklej odnośnik do pliku na tej stronie albo w innym miejscu, które na to pozwala.",
+      "urlGo": "Wczytaj",
       "read": "{name}, {size}.",
       "where": "Co jest w pliku?",
       "whole": "Cały system",
@@ -203,6 +206,7 @@
     "flash.verify": "To, co jest na urządzeniu, nie zgadza się z wydaniem. Zachowaj swoją kopię i spróbuj jeszcze raz.",
     "engine.load": "Nie udało się wczytać tej części strony, która rozmawia z urządzeniami. Odśwież stronę i spróbuj jeszcze raz.",
     "engine.busy": "Instalator kończy jeszcze poprzednie zadanie. Poczekaj chwilę i spróbuj jeszcze raz.",
-    "engine.unexpected": "Coś niespodziewanego zatrzymało instalator, zanim cokolwiek zostało zapisane. Odśwież stronę i spróbuj jeszcze raz."
+    "engine.unexpected": "Coś niespodziewanego zatrzymało instalator, zanim cokolwiek zostało zapisane. Odśwież stronę i spróbuj jeszcze raz.",
+    "own.blocked": "Przeglądarka może nie odczytać tego adresu z tej strony. Pobierz plik i wskaż go z komputera."
   }
 }

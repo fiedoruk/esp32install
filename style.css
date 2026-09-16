@@ -344,6 +344,9 @@ details[open] pre, details[open] code { font-family: var(--font-mono); }
 .own-card small { display: block; font: 15px var(--font-body); color: var(--dim); margin-top: 2px; }
 .own, .own-read { display: flex; flex-direction: column; gap: var(--gap); }
 .own-hint { color: var(--dim); }
+.own-url { display: flex; gap: 10px; align-items: flex-end; }
+.own-url .field { flex: 1; }
+.own-url .small { margin: 0 0 1px; min-height: 45px; white-space: nowrap; }
 .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .field { display: flex; flex-direction: column; gap: 6px; color: var(--dim); font-size: 16px; }
 .field input, .field select {
