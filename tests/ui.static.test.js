@@ -177,8 +177,8 @@ test('the visual upgrade kept its four structural hooks in the markup and nothin
   assert.match(html, /<svg class="ring" id="ring"[^>]*>\s*<circle class="ring-dial" cx="60" cy="60" r="44" aria-hidden="true"\/>\s*<circle class="ring-track"/);
   assert.match(html, /<svg class="mark" id="mark"[^>]*>\s*<circle class="mark-fill" cx="60" cy="60" r="46"\/>\s*<circle class="ring-dial" cx="60" cy="60" r="44"\/>\s*<circle class="mark-ring"/);
   assert.match(html, /<div class="hatches">\s*<details class="tech" id="tech">[\s\S]*?<details class="log" id="log-details">[\s\S]*?<details class="alt-wrap" id="alt-wrap">[\s\S]*?<\/details>\s*<\/div>\s*<\/div>/, 'the three hatches sit in one chamber, last on the plate');
-  assert.match(html, /<a class="brand" href="\.\/"><svg viewBox="0 0 32 32" aria-hidden="true">[\s\S]*?<\/svg>esp32install<\/a>/);
-  assert.match(html, /<link rel="icon" href="data:image\/svg\+xml,[^"]*rect x='16' y='8' width='14' height='16'/, 'the favicon is the same sign as the brand');
+  assert.match(html, /<a class="brand" href="\.\/"><svg class="signet" viewBox="0 0 32 32" aria-hidden="true">[\s\S]*?<\/svg><span class="word"><b>esp32<\/b>install<\/span><\/a>/);
+  assert.match(html, /<link rel="icon" href="favicon\.svg">/);
 });
 
 test('the backup dialog has a hint line that ui.js fills with the saved file name (D-06)', () => {
@@ -441,4 +441,24 @@ test('every secondary control wears one class, and none of them borrows the acce
   // The file picker draws its own label, so that label has to be a button like the others.
   assert.match(html, /<label class="file" for="backup-file"><span class="btn" data-i18n="action\.chooseBackup">/);
   assert.match(read('app/ui.js'), /fileText\.className = 'btn';/);
+});
+
+test('the signet is drawn in fills on a 2px grid, and the favicon is the same drawing', () => {
+  const icon = read('favicon.svg');
+  const body = /d="M16 6h10a4 4 0 0 1 4 4v12a4 4 0 0 1-4 4H16a4 4 0 0 1-4-4V10a4 4 0 0 1 4-4Zm1 4/;
+  const plug = /d="M2 13h6v1h5v4H8v1H2Z"/;
+  for (const [what, src] of [['the header sign', html], ['favicon.svg', icon]]) {
+    assert.match(src, body, what + ': the body with the screen cut out of it');
+    assert.match(src, plug, what + ': the plug and its lead');
+    assert.match(src, /<circle[^>]*cx="26" cy="22" r="2"/, what + ': the state dot');
+  }
+  // Fills, not strokes: a 1.5px line disappears at 16px, which is what the old sign did.
+  assert.doesNotMatch(icon, /stroke/, 'no strokes in the favicon');
+  assert.match(html, /fill-rule="evenodd"/, 'the screen is a hole in the body, not a second outline');
+  assert.match(style, /\.brand \.signet \{[^}]*fill:\s*currentColor[^}]*stroke:\s*none/);
+  assert.match(style, /\.brand \.signet-dot \{ fill: var\(--accent\); \}/, 'the one spot of accent');
+  // The logotype: one word, two weights of the display face, and no second colour.
+  assert.match(style, /\.brand \.word \{[^}]*font-weight:\s*400[^}]*letter-spacing:\s*-0\.02em/);
+  assert.match(style, /\.brand \.word b \{ font-weight: 800; \}/);
+  assert.doesNotMatch(style, /\.brand[^{]*\{[^}]*text-shadow|\.brand[^{]*\{[^}]*gradient/);
 });

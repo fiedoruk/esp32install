@@ -41,19 +41,21 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
   gap: var(--gap);
 }
 .top { padding: 20px 0 8px; }
-/* The brand: the plug-and-device sign from the pictogram, then the word. Same sign as the favicon. */
+/* The mark: a signet and a logotype, the same pair as the favicon.
+   The signet is drawn in fills on a 2px grid, so it survives 16px; the screen is a hole in the
+   body rather than a second outline, and the one spot of accent is the state dot. The logotype
+   says the name in one word and two weights, which is the whole of the drawing in it. */
 .brand {
   display: inline-flex;
   align-items: center;
-  gap: 8px;
-  font-family: var(--font-display);
-  font-weight: 800;
-  font-size: 20px;
-  letter-spacing: -0.01em;
+  gap: 10px;
   color: var(--ink);
   text-decoration: none;
 }
-.brand svg { width: 20px; height: 20px; stroke-width: 2.5; flex: none; }
+.brand .signet { width: 32px; height: 32px; flex: none; fill: currentColor; stroke: none; }
+.brand .signet-dot { fill: var(--accent); }
+.brand .word { font-family: var(--font-display); font-weight: 400; font-size: var(--t-h2); letter-spacing: -0.02em; }
+.brand .word b { font-weight: 800; }
 /* Theme and language share one segmented switch sunk into the field; the pressed segment sits on the plate colour. */
 .switches {
   display: inline-flex;

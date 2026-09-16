@@ -1,0 +1,10 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="#1A56C4">
+  <!-- The esp32install signet: a lead going into a device with a screen.
+       Same drawing as the header sign in index.html; keep the two in step.
+       A tab strip has no theme to read, so here the whole sign is the accent,
+       the screen is a hole and the state dot is cut in white: legible on a white
+       strip and on a dark one, with no media query to be ignored. -->
+  <path fill-rule="evenodd" d="M16 6h10a4 4 0 0 1 4 4v12a4 4 0 0 1-4 4H16a4 4 0 0 1-4-4V10a4 4 0 0 1 4-4Zm1 4a1 1 0 0 0-1 1v6a1 1 0 0 0 1 1h8a1 1 0 0 0 1-1v-6a1 1 0 0 0-1-1h-8Z"/>
+  <path d="M2 13h6v1h5v4H8v1H2Z"/>
+  <circle cx="26" cy="22" r="2" fill="#FFFFFF"/>
+</svg>
