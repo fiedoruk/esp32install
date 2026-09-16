@@ -112,6 +112,21 @@ lists it. `form-action 'none'` and `base-uri 'none'` remove two classic
 redirection tricks. The page also sets `referrer: no-referrer`, so visiting an
 installer link does not tell the firmware host where you came from.
 
+`connect-src 'self'` also decides what the own-file path's address field can
+read. A path on the same site works as it is; an address on another origin is
+blocked by the browser before any request is made, and the page reports that as
+`own.blocked` with the suggestion to download the file and choose it from disk.
+That is the shipped default and this product does not change it. A host that
+wants arbitrary addresses to work opts in by adding the scheme to the
+directive, `connect-src 'self' https:`. The trade-off is that the page may then
+read any `https:` address the visitor types, including one they would not have
+found on their own. What does not change: every byte read that way is measured,
+held to its size and SHA-256 before the first write, shown with that hash in the
+technical layer, and checked against the chip that is plugged in. The catalog
+path is unaffected either way, because a manifest's parts stay held to the
+manifest's origin and `allowOrigins`. [replicate.md](replicate.md#without-a-catalog)
+shows the edit and what `check.py` says about it.
+
 One directive is deliberately absent. `frame-ancestors`, which stops another
 site from framing the installer and steering clicks at it, is ignored by
 browsers when it appears in a `<meta>` policy and only logs a console error

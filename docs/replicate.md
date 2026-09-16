@@ -69,11 +69,15 @@ host that wants any `https:` address to work must widen the policy in
 connect-src 'self' https:
 ```
 
-The trade-off: the page can then read any `https:` address the visitor types,
-and the visitor may reach a file they would not have found on their own. Every
+This is an opt-in and the shipped product does not make it: with the default
+policy the field works for same-origin paths only, and a cross-origin address
+ends in `own.blocked`, never in a generic network error. The trade-off of
+widening: the page can then read any `https:` address the visitor types, and
+the visitor may reach a file they would not have found on their own. Every
 byte is still measured, its SHA-256 shown in the technical layer and held to
 before the first write, and the image is still checked against the chip that is
-plugged in. The catalog path is unaffected: a manifest's parts are still held to
+plugged in. [security.md](security.md#content-security-policy) states the same
+rule from the policy's side. The catalog path is unaffected: a manifest's parts are still held to
 the manifest's origin and `allowOrigins`; only a typed address bypasses that
 list. `check.py` will report the widened `connect-src` unless the origins are
 passed with `--allow-origin`; `https:` as a bare scheme is not an origin, so on
