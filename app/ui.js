@@ -246,6 +246,7 @@ export function mountUi({ i18n, system }) {
     fileLabel.className = 'file';
     fileLabel.htmlFor = `own-file-${id}`;
     const fileText = document.createElement('span');
+    fileText.className = 'btn';
     fileText.textContent = t('simple.own.choose');
     const file = document.createElement('input');
     file.type = 'file';
@@ -271,7 +272,7 @@ export function mountUi({ i18n, system }) {
     fields.append(addrLabel, info);
     const remove = document.createElement('button');
     remove.type = 'button';
-    remove.className = 'small';
+    remove.className = 'btn btn--ghost';
     remove.textContent = t('simple.own.remove');
     li.append(title, fileLabel, fields, remove);
     const row = { id, li, title, fileText, file, address, info, remove, part: null, kindText: '' };

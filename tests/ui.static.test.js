@@ -203,8 +203,8 @@ test('the save button lives on the install screen, is hidden until the copy is r
 test('the own-file path: an entry under the list, a row list on the prepare screen, the address field beside it, and a way back from a catalogued install', () => {
   assert.match(html, /<a class="own-card" id="own-entry">\s*<b data-i18n="simple\.own\.title"><\/b>\s*<small data-i18n="simple\.own\.hint"><\/small>\s*<\/a>/);
   assert.match(html, /<section class="screen" id="screen-prepare"[\s\S]*?<div class="own" id="own" hidden>[\s\S]*?<\/section>/, 'the block lives on the prepare screen');
-  assert.match(html, /<ul class="pick-list own-parts" id="own-parts"><\/ul>\s*<button type="button" class="small" id="own-add" hidden data-i18n="simple\.own\.addFile"><\/button>/, 'rows are built by ui.js; the add button waits for the first file');
-  assert.match(html, /<div class="own-url">\s*<label class="field" for="own-url"><span data-i18n="simple\.own\.url"><\/span><input type="text" id="own-url" spellcheck="false" autocomplete="off" autocapitalize="off"><\/label>\s*<button type="button" class="small" id="own-url-go" data-i18n="simple\.own\.urlGo"><\/button>\s*<\/div>\s*<p class="own-hint" data-i18n="simple\.own\.urlHint"><\/p>/, 'the address field sits under the rows');
+  assert.match(html, /<ul class="pick-list own-parts" id="own-parts"><\/ul>\s*<button type="button" class="btn" id="own-add" hidden data-i18n="simple\.own\.addFile"><\/button>/, 'rows are built by ui.js; the add button waits for the first file');
+  assert.match(html, /<div class="own-url">\s*<label class="field" for="own-url"><span data-i18n="simple\.own\.url"><\/span><input type="text" id="own-url" spellcheck="false" autocomplete="off" autocapitalize="off"><\/label>\s*<button type="button" class="btn" id="own-url-go" data-i18n="simple\.own\.urlGo"><\/button>\s*<\/div>\s*<p class="own-hint" data-i18n="simple\.own\.urlHint"><\/p>/, 'the address field sits under the rows');
   assert.match(html, /<div class="own-read" id="own-read" hidden>\s*<label class="field" for="own-chip"><span data-i18n="simple\.own\.device"><\/span><select id="own-chip"><\/select><\/label>\s*<p class="hint-text" id="own-note" aria-live="polite"><\/p>\s*<\/div>/, 'one device for the whole set, and the plan spoken before the button');
   assert.match(html, /<div class="line" id="door-line">/, 'the doors can be hidden until a file exists');
   assert.match(html, /<p class="note" id="connect-why" hidden aria-live="polite"><\/p>\s*<button class="cta" id="connect" type="button">/, 'the disabled button says why, right above it');
@@ -274,7 +274,7 @@ test('the Wi-Fi step lives on the done screen, hidden until the device asks for 
   assert.match(html, /<datalist id="wifi-list"><\/datalist>/, 'the scanned networks are suggestions; a hidden network can still be typed');
   assert.match(html, /<label class="field" for="wifi-pass"><span data-i18n="simple\.wifi\.password"><\/span><input type="password" id="wifi-pass" autocomplete="off"><\/label>/);
   assert.match(html, /<button class="cta" id="wifi-send" type="button" data-i18n="action\.wifiSend"><\/button>/);
-  assert.match(html, /<button class="quiet-btn" id="wifi-skip" type="button" data-i18n="simple\.wifi\.skip"><\/button>/);
+  assert.match(html, /<button class="btn btn--ghost" id="wifi-skip" type="button" data-i18n="simple\.wifi\.skip"><\/button>/);
   assert.match(html, /<p class="lead" id="wifi-ok" hidden data-i18n="simple\.wifi\.ok"><\/p>/);
   assert.match(html, /<a id="wifi-next" class="cta" hidden rel="noopener" target="_blank"><\/a>/, 'the device address opens beside the installer, never in its place');
   assert.doesNotMatch(html, /<form\b/, 'no form: form-action is none in the policy, and Enter is handled by hand');
@@ -289,7 +289,7 @@ test('the Wi-Fi step lives on the done screen, hidden until the device asks for 
 });
 
 test('the console lives inside the technical log: one button, hidden until a port was picked, lines through textContent under a cap', () => {
-  assert.match(html, /<details class="log" id="log-details">[\s\S]*?<pre id="log"><\/pre>[\s\S]*?<button type="button" class="small" id="console-toggle" hidden aria-pressed="false" data-i18n="action\.console"><\/button>[\s\S]*?<\/details>/);
+  assert.match(html, /<details class="log" id="log-details">[\s\S]*?<pre id="log"><\/pre>[\s\S]*?<button type="button" class="btn" id="console-toggle" hidden aria-pressed="false" data-i18n="action\.console"><\/button>[\s\S]*?<\/details>/);
   const ui = read('app/ui.js');
   assert.match(ui, /const logLines = createLineBuffer\(\);/, 'the log <pre> is fed from the capped buffer');
   assert.match(ui, /pre\.textContent = logLines\.text\(\);/);
@@ -421,4 +421,24 @@ test('an open hatch holds no card, and the "?" ring rides the line of text it be
   assert.match(hint[1], /vertical-align:\s*middle/);
   assert.doesNotMatch(hint[1], /flex:\s*none/, 'it is no longer a flex item pinned to the plate edge');
   assert.match(style, /\.line \{\s*display:\s*block/, 'the line is a block, so the heading stays inline and the ring follows the last word');
+});
+
+test('every secondary control wears one class, and none of them borrows the accent as a fill', () => {
+  const btn = style.match(/\n\.btn \{([^}]*)\}/);
+  assert.ok(btn, '.btn');
+  for (const decl of [/min-height:\s*44px/, /border-radius:\s*var\(--radius-in\)/, /background:\s*var\(--bg-2\)/, /font:\s*600 var\(--t-small\) var\(--font-display\)/]) {
+    assert.match(btn[1], decl, String(decl));
+  }
+  assert.match(style, /\.btn--ghost \{[^}]*color:\s*var\(--dim\)/);
+  assert.match(style, /\.btn:disabled \{[^}]*cursor:\s*not-allowed/, 'a button that is merely off must not show a busy pointer');
+  assert.doesNotMatch(style, /\.btn[^{]*\{[^}]*background:\s*var\(--accent\)/, 'the accent fills the one action and nothing else');
+  // Nothing may still be reaching for the classes these replaced.
+  for (const dead of ['.small', '.quiet-btn', '.warn-btn']) {
+    assert.ok(!style.includes(dead + ' ') && !style.includes(dead + ','), dead + ' is gone from the stylesheet');
+    assert.ok(!html.includes('"' + dead.slice(1) + '"'), dead + ' is gone from the markup');
+  }
+  assert.doesNotMatch(read('app/ui.js'), /className = '(small|quiet-btn|warn-btn)'/, 'and from the rows ui.js builds');
+  // The file picker draws its own label, so that label has to be a button like the others.
+  assert.match(html, /<label class="file" for="backup-file"><span class="btn" data-i18n="action\.chooseBackup">/);
+  assert.match(read('app/ui.js'), /fileText\.className = 'btn';/);
 });

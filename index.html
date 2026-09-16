@@ -75,10 +75,10 @@
       <div class="own" id="own" hidden>
         <p class="own-hint" data-i18n="simple.own.hint"></p>
         <ul class="pick-list own-parts" id="own-parts"></ul>
-        <button type="button" class="small" id="own-add" hidden data-i18n="simple.own.addFile"></button>
+        <button type="button" class="btn" id="own-add" hidden data-i18n="simple.own.addFile"></button>
         <div class="own-url">
           <label class="field" for="own-url"><span data-i18n="simple.own.url"></span><input type="text" id="own-url" spellcheck="false" autocomplete="off" autocapitalize="off"></label>
-          <button type="button" class="small" id="own-url-go" data-i18n="simple.own.urlGo"></button>
+          <button type="button" class="btn" id="own-url-go" data-i18n="simple.own.urlGo"></button>
         </div>
         <p class="own-hint" data-i18n="simple.own.urlHint"></p>
         <div class="own-read" id="own-read" hidden>
@@ -161,7 +161,7 @@
           <p class="wifi-error" id="wifi-error" hidden aria-live="assertive"></p>
           <div class="row">
             <button class="cta" id="wifi-send" type="button" data-i18n="action.wifiSend"></button>
-            <button class="quiet-btn" id="wifi-skip" type="button" data-i18n="simple.wifi.skip"></button>
+            <button class="btn btn--ghost" id="wifi-skip" type="button" data-i18n="simple.wifi.skip"></button>
           </div>
         </div>
         <p class="lead" id="wifi-ok" hidden data-i18n="simple.wifi.ok"></p>
@@ -187,8 +187,8 @@
     <details class="log" id="log-details">
       <summary id="log-summary" data-i18n="app.showLog"></summary>
       <pre id="log"></pre>
-      <button type="button" class="small" id="copy-log" data-i18n="app.copyLog"></button>
-      <button type="button" class="small" id="console-toggle" hidden aria-pressed="false" data-i18n="action.console"></button>
+      <button type="button" class="btn" id="copy-log" data-i18n="app.copyLog"></button>
+      <button type="button" class="btn" id="console-toggle" hidden aria-pressed="false" data-i18n="action.console"></button>
     </details>
 
     <details class="alt-wrap" id="alt-wrap">
@@ -214,7 +214,7 @@
     <h2 id="board-title" data-i18n="board.pick"></h2>
     <p id="board-hint"></p>
     <div id="board-list" class="choices"></div>
-    <div class="row"><button type="button" class="quiet-btn" id="board-cancel" data-i18n="action.cancel"></button></div>
+    <div class="row"><button type="button" class="btn btn--ghost" id="board-cancel" data-i18n="action.cancel"></button></div>
   </dialog>
 
   <dialog id="erase-dialog" aria-labelledby="erase-title">
@@ -224,14 +224,14 @@
     </div>
     <div class="hint-text" id="hint-erase" hidden data-i18n="erase.hint"></div>
     <p id="erase-text"></p>
-    <div class="row"><button type="button" class="warn-btn" id="erase-yes"></button><button type="button" class="quiet-btn" id="erase-no" autofocus></button></div>
+    <div class="row"><button type="button" class="btn btn--warn" id="erase-yes"></button><button type="button" class="btn btn--ghost" id="erase-no" autofocus></button></div>
   </dialog>
 
   <dialog id="backup-dialog" aria-labelledby="backup-title">
     <h2 id="backup-title" data-i18n="action.chooseBackupTitle"></h2>
     <p id="backup-hint"></p>
-    <label class="file" for="backup-file"><span data-i18n="action.chooseBackup"></span><input type="file" id="backup-file" accept=".bin"></label>
-    <div class="row"><button type="button" class="quiet-btn" id="backup-cancel" data-i18n="action.cancel"></button></div>
+    <label class="file" for="backup-file"><span class="btn" data-i18n="action.chooseBackup"></span><input type="file" id="backup-file" accept=".bin"></label>
+    <div class="row"><button type="button" class="btn btn--ghost" id="backup-cancel" data-i18n="action.cancel"></button></div>
   </dialog>
 </main>
 
