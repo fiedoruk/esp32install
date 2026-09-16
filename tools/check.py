@@ -69,6 +69,7 @@ ORIGIN = re.compile(r'^https?://[A-Za-z0-9.-]+(?::\d{1,5})?$')
 CATALOG = 'catalog.json'
 INDEX = 'index.html'
 VENDOR_SUMS = 'vendor/esptool-js/SHA256SUMS'
+IMPROV_SUMS = 'vendor/improv-wifi/SHA256SUMS'
 
 
 @dataclass(frozen=True)
@@ -376,14 +377,30 @@ def check_index(source: Source, catalog_origins: Sequence[str] = (),
 
 
 def check_vendor(source: Source) -> List[Finding]:
-    ref = source.join(source.root(), VENDOR_SUMS)
-    fetched, problems = read_or_report(source, ref, VENDOR_SUMS)
+    """esptool-js must be there and pinned. The Improv client is optional: a replica that dropped
+    it only loses the Wi-Fi step after the install, so its absence is a WARN and its presence is
+    pinned like the bundle."""
+    findings = check_sums(source, VENDOR_SUMS)
+    improv_ref = source.join(source.root(), IMPROV_SUMS)
+    fetched, _ = read_or_report(source, improv_ref, IMPROV_SUMS)
+    if fetched is None:
+        findings.append(Finding(WARN, 'vendor', '%s is missing; the page will not offer Wi-Fi setup '
+                                'after the install' % IMPROV_SUMS))
+    else:
+        findings.extend(check_sums(source, IMPROV_SUMS))
+    return findings
+
+
+def check_sums(source: Source, sums_path: str) -> List[Finding]:
+    """Every file a SHA256SUMS names must be there and match, byte for byte."""
+    ref = source.join(source.root(), sums_path)
+    fetched, problems = read_or_report(source, ref, sums_path)
     if fetched is None:
         return problems
     entries = [SUMS_LINE.match(line.strip()) for line in fetched.data.decode('utf-8', 'replace').splitlines()]
     entries = [m for m in entries if m]
     if not entries:
-        return [Finding(FAIL, 'vendor', '%s lists no checksums' % VENDOR_SUMS)]
+        return [Finding(FAIL, 'vendor', '%s lists no checksums' % sums_path)]
     findings: List[Finding] = []
     for entry in entries:
         recorded, name = entry.group(1).lower(), entry.group(2).strip()
@@ -521,6 +538,14 @@ def check_build(source: Source, manifest_ref: Any, build: Dict[str, Any], board:
         findings.append(Finding(FAIL, 'chipFamily', '%s: %r is not a chip family the page knows'
                                 % (board, family)))
         family = None
+    improv = build.get('improv')
+    if improv is not None and not isinstance(improv, bool):
+        # The page refuses a non-boolean here (manifest.improv), so it is a FAIL, not a warning.
+        findings.append(Finding(FAIL, 'manifest', '%s: improv must be true or false, not %r'
+                                % (board, improv)))
+    elif improv is True:
+        findings.append(Finding(OK, 'improv', '%s: takes Wi-Fi credentials over Improv Serial after the install'
+                                % board))
     parts = build.get('parts')
     if not isinstance(parts, list) or not parts:
         return findings + [Finding(FAIL, 'manifest', '%s: no parts' % board)]

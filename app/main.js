@@ -13,6 +13,7 @@ import { esptoolCommand, inspectImage, sha256Hex } from './verify.js';
 import { saveBlob, saveBackupWithHandle } from './backup.js';
 import { mountUi, translateDom, fileNameOf, hideHatches } from './ui.js';
 import { mountThemeToggle } from './theme.js';
+import { createImprovSession } from './improv.js';
 import { InstallError } from './errors.js';
 
 const AVAILABLE = ['en', 'pl'];
@@ -49,21 +50,84 @@ async function loadEngine(ui) {
   catch (e) { ui.setError(new InstallError('engine.load', {}, e)); return null; }
 }
 
-/** One installer wired to the page; `nameOf` is read late because the own-file name arrives later. */
+/**
+ * One installer wired to the page; `nameOf` is read late because the own-file name arrives later.
+ * The port the person picked is remembered, because after the install the page reopens it for
+ * the optional Wi-Fi step; whatever holds it then lets go before the next install starts.
+ */
 function makeInstaller({ esptool, ui, fw, guide, nameOf }) {
-  let chip = '', stage = 'idle', version = '';
+  let chip = '', stage = 'idle', version = '', port = null, build = null, improv = null;
+  const log = (line) => ui.appendLog(line);
+
+  /** Ends the Wi-Fi step, waiting for whatever it is doing; the port is free afterwards. */
+  async function releasePort() {
+    ui.hideWifi();
+    if (improv) { const s = improv; improv = null; await s.close(); }
+  }
+
+  /**
+   * After the install: ask the restarted device whether it takes Wi-Fi details. A silent device
+   * is the normal answer and changes nothing on the done screen; a build that says `improv: false`
+   * is not even asked. Nothing here can turn a finished install into a failed one.
+   */
+  async function offerWifi() {
+    if (!port || build?.improv === false) return;
+    const session = createImprovSession({ port, loadClient: () => import('../vendor/improv-wifi/serial.js'), log });
+    improv = session;
+    const r = await session.probe();
+    if (session.closed || improv !== session) return; // the person moved on in the meantime
+    if (!r.offered) {
+      if (build?.improv === true) log('improv: the release says the firmware speaks Improv, but the device did not answer');
+      improv = null;
+      await session.close();
+      return;
+    }
+    if (r.provisioned) {
+      ui.showWifi({ provisioned: true, nextUrl: r.nextUrl });
+      improv = null;
+      await session.close();
+      return;
+    }
+    const networks = await session.scan();
+    if (session.closed || improv !== session) return;
+    ui.showWifi({ networks });
+  }
+  ui.bindWifi({
+    send: async ({ ssid, password }) => {
+      const session = improv;
+      if (!session) return;
+      ui.setWifiBusy(true);
+      try {
+        const url = await session.provision(ssid, password);
+        ui.wifiDone(url);
+        track('wifi', { fw, version, chip });
+        if (improv === session) improv = null;
+        await session.close();
+      } catch (e) {
+        ui.wifiError(e);
+      } finally {
+        ui.setWifiBusy(false);
+      }
+    },
+    skip: () => releasePort(),
+  });
+
   const installer = createInstaller({
     esptool,
-    requestPort: (filters) => navigator.serial.requestPort(filters.length ? { filters } : {}),
+    requestPort: async (filters) => {
+      port = await navigator.serial.requestPort(filters.length ? { filters } : {});
+      return port;
+    },
     fetchFn: fetch.bind(window),
     onEvent: (e) => {
       if (e.type === 'stage') { stage = e.stage; ui.setStage(e); }
       else if (e.type === 'hardware') { chip = e.hw.chipFamily; ui.setHardware(e.hw); }
-      else if (e.type === 'build') ui.setBuild(e.build);
+      else if (e.type === 'build') { build = e.build; ui.setBuild(e.build); }
       else if (e.type === 'log') ui.appendLog(e.line);
       else if (e.type === 'done') {
         ui.setResult({ system: nameOf(), version: e.result.version, next: guide, checksum: e.result.parts?.map((p) => p.sha256).filter(Boolean).join(', ') });
         track('done', { fw, version, chip });
+        offerWifi().catch((err) => log('improv: ' + String(err?.message ?? err)));
       } else if (e.type === 'error') {
         ui.setError(e.error);
         track('error', { fw, version, chip, stage, code: e.error?.code });
@@ -87,12 +151,14 @@ function makeInstaller({ esptool, ui, fw, guide, nameOf }) {
       version = manifest.version;
       ui.setBusy(true);
       ui.startInstall();
+      await releasePort(); // the Wi-Fi step must not hold the port the installer is about to open
+      port = null;
       track('start', { fw, version });
       try { await installer.run({ manifest, mode, options }); }
       catch { /* already reported through onEvent */ }
       finally { ui.setBusy(false); }
     },
-    cancel: () => installer.cancel(),
+    cancel: () => { installer.cancel(); releasePort(); },
   };
 }
 

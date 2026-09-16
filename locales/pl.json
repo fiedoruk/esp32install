@@ -37,7 +37,8 @@
     "erase": "Wyczyść całe urządzenie przed instalacją",
     "theme": "Jasny albo ciemny",
     "themeLight": "Jasny",
-    "themeDark": "Ciemny"
+    "themeDark": "Ciemny",
+    "wifiSend": "Wyślij do urządzenia"
   },
   "stage": {
     "idle": "Czekam na start",
@@ -86,6 +87,15 @@
     },
     "stopped": {
       "title": "Przerwane, zanim cokolwiek się zmieniło."
+    },
+    "wifi": {
+      "title": "Podłącz urządzenie do Wi-Fi",
+      "hint": "Urządzenie może teraz przyjąć dane twojej sieci, więc nie trzeba go ustawiać ręcznie.",
+      "network": "Sieć",
+      "password": "Hasło",
+      "ok": "Urządzenie jest w twojej sieci.",
+      "skip": "Pomiń",
+      "open": "Otwórz urządzenie w przeglądarce"
     },
     "own": {
       "title": "Zainstaluj własny plik",
@@ -171,6 +181,10 @@
     "manifest.sha256": "Wersja {boardKey}, plik {index} ma nieprawidłową sumę kontrolną. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
     "manifest.preserveNeedsSize": "Wersja {boardKey}, plik {index} potrzebuje i rozmiaru, i sumy kontrolnej. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
     "manifest.duplicateBoardKey": "Dwie wersje w pliku wydania mają tę samą nazwę {boardKey}. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "manifest.improv": "Wersja {boardKey} ma nieprawidłowe oznaczenie ustawiania Wi-Fi. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
+    "improv.timeout": "Urządzenie nie odpowiedziało na czas. Sprawdź, czy jest nadal podłączone, i spróbuj jeszcze raz.",
+    "improv.rejected": "Urządzenie odrzuciło dane sieci. Sprawdź nazwę sieci i spróbuj jeszcze raz.",
+    "improv.wifi": "Urządzenie nie mogło połączyć się z tą siecią. Sprawdź hasło i spróbuj jeszcze raz.",
     "manifest.fetch": "Nie udało się pobrać pliku wydania ({status}). Sprawdź połączenie i spróbuj jeszcze raz. Jeśli powtórzy się to samo, to błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",
     "catalog.fetch": "Nie udało się wczytać listy systemów. Sprawdź połączenie i spróbuj jeszcze raz. Jeśli powtórzy się to samo, to błąd tej strony, nie twojego urządzenia. Powiedz o tym osobie, która ją prowadzi.",
     "catalog.unknownSystem": "Nie ma tu systemu o nazwie {fw}. To błąd samego wydania, nie twojego urządzenia. Powiedz o tym osobie, która je opublikowała.",

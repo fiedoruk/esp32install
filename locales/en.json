@@ -37,7 +37,8 @@
     "erase": "Clear everything on the device before installing",
     "theme": "Light or dark",
     "themeLight": "Light",
-    "themeDark": "Dark"
+    "themeDark": "Dark",
+    "wifiSend": "Send to the device"
   },
   "stage": {
     "idle": "Ready",
@@ -86,6 +87,15 @@
     },
     "stopped": {
       "title": "Stopped before anything changed."
+    },
+    "wifi": {
+      "title": "Connect the device to Wi-Fi",
+      "hint": "The device can take your network details now, so you do not have to set it up by hand.",
+      "network": "Network",
+      "password": "Password",
+      "ok": "The device is on your network.",
+      "skip": "Skip this",
+      "open": "Open the device in your browser"
     },
     "own": {
       "title": "Install your own file",
@@ -171,6 +181,10 @@
     "manifest.sha256": "Build {boardKey}, file {index} has an invalid checksum. This is a problem with the release itself, not with your device. Tell whoever published it.",
     "manifest.preserveNeedsSize": "Build {boardKey}, file {index} needs both a size and a checksum. This is a problem with the release itself, not with your device. Tell whoever published it.",
     "manifest.duplicateBoardKey": "Two builds in the release file share the name {boardKey}. This is a problem with the release itself, not with your device. Tell whoever published it.",
+    "manifest.improv": "Build {boardKey} has an invalid Wi-Fi setup flag. This is a problem with the release itself, not with your device. Tell whoever published it.",
+    "improv.timeout": "The device did not answer in time. Check that it is still connected, then try again.",
+    "improv.rejected": "The device refused the network details. Check the network name, then try again.",
+    "improv.wifi": "The device could not join that network. Check the password and try again.",
     "manifest.fetch": "Could not download the release file ({status}). Check your connection and try again. If it keeps failing, the release itself is broken, not your device. Tell whoever published it.",
     "catalog.fetch": "Could not load the list of systems. Check your connection and try again. If it keeps failing, this page is broken, not your device. Tell whoever runs it.",
     "catalog.unknownSystem": "There is no system called {fw} here. This is a problem with the release itself, not with your device. Tell whoever published it.",

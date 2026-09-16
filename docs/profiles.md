@@ -199,6 +199,7 @@ or its sentence drifts from the file.
 | `manifest.sha256` | Build {boardKey}, file {index} has an invalid checksum. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.preserveNeedsSize` | Build {boardKey}, file {index} needs both a size and a checksum. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.duplicateBoardKey` | Two builds in the release file share the name {boardKey}. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.improv` | Build {boardKey} has an invalid Wi-Fi setup flag. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.fetch` | Could not download the release file ({status}). Check your connection and try again. If it keeps failing, the release itself is broken, not your device. Tell whoever published it. |
 | `catalog.fetch` | Could not load the list of systems. Check your connection and try again. If it keeps failing, this page is broken, not your device. Tell whoever runs it. |
 | `catalog.unknownSystem` | There is no system called {fw} here. This is a problem with the release itself, not with your device. Tell whoever published it. |
@@ -289,3 +290,20 @@ whole and identical. In both cases nothing has been written.
 has begun; every other code on this page means the flash was not modified. That
 distinction is in the engine: an unrecognised error becomes `engine.unexpected`
 until the first write, and `flash.write` afterwards.
+
+### After the install: Wi-Fi setup
+
+These three never stop an install. They appear under the Wi-Fi step on the done
+screen, after the system has been written, verified and restarted, and the step
+stays open so the person can correct the details and send again. A device that
+does not speak Improv gets no step and no message; only the technical log says
+that this system does not offer Wi-Fi setup here.
+
+| Code | Message |
+|---|---|
+| `improv.timeout` | The device did not answer in time. Check that it is still connected, then try again. |
+| `improv.rejected` | The device refused the network details. Check the network name, then try again. |
+| `improv.wifi` | The device could not join that network. Check the password and try again. |
+
+`improv.wifi` is the device's own "unable to connect" answer, which covers a
+wrong password and a network out of range alike; the device does not say which.

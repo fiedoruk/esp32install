@@ -94,10 +94,16 @@ class GeneratorTest(unittest.TestCase):
         self.assertEqual(build['usbVendorId'], 0x1A86)
         self.assertEqual(build['usbProductId'], 0x55D4)
 
+    def test_improv_lands_in_the_build_as_true(self):
+        code, text = self.generate('--improv')
+        self.assertEqual(code, 0, text)
+        build = json.loads(self.out.read_text('utf-8'))['builds'][0]
+        self.assertIs(build['improv'], True)
+
     def test_optional_fields_are_left_out_when_not_asked_for(self):
         self.assertEqual(self.generate()[0], 0)
         build = json.loads(self.out.read_text('utf-8'))['builds'][0]
-        for key in ('boardKey', 'board', 'flashSizeMB', 'usbVendorId', 'usbProductId', 'compatibility'):
+        for key in ('boardKey', 'board', 'flashSizeMB', 'usbVendorId', 'usbProductId', 'compatibility', 'improv'):
             self.assertNotIn(key, build)
         self.assertIs(json.loads(self.out.read_text('utf-8'))['new_install_prompt_erase'], False)
 

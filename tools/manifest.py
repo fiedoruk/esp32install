@@ -213,6 +213,7 @@ class Options:
     usb_product_id: Optional[int] = None
     profile: str = 'factory'
     prompt_erase: bool = False
+    improv: bool = False
     path_prefix: Optional[str] = None
     compat_regions: List[Region] = field(default_factory=list)
     first_regions: List[Region] = field(default_factory=list)
@@ -401,6 +402,8 @@ def build_manifest(parts: Sequence[Part], opts: Any) -> Dict[str, Any]:
     if options.usb_vendor_id is not None:
         build['usbVendorId'] = options.usb_vendor_id
         build['usbProductId'] = options.usb_product_id
+    if options.improv:
+        build['improv'] = True
     compat = compatibility_json(options)
     if compat is not None:
         build['compatibility'] = compat
@@ -518,6 +521,8 @@ def make_parser() -> argparse.ArgumentParser:
                         help='factory writes the whole layout, preserve keeps user data (default: factory)')
     parser.add_argument('--prompt-erase', action='store_true',
                         help='offer a full erase before a first install')
+    parser.add_argument('--improv', action='store_true',
+                        help='the firmware takes Wi-Fi credentials over Improv Serial after the install')
     parser.add_argument('--path-prefix', metavar='PREFIX',
                         help='put this in front of each file name instead of the path from the manifest')
     parser.add_argument('--compat-region', dest='compat_regions', action='append', default=[],
@@ -540,7 +545,7 @@ def options_from_args(args: argparse.Namespace) -> Options:
     return Options(
         chip=args.chip, name=args.name, version=args.version, board=args.board, board_key=args.board_key,
         flash_mb=args.flash_mb, usb_vendor_id=vendor, usb_product_id=product, profile=args.profile,
-        prompt_erase=args.prompt_erase, path_prefix=args.path_prefix, compat_regions=args.compat_regions,
+        prompt_erase=args.prompt_erase, improv=args.improv, path_prefix=args.path_prefix, compat_regions=args.compat_regions,
         first_regions=args.first_regions, first_empty=args.first_empty, update_table=args.update_table,
         out=args.out)
 

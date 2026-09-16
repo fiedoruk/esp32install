@@ -412,3 +412,13 @@ dialog p { margin-top: 8px; }
   .ring-arc { transition: none; }
   summary::before { transition: none; }
 }
+
+/* ---- Wi-Fi after the install: one heading, two fields, one button ---------- */
+/* Shown only once the device has said it takes network details over the cable. */
+
+.wifi { display: flex; flex-direction: column; gap: 12px; margin-top: 8px; padding-top: 16px; border-top: 1px solid var(--line); text-align: left; }
+.wifi-form { display: flex; flex-direction: column; gap: 12px; }
+.wifi .row { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; }
+.wifi .row .cta { flex: 1; margin-top: 0; }
+.wifi .row .quiet-btn { margin-top: 0; }
+.wifi-error { color: var(--stop); }

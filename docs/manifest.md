@@ -44,6 +44,7 @@ it, because a local file carries no `compatibility` data to hold the device to.
 | `featuresAll` | 2 | array of strings | Every string must appear in one of the chip's feature strings. |
 | `profile` | 2 | as above | May repeat the top-level value, never change it. A build whose profile differs from the manifest's is refused with `manifest.profile`. |
 | `eraseAll` | 2 | as above | Per-build override of the top-level value. |
+| `improv` | 1 | boolean | The firmware takes Wi-Fi credentials over [Improv Serial](https://www.improv-wifi.com/serial/) once it boots. Same key as esp-web-tools. See below. |
 | `compatibility` | 2 | object | Required by `preserve`, ignored by `factory`. See below. |
 
 ### A part
@@ -72,6 +73,28 @@ profile also needs at least one region between `regions` and
 `firstInstall.regions`, and it may not set `eraseAll`. `tools/manifest.py`
 refuses to write a `preserve` manifest that breaks any of these rules, and
 `tools/check.py` reports one that does.
+
+### `improv`, Wi-Fi setup after the install
+
+After a successful install the page reopens the port at 115200 baud and asks,
+for about ten seconds, whether the device speaks Improv Serial. A device that
+answers gets one optional step on the done screen: pick a network from the ones
+it can see, type the password, send. The device joins the network and, if it
+reports an address of its own, that address is offered as a link. A device that
+stays silent gets nothing; the install is already finished and verified, and the
+technical log records that this system does not offer Wi-Fi setup here.
+
+`improv` is what a release says about itself, and it is read three ways:
+
+| Value | What the page does |
+|---|---|
+| absent | Asks anyway. A local file has no manifest, and a silent device costs nothing. |
+| `true` | Asks, and if the device stays silent the log says so as a mismatch between the release and the device. |
+| `false` | Does not ask. For firmware that puts the port to another use right after boot. |
+
+Anything but a boolean is refused with `manifest.improv`. `tools/manifest.py`
+writes `true` for `--improv` and leaves the key out otherwise; `tools/check.py`
+reports a build that sets it and fails one that sets it to something else.
 
 One more check applies to every part in both profiles: a part that is at least
 24 bytes long and starts with the image magic `0xE9` must carry this chip

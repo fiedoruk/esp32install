@@ -118,6 +118,13 @@ export function mountUi({ i18n, system }) {
     if (text !== undefined) $(id + '-text').textContent = text;
   };
 
+  /** The device's own address after Wi-Fi setup, as a link; nothing is shown when it gave none. */
+  const setWifiNext = (url) => {
+    const a = $('wifi-next');
+    a.hidden = !url;
+    if (url) { a.href = url; a.textContent = t('simple.wifi.open'); }
+  };
+
   // The own-file path: what was read, and the two choices shown before anything starts.
   let own = null; // { name, size, sha256 } once a file has been read
   let onOwnChange = null;
@@ -246,6 +253,7 @@ export function mountUi({ i18n, system }) {
       setRing(0, true);
       $('eta').textContent = '';
       $('save-backup').hidden = true;
+      $('wifi').hidden = true;
       $('stage-text').textContent = t('stage.connecting');
       setLamp('lamp-device', 'is-off', t('app.notDetected'));
       setLamp('lamp-cable', 'is-on');
@@ -301,6 +309,7 @@ export function mountUi({ i18n, system }) {
       $('done-title').textContent = t('simple.stopped.title');
       $('done-unplug').hidden = true;
       $('done-text').textContent = t('error.' + code, safeParams(error?.params));
+      $('wifi').hidden = true;
       $('done-next').hidden = true;
       $('retry').hidden = false;
       $('done-again').hidden = true;
@@ -328,6 +337,60 @@ export function mountUi({ i18n, system }) {
         $('alt-guide').href = guide;
         $('alt-guide').textContent = t('alt.guide', vars);
       }
+    },
+    /**
+     * The Wi-Fi step on the done screen, shown only once the device has said it takes network
+     * details over the cable. `networks` fills the suggestions; the name stays typeable for a
+     * hidden network. A device already on a network skips the form and shows its address.
+     */
+    showWifi({ networks = [], provisioned = false, nextUrl = '' } = {}) {
+      const list = $('wifi-list');
+      clear(list);
+      for (const n of networks) {
+        const o = document.createElement('option');
+        o.value = n.name;
+        list.append(o);
+      }
+      const strongest = networks.slice().sort((a, b) => (b.rssi ?? -999) - (a.rssi ?? -999))[0];
+      $('wifi-ssid').value = strongest?.name ?? '';
+      $('wifi-pass').value = '';
+      $('wifi-error').hidden = true;
+      $('wifi-error').textContent = '';
+      $('wifi-form').hidden = provisioned;
+      $('wifi-ok').hidden = !provisioned;
+      setWifiNext(nextUrl);
+      ui.setWifiBusy(false);
+      $('wifi').hidden = false;
+      if (!provisioned) $(strongest ? 'wifi-pass' : 'wifi-ssid').focus();
+    },
+    setWifiBusy(on) {
+      for (const id of ['wifi-ssid', 'wifi-pass', 'wifi-skip']) $(id).disabled = on;
+      $('wifi-send').disabled = on || !$('wifi-ssid').value.trim();
+    },
+    /** The device joined: the form gives way to one sentence and, if the device gave one, its address. */
+    wifiDone(nextUrl) {
+      $('wifi-form').hidden = true;
+      $('wifi-ok').hidden = false;
+      setWifiNext(nextUrl);
+    },
+    /** Under the fields, which stay filled so the person can correct one thing and send again. */
+    wifiError(error) {
+      const code = error?.code ?? 'improv.rejected';
+      $('wifi-error').textContent = t('error.' + code, safeParams(error?.params));
+      $('wifi-error').hidden = false;
+      $('wifi-pass').focus();
+    },
+    hideWifi() { $('wifi').hidden = true; },
+    bindWifi({ send, skip }) {
+      const submit = () => {
+        const ssid = $('wifi-ssid').value.trim();
+        if (!ssid || $('wifi-send').disabled) return;
+        send({ ssid, password: $('wifi-pass').value });
+      };
+      $('wifi-send').addEventListener('click', submit);
+      $('wifi-pass').addEventListener('keydown', (e) => { if (e.key === 'Enter') submit(); });
+      $('wifi-ssid').addEventListener('input', () => { $('wifi-send').disabled = !$('wifi-ssid').value.trim(); });
+      $('wifi-skip').addEventListener('click', skip);
     },
     chooseBuild(builds, hw) {
       return new Promise((resolve) => {

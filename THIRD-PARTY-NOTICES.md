@@ -5,7 +5,8 @@ below. Their licences are reproduced in the repository next to the files they
 cover.
 
 Every vendored binary has its SHA-256 recorded so a replica can prove it ships
-the same bytes. `tools/check.py` verifies the esptool-js checksum on every run.
+the same bytes. `tools/check.py` verifies the esptool-js checksum on every run,
+and the Improv client's whenever the client is shipped.
 
 ## esptool-js 0.6.1
 
@@ -39,6 +40,40 @@ is the only such header in the file:
 
 No other third-party licence header appears in the bundle. The `atob` call it
 makes is the browser's own global, not a package.
+
+## improv-wifi-serial-sdk 2.8.1
+
+- **Licence:** Apache License 2.0 — full text in `vendor/improv-wifi/LICENSE`
+- **Project:** <https://github.com/improv-wifi/sdk-serial-js>
+- **Files:** four of the package's `dist/` files, the headless protocol client
+  only. The package's launch button, its provisioning dialog and their Lit and
+  Material dependencies are not included.
+  - `vendor/improv-wifi/serial.js` (21 386 bytes) —
+    `ab4a7eadd9c03f13f1d7fdc36d64b8b7466d194e3c84f037f64c495ca912a5c6`
+  - `vendor/improv-wifi/const.js` (1 501 bytes) —
+    `350499f3d5b19dd3e473f95fb31a0226c4df5000e4742761963a6e79d07fda1b`
+  - `vendor/improv-wifi/util/hex-formatter.js` (135 bytes) —
+    `d9212496c7fcbc967c5419f0fcb866727e5eb35abe0f5ab8ba661a03392ce015`
+  - `vendor/improv-wifi/util/to-hex.js` (257 bytes) —
+    `4fb4eab465268c38bf9e1efb05b378acdefdf2ffb8768ec3d4c753da063f1ca1`
+- **Recorded in:** `vendor/improv-wifi/SHA256SUMS`
+
+This is the client that speaks Improv Wi-Fi Serial: it asks a freshly installed
+device whether it takes Wi-Fi credentials over the cable, lists the networks the
+device sees and hands over the name and password. It is used only after an
+install has finished and verified, and only if the device answers.
+
+**Modification.** Two import specifiers in the upstream files have no `.js`
+extension (`./util/hex-formatter` in `serial.js`, `./to-hex` in
+`util/hex-formatter.js`), which a browser cannot resolve without a bundler.
+The shipped copies add the extension, three bytes each, and nothing else. The
+upstream files hash to `25dce28ec070c0c7f52b47bca8461dded996441b0d827c77fd6d16902061ab13`
+and `8b0d3ce97173814c4effac0218a3b326110e0678add1e26f99a0f24c39596d4c`;
+`tests/vendor.improv.test.js` reverses the patch and checks both. The other two
+files are byte for byte the upstream ones.
+
+The Improv Wi-Fi maintainers hold the copyright. This project is not affiliated
+with, endorsed by or supported by them.
 
 ## Fonts
 

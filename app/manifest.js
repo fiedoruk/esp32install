@@ -99,6 +99,9 @@ function normalizeBuild(b, i, manifest, base, allowOrigins) {
     if (!Array.isArray(v) || !v.every((s) => typeof s === 'string')) fail(code, { boardKey });
     return [...v];
   };
+  // `improv` is esp-web-tools' own key: the firmware takes Wi-Fi credentials over the cable after
+  // it boots. Absent means "ask anyway"; false means "do not ask"; anything else is refused.
+  if (b.improv !== undefined && b.improv !== null && typeof b.improv !== 'boolean') fail('manifest.improv', { boardKey });
   if (!Array.isArray(b.parts) || b.parts.length === 0) fail('manifest.noParts', { boardKey });
   const parts = b.parts.map((p, j) => normalizePart(p, j, boardKey, base, allowOrigins, profile));
   return {
@@ -112,6 +115,7 @@ function normalizeBuild(b, i, manifest, base, allowOrigins) {
     featuresAll: strList(b.featuresAll, 'manifest.filters'),
     profile,
     eraseAll,
+    improv: typeof b.improv === 'boolean' ? b.improv : undefined,
     compatibility: normalizeCompatibility(b.compatibility, boardKey, profile, parts),
     parts,
   };
@@ -191,7 +195,7 @@ export async function localManifest({ name, chipFamily, parts, profile = 'factor
       boardKey: 'local', board: chipFamily, chipFamily,
       flashSizeMB: undefined, usbVendorId: undefined, usbProductId: undefined,
       chipDescriptionIncludes: [], featuresAll: [],
-      profile: 'factory', eraseAll: false, compatibility: undefined,
+      profile: 'factory', eraseAll: false, improv: undefined, compatibility: undefined,
       parts: out,
     }],
   };

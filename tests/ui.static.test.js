@@ -190,3 +190,24 @@ test('the simple layer of the own-file path never says .bin; only the file input
   for (const [k, v] of Object.entries(en.simple.own)) assert.doesNotMatch(v, /\.bin/i, k);
   assert.equal((html.match(/\.bin/g) ?? []).length, 2, 'the two accept attributes');
 });
+
+test('the Wi-Fi step lives on the done screen, hidden until the device asks for it, with labelled fields and a masked password', () => {
+  assert.match(html, /<section class="screen" id="screen-done"[\s\S]*?<section class="wifi" id="wifi" hidden aria-labelledby="wifi-title">[\s\S]*?<\/section>[\s\S]*?<\/section>/);
+  assert.match(html, /<h2 id="wifi-title" data-i18n="simple\.wifi\.title"><\/h2>/);
+  assert.match(html, /<label class="field" for="wifi-ssid"><span data-i18n="simple\.wifi\.network"><\/span><input type="text" id="wifi-ssid" list="wifi-list" spellcheck="false" autocomplete="off" autocapitalize="off"><\/label>/);
+  assert.match(html, /<datalist id="wifi-list"><\/datalist>/, 'the scanned networks are suggestions; a hidden network can still be typed');
+  assert.match(html, /<label class="field" for="wifi-pass"><span data-i18n="simple\.wifi\.password"><\/span><input type="password" id="wifi-pass" autocomplete="off"><\/label>/);
+  assert.match(html, /<button class="cta" id="wifi-send" type="button" data-i18n="action\.wifiSend"><\/button>/);
+  assert.match(html, /<button class="quiet-btn" id="wifi-skip" type="button" data-i18n="simple\.wifi\.skip"><\/button>/);
+  assert.match(html, /<p class="lead" id="wifi-ok" hidden data-i18n="simple\.wifi\.ok"><\/p>/);
+  assert.match(html, /<a id="wifi-next" class="cta" hidden rel="noopener" target="_blank"><\/a>/, 'the device address opens beside the installer, never in its place');
+  assert.doesNotMatch(html, /<form\b/, 'no form: form-action is none in the policy, and Enter is handled by hand');
+  const ui = read('app/ui.js');
+  assert.match(ui, /\$\('wifi'\)\.hidden = true/, 'startInstall and setError hide the step');
+  assert.match(ui, /a\.href = url; a\.textContent = t\('simple\.wifi\.open'\)/);
+  const main = read('app/main.js');
+  assert.match(main, /if \(!port \|\| build\?\.improv === false\) return;/, 'improv: false is not even asked');
+  assert.match(main, /offerWifi\(\)\.catch\(/, 'nothing in the Wi-Fi step can reach the install result');
+  assert.match(main, /loadClient: \(\) => import\('\.\.\/vendor\/improv-wifi\/serial\.js'\)/);
+  assert.match(read('app/improv.js'), /safeNextUrl\(client\.nextUrl\)/, 'the device address is checked before it becomes a link');
+});

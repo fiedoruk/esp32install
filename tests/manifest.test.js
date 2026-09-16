@@ -330,3 +330,18 @@ test('localManifest refuses the preserve profile: a local file has no compatibil
   const m = await localManifest({ name: 'a.bin', chipFamily: 'ESP32', parts, profile: 'factory' });
   assert.equal(m.profile, 'factory');
 });
+
+test('improv: absent stays undefined, a boolean is kept, anything else is manifest.improv', () => {
+  const base = () => ({ name: 'D', version: '1', builds: [{ chipFamily: 'ESP32', parts: [{ path: 'a.bin', offset: 0 }] }] });
+  assert.equal(normalizeManifest(base(), URL_M).builds[0].improv, undefined);
+  for (const v of [true, false]) {
+    const raw = base();
+    raw.builds[0].improv = v;
+    assert.equal(normalizeManifest(raw, URL_M).builds[0].improv, v);
+  }
+  for (const v of ['yes', 1, {}, []]) {
+    const raw = base();
+    raw.builds[0].improv = v;
+    assert.throws(() => normalizeManifest(raw, URL_M), (e) => e instanceof InstallError && e.code === 'manifest.improv' && e.params.boardKey === 'build-1');
+  }
+});

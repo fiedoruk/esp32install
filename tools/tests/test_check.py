@@ -25,6 +25,7 @@ INDEX = """<!doctype html>
 """
 
 VENDOR_BUNDLE = b'export{ESPLoader,Transport};\n'
+IMPROV_CLIENT = b'export class ImprovSerial extends EventTarget {}\n'
 
 
 class SiteFixture(unittest.TestCase):
@@ -38,6 +39,14 @@ class SiteFixture(unittest.TestCase):
         (vendor / 'esptool-js-0.6.1.js').write_bytes(VENDOR_BUNDLE)
         (vendor / 'SHA256SUMS').write_text(
             '%s  esptool-js-0.6.1.js\n' % hashlib.sha256(VENDOR_BUNDLE).hexdigest(), encoding='utf-8')
+        improv = self.site / 'vendor' / 'improv-wifi'
+        (improv / 'util').mkdir(parents=True)
+        (improv / 'serial.js').write_bytes(IMPROV_CLIENT)
+        (improv / 'util' / 'to-hex.js').write_bytes(b'export const toHex = (v) => v;\n')
+        (improv / 'SHA256SUMS').write_text(
+            '%s  serial.js\n%s  util/to-hex.js\n' % (
+                hashlib.sha256(IMPROV_CLIENT).hexdigest(),
+                hashlib.sha256(b'export const toHex = (v) => v;\n').hexdigest()), encoding='utf-8')
         self.firmware = self.site / 'firmware'
         self.firmware.mkdir()
         self.bin = self.firmware / 'demo.bin'
@@ -282,6 +291,46 @@ class SiteTest(SiteFixture):
     def test_a_missing_vendor_sumfile_fails(self):
         (self.site / 'vendor' / 'esptool-js' / 'SHA256SUMS').unlink()
         self.assertIn(check.FAIL, self.levels(self.findings(), 'missing'))
+
+    def test_the_improv_client_is_pinned_when_present(self):
+        found = self.findings()
+        self.assertEqual(self.fails(found), [])
+        vendor_ok = [f.detail for f in found if f.what == 'vendor' and f.level == check.OK]
+        self.assertIn('serial.js matches the pinned checksum', vendor_ok)
+        self.assertIn('util/to-hex.js matches the pinned checksum', vendor_ok)
+
+    def test_a_tampered_improv_client_fails(self):
+        path = self.site / 'vendor' / 'improv-wifi' / 'serial.js'
+        path.write_bytes(IMPROV_CLIENT + b'\n')
+        found = self.findings()
+        self.assertIn(('vendor', 'serial.js is not the pinned build (%s, pinned %s)' % (
+            hashlib.sha256(IMPROV_CLIENT + b'\n').hexdigest()[:16],
+            hashlib.sha256(IMPROV_CLIENT).hexdigest()[:16])), self.fails(found))
+
+    def test_a_site_without_the_improv_client_only_warns(self):
+        (self.site / 'vendor' / 'improv-wifi' / 'SHA256SUMS').unlink()
+        found = self.findings()
+        self.assertEqual(self.fails(found), [])
+        warned = [f.detail for f in found if f.what == 'vendor' and f.level == check.WARN]
+        self.assertEqual(warned, ['vendor/improv-wifi/SHA256SUMS is missing; the page will not offer '
+                                  'Wi-Fi setup after the install'])
+
+    def test_improv_true_is_reported_and_a_non_boolean_fails(self):
+        data = self.write_manifest()
+        data['builds'][0]['improv'] = True
+        self.write_raw_manifest(data)
+        found = self.findings()
+        self.assertEqual(self.fails(found), [])
+        self.assertEqual([f.detail for f in found if f.what == 'improv'],
+                         ['build-1: takes Wi-Fi credentials over Improv Serial after the install'])
+        data['builds'][0]['improv'] = 'yes'
+        self.write_raw_manifest(data)
+        self.assertIn(('manifest', "build-1: improv must be true or false, not 'yes'"), self.fails(self.findings()))
+        data['builds'][0]['improv'] = False
+        self.write_raw_manifest(data)
+        found = self.findings()
+        self.assertEqual(self.fails(found), [])
+        self.assertEqual([f for f in found if f.what == 'improv'], [])
 
     def test_a_broken_catalog_fails(self):
         (self.site / 'catalog.json').write_text('{ not json', encoding='utf-8')
@@ -699,7 +748,7 @@ class ShapeTest(SiteFixture):
         found = self.findings()
         self.assertEqual(self.levels(found, 'missing'), [check.FAIL])
         self.assertEqual(self.levels(found, 'csp'), [check.OK])
-        self.assertEqual(self.levels(found, 'vendor'), [check.OK])
+        self.assertEqual(self.levels(found, 'vendor'), [check.OK] * 3, 'esptool-js and the two Improv files')
 
 
 class HelperTest(unittest.TestCase):

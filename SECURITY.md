@@ -7,9 +7,10 @@ itself. There are no maintained branches: **only the current `main` is
 supported.** Fixes land there, and a replica picks them up by copying the files
 again.
 
-If you run a copy, the two things worth re-checking after any update are the
-pinned esptool-js checksum in `vendor/esptool-js/SHA256SUMS` and the
-Content-Security-Policy in `index.html`. Both are verified by:
+If you run a copy, the things worth re-checking after any update are the
+pinned checksums in `vendor/esptool-js/SHA256SUMS` and
+`vendor/improv-wifi/SHA256SUMS`, and the Content-Security-Policy in
+`index.html`. All are verified by:
 
 ```
 python3 tools/check.py .
