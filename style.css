@@ -580,7 +580,11 @@ details[open] pre, details[open] code { font-family: var(--font-mono); }
   cursor: pointer;
 }
 .btn--ghost { border-color: transparent; background: transparent; color: var(--dim); }
-.btn--warn { border-color: var(--warn); color: var(--warn); }
+/* The erase key: the one filled amber on the page, so the heaviest choice in the row also looks
+   the heaviest. As an outline it weighed the same as the button that changes nothing, and the
+   row came out as two keys of equal weight with no way out between them. */
+.btn--warn { border-color: var(--warn); background: var(--warn); color: var(--bg); }
+.btn--warn:hover:not(:disabled) { background: var(--warn); filter: brightness(0.92); }
 .btn:hover:not(:disabled) { background: var(--well); }
 .btn--ghost:hover:not(:disabled) { color: var(--ink); }
 .btn:active:not(:disabled) { transform: translateY(1px); }
@@ -732,6 +736,12 @@ dialog::backdrop { background: var(--backdrop, rgb(20 32 43 / 0.55)); }
 dialog h2 { margin-bottom: 12px; }
 dialog .line h2 { margin-bottom: 0; }
 dialog .row { display: flex; gap: 10px; justify-content: flex-end; flex-wrap: wrap; margin-top: 16px; }
+/* Three answers do not fit on one line of a 460px dialog, and three keys wrapping into a
+   right-aligned staircase are not an order. So the one dialog that can take something away lays
+   them out as a ladder — the way out at the top, the erase at the bottom, safest to heaviest —
+   the same shape the board dialog's choices already have. */
+#erase-dialog .row { flex-direction: column; align-items: stretch; }
+#erase-dialog .row .btn { margin-top: 0; }
 dialog p { margin-top: 8px; }
 .choices { display: grid; gap: 8px; margin-top: 12px; }
 .choice {

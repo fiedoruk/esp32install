@@ -168,7 +168,15 @@ function makeInstaller({ esptool, ui, fw, guide, nameOf }) {
       }
     },
     chooseBuild: (builds, hw) => ui.chooseBuild(builds, hw),
-    confirmErase: (build, mode, options) => ui.confirmErase(build, mode, options),
+    // The dialog has three answers and the engine reads two: truthy erases, falsy carries on.
+    // The third one — the way out — is spelled here instead, and it is spelled as a cancellation
+    // of the run, so the engine's own check throws before anything is erased or written. Nothing
+    // in the install path changes shape for it.
+    confirmErase: async (build, mode, options) => {
+      const answer = await ui.confirmErase(build, mode, options);
+      if (answer === null) installer.cancel();
+      return answer === true;
+    },
     // The save waits for a click: the browser's save picker needs a user gesture. With a picker
     // the copy goes where the user chooses and the engine reads it back through the same handle;
     // without one (Firefox, Brave, Safari) the click downloads the file and the engine asks for it.

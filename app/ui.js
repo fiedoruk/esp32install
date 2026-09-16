@@ -769,8 +769,16 @@ export function mountUi({ i18n, system }) {
       });
     },
     /**
-     * `required` is a release that always clears the device. Then the dialog may not offer to
-     * keep anything, because nothing can be kept: it says so, and its second button cancels.
+     * The most dangerous moment on the page, so it is the one dialog with a way out that is
+     * always there. Three answers, read left to right from safest to heaviest: Cancel (`null`,
+     * nothing is touched), install without erasing (`false`), erase and install (`true`) — and
+     * only the last one wears amber, filled, so the heavy choice is the one that looks heavy.
+     * Escape and the backdrop mean Cancel, as they do in the board dialog next door.
+     *
+     * `required` is a release that always clears the device. Then the middle answer does not
+     * exist, because nothing can be kept: the dialog says so and offers Cancel or the erase.
+     * The middle button never says "Cancel" — it installs — which is why Cancel is its own
+     * button rather than a relabelling of it.
      */
     confirmErase(build, mode, { required = false } = {}) {
       return new Promise((resolve) => {
@@ -779,16 +787,15 @@ export function mountUi({ i18n, system }) {
         $('erase-title').textContent = t('erase.title');
         $('erase-text').textContent = t(key, { board: build.board });
         $('erase-yes').textContent = t('erase.yes');
-        // Cancel only where Cancel is the truth. The required dialog does stop the install, so it
-        // says so; the optional one carries on without erasing whichever door it was opened from,
-        // and a button labelled Cancel that installs anyway is the one place a beginner's Cancel
-        // would not mean cancel.
-        $('erase-no').textContent = t(required ? 'action.cancel' : mode === 'update' ? 'erase.no' : 'erase.noErase');
+        $('erase-cancel').textContent = t('action.cancel');
+        $('erase-no').textContent = t(mode === 'update' ? 'erase.no' : 'erase.noErase');
+        $('erase-no').hidden = required;
         let settled = false;
         const finish = (v) => { if (settled) return; settled = true; d.close(); resolve(v); };
         $('erase-yes').onclick = () => finish(true);
         $('erase-no').onclick = () => finish(false);
-        d.oncancel = (e) => { e.preventDefault(); finish(false); };
+        $('erase-cancel').onclick = () => finish(null);
+        d.oncancel = (e) => { e.preventDefault(); finish(null); };
         d.showModal();
       });
     },

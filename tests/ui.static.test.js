@@ -336,20 +336,33 @@ test('a guide link from the catalog is filtered before it can become an href', (
   assert.doesNotMatch(ui, /\$\('alt-guide'\)\.href = guide;/);
 });
 
-test('the erase dialog of a release that always clears offers no way to keep anything', () => {
+test('the erase dialog always has a way out, the safe answer first and the erase as the heavy one', () => {
   const ui = read('app/ui.js');
   assert.match(ui, /confirmErase\(build, mode, \{ required = false \} = \{\}\)/);
   assert.match(ui, /const key = required \? 'erase\.textAlways' : mode === 'update' \? 'erase\.textUpdate' : 'erase\.textFirst';/);
-  // Cancel only where Cancel is the truth: the required dialog's No throws before anything is
-  // touched, while the optional one installs without erasing whichever door opened it.
-  assert.match(ui, /t\(required \? 'action\.cancel' : mode === 'update' \? 'erase\.no' : 'erase\.noErase'\)/,
-    'a button that installs anyway must not say Cancel');
+  // Reading order in the markup is the order on screen: Cancel, install without erasing, erase.
+  assert.match(html, /<div class="row"><button type="button" class="btn btn--ghost" id="erase-cancel" autofocus data-i18n="action\.cancel"><\/button><button type="button" class="btn" id="erase-no"><\/button><button type="button" class="btn btn--warn" id="erase-yes"><\/button><\/div>/,
+    'the way out is first and focused, the erase is last');
+  // Cancel is its own button, not a relabelling: the middle one installs, whatever it is called,
+  // so it never says Cancel. A release that always clears simply has no middle button.
+  assert.match(ui, /\$\('erase-no'\)\.textContent = t\(mode === 'update' \? 'erase\.no' : 'erase\.noErase'\);/);
+  assert.match(ui, /\$\('erase-no'\)\.hidden = required;/, 'nothing can be kept, so nothing offers to keep it');
+  assert.match(ui, /\$\('erase-cancel'\)\.onclick = \(\) => finish\(null\);\s*d\.oncancel = \(e\) => \{ e\.preventDefault\(\); finish\(null\); \};/,
+    'Escape means the same as Cancel, as in the board dialog');
   assert.equal(en.erase.noErase, 'Install without erasing');
   for (const k of ['no', 'noErase']) assert.doesNotMatch(en.erase[k], /cancel/i, 'erase.' + k + ' must not read as cancelling');
   assert.match(en.erase.textAlways, /\{board\}/);
   assert.match(en.erase.textAlways, /cannot be kept/i, 'the dialog says what is about to happen');
+  // Amber, filled, once: the heavy choice is the only filled key besides the page's own action.
+  assert.match(style, /\.btn--warn \{ border-color: var\(--warn\); background: var\(--warn\); color: var\(--bg\); \}/);
+  assert.equal((style.match(/\.btn--warn/g) ?? []).length, 2, 'one rule and its hover, nothing else wears it');
   const engine = read('app/engine.js');
   assert.match(engine, /if \(!await confirmErase\(build, mode, \{ required: true \}\)\) throw new InstallError\('serial\.cancelled'\);/);
+  // The engine reads two answers; the third is turned into a cancelled run in the adapter, so
+  // the check right after the dialog throws before an erase or a write can start.
+  const main = read('app/main.js');
+  assert.match(main, /const answer = await ui\.confirmErase\(build, mode, options\);\s*if \(answer === null\) installer\.cancel\(\);\s*return answer === true;/);
+  assert.match(engine, /eraseFirst = await confirmErase\(build, mode, \{ required: false \}\);\s*\}\s*check\(\);/, 'and that check is still there');
 });
 
 test('the first screen names the version, labels a pre-release, and warns before a preserve install that a copy comes first', () => {
