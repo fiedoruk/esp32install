@@ -13,10 +13,15 @@ otherwise run through the erase path.
 A file chosen from disk always runs `factory`. Step 4 takes the bytes from
 memory instead of downloading them and holds them to the size and SHA-256
 measured when the file was read; every other step is the same. The erase prompt
-of step 8 is offered only for a file written at `0x0`; a file written anywhere
-else never erases, because the bootloader and partition table it relies on are
-already on the device. `preserve` cannot be chosen for it: there is no
-`compatibility` data to check the device against.
+of step 8 is offered to a set that brings its own bootloader: a file written at
+`0x0`, or one that covers the chip family's bootloader offset (`0x1000` on ESP32
+and ESP32-S2, `0x0` on ESP32-S3, C2, C3, C6 and H2, `0x2000` on C5 and P4). A set
+written entirely elsewhere never erases, because the bootloader and partition
+table it relies on are already on the device. Every address typed on that path
+has to be a multiple of 4096 as well, the same sector rule `preserve` is held to,
+because the chip erases whole sectors whichever profile asked for the write.
+`preserve` cannot be chosen for it: there is no `compatibility` data to check the
+device against.
 
 ## `factory`, step by step
 
@@ -60,21 +65,24 @@ already on the device. `preserve` cannot be chosen for it: there is no
    the user's to keep, and the install does not depend on it.
 8. **The erase prompt.** Nothing is erased without a dialog, whichever door the
    person came through. If the manifest sets `new_install_prompt_erase`, the
-   dialog asks. In *first installation* mode it reads *"This will erase everything
-   on {board}, including saved Wi-Fi and settings, and install a fresh copy."* with
-   **Erase and install** and **Install without erasing**. In *update* mode it reads
-   *"Erasing also removes saved settings. You can keep them."* with **Erase and
-   install** and **Keep settings**. Both second buttons mean the same thing to the
-   engine: do not erase, carry on installing — and both say so, because a dialog
-   headed *"Erase everything on the device?"* whose second button said **Cancel**
-   while it installed anyway was the one place a beginner's Cancel did not cancel.
+   dialog asks, and it draws three buttons. In *first installation* mode it reads
+   *"This will erase everything on {board}, including saved Wi-Fi and settings, and
+   install a fresh copy."* with **Cancel**, **Install without erasing** and **Erase
+   and install**. In *update* mode it reads *"Erasing also removes saved settings.
+   You can keep them."* with **Cancel**, **Keep settings** and **Erase and
+   install**. The middle button means one thing to the engine: do not erase, carry
+   on installing — and it says so, because a dialog headed *"Erase everything on
+   the device?"* whose second button said **Cancel** while it installed anyway was
+   the one place a beginner's Cancel did not cancel. **Cancel** is therefore a
+   button of its own. It stands first, it holds the focus when the dialog opens,
+   and it stops the install with `serial.cancelled` before anything is written.
 
    A build that sets `eraseAll` is the third case. It erases in *update* mode too,
    where the door said the system *"is already on this device"*, so it may not be
    offered a way to keep anything that will not survive. Its dialog reads *"This
    system always starts from a clean device, so everything on {board} goes,
    including the saved Wi-Fi network and any settings. They cannot be kept this
-   time."* with **Erase and install** and **Cancel**, and Cancel stops the install
+   time."* with **Cancel** and **Erase and install**, and Cancel stops the install
    with `serial.cancelled` — the release asked for the erase, so installing
    without it is not on offer. `tools/manifest.py` cannot emit `eraseAll`; a
    manifest that carries it was written by hand.
@@ -220,8 +228,14 @@ part never writes into, is refused like any other.
 
 All three layers refuse a release that breaks either half of the rule: the page
 with `manifest.alignment` before the device is opened, `tools/manifest.py` before
-it writes the manifest, and `tools/check.py` with `FAIL align`. The `factory`
-profile is held to neither: it writes a whole layout and keeps nothing.
+it writes the manifest, and `tools/check.py` with `FAIL align`. A `factory`
+manifest is held to neither half: it writes a whole layout and keeps nothing.
+
+The *start* of the rule does hold outside `preserve`, in one place: an address
+typed by hand on the own-file path. The page accepts `0x` hex on a 4 KiB boundary
+and nothing else — `0x10800` is shown as a bad address rather than quietly
+rounded — because the person typing it is aiming at a device that is already set
+up, and the chip would erase the sector in front of that address just the same.
 
 ### Where you can still cancel
 
@@ -340,8 +354,10 @@ no network. An HTTP error for a typed address stays `manifest.fetch`.
 | `device.layout` | This device's memory is arranged differently from the one this release was tested on. Nothing was written. Tell whoever published this release. |
 | `device.notEmpty` | The area this release needs is already in use. Nothing was written. Choose First installation to clear the device and start fresh. |
 
-`device.secured`, `device.layout`, `device.notEmpty` and `device.changed` belong
-to the `preserve` profile.
+`device.layout`, `device.notEmpty` and `device.changed` belong to the `preserve`
+profile. `device.secured` belongs to both: `factory` asks the chip the same
+question before it erases or writes, and the two profiles differ only in what an
+unreadable answer means (step 2 of each).
 
 ### The backup
 

@@ -306,8 +306,10 @@ a copy served under a language path (`/pl/install/`) keeps its own language unti
 ## Making it look like yours
 
 **`theme.css` holds the tokens, and a replica should not need to touch anything
-else.** It defines the fonts and these custom properties on `:root`, with a dark
-variant under `prefers-color-scheme`:
+else.** It defines the fonts and 38 custom properties on `:root`, with a dark
+variant under `prefers-color-scheme`. These are the ones a repaint starts from;
+open the file for the rest, which are tints, shades and edges derived from the
+same palette and which will look wrong against a new one if they are left behind:
 
 | Token | What it colours |
 |---|---|
@@ -412,6 +414,12 @@ header('Content-Type: application/octet-stream');
 header('Content-Length: ' . filesize($file));
 readfile($file);
 ```
+
+One consequence to know before you run the checker: with `"path": "demo.php"` in
+the manifest, `python3 tools/check.py .` on a directory measures the PHP source
+instead of the binary and reports `FAIL size` and `FAIL sha256`. Check a site
+that counts downloads through its URL, `python3 tools/check.py https://…/`,
+where the script runs and the real bytes arrive.
 
 The installer checks the size and the SHA-256 of what arrives, so the script has
 to send the bytes unchanged: no compression the manifest does not know about, no

@@ -32,6 +32,12 @@ suggests exactly these when it recognises the files:
 | `firmware.bin`, `<sketch>.ino.bin` | `0x10000` | any other ESP image |
 | a SPIFFS or LittleFS image | wherever your partition table puts it | not recognised; the address is typed by hand |
 
+An address typed into the page has to be a multiple of 4096, written as hex with
+a leading `0x`. Anything else is shown as a bad address rather than rounded to
+something the page guessed. That is the same sector rule the `preserve` profile
+is held to, and for the same reason: the chip erases whole 4 KiB sectors, so a
+file that starts mid-sector blanks up to 4 095 bytes in front of it.
+
 The table is the same for a manifest: list each file as a part at that offset,
 in rising order. `tools/manifest.py` takes them as
 `bootloader.bin@0x1000 partitions.bin@0x8000 boot_app0.bin@0xe000 firmware.bin@0x10000`.
@@ -86,7 +92,7 @@ developer has to hand. Both work.
 | Field | Schema | Type | Meaning |
 |---|---|---|---|
 | `path` | 1 | string | Resolved against the manifest's own URL. |
-| `offset` | 1 | integer ≥ 0 | Where the file goes in flash. `preserve` requires a multiple of 4096: the chip erases whole 4 KiB sectors, so a part that starts mid-sector would blank the user data in front of it. |
+| `offset` | 1 | integer ≥ 0 | Where the file goes in flash. Must be a multiple of 4096 in a `preserve` manifest and on the own-file path, where the address is typed by hand; the chip erases whole 4 KiB sectors, so a part that starts mid-sector blanks whatever sits in front of it. A `factory` manifest may name any offset, because it is writing a whole layout and keeps nothing. |
 | `size` | 2 | integer > 0 | Exact byte count. Required by `preserve`. A length that is not a multiple of 4096 is normal and fine; what `preserve` refuses is a write whose erased sectors reach past the part into a declared region, another part or the end of the flash. |
 | `sha256` | 2 | 64 hex characters | Accepted in either case and compared lower-cased; the generator emits lowercase. Required by `preserve`. Without it the installer hashes the download anyway and writes the hash to the log, but nothing can compare it with anything, so `tools/check.py` reports a part without one as a FAIL (`--allow-unhashed` lowers that to a warning). |
 
@@ -216,11 +222,29 @@ under which path the site serves them.
 
 ## Example: schema 2, `preserve`
 
-Built from three synthetic binaries in a temporary directory: a 4 KiB ESP32
-bootloader image, a 3 KiB partition table and a 64 KiB application.
+Two synthetic binaries stand in for a real build: a 3 KiB partition table and a
+64 KiB application. Make them in an empty directory, so the whole example can be
+run as it is printed:
 
 ```
-python3 tools/manifest.py partitions.bin@0x8000 app.bin@0x10000 \
+python3 - <<'EOF'
+import pathlib
+app = bytearray(b'\xff' * 65536)
+app[0], app[12], app[13] = 0xE9, 0, 0        # an ESP image, chip id 0 = ESP32
+pathlib.Path('app.bin').write_bytes(bytes(app))
+table = bytearray(b'\xff' * 3072)
+table[0], table[1] = 0xAA, 0x50              # the partition-table magic
+pathlib.Path('partitions.bin').write_bytes(bytes(table))
+EOF
+```
+
+The application is listed **first** and the partition table **last**. That is the
+rule, not a preference: parts are written in the order the manifest lists them,
+and the table has to reach the chip after the application it points at. The tool
+refuses any other order (see [Part order](profiles.md#part-order)).
+
+```
+python3 tools/manifest.py app.bin@0x10000 partitions.bin@0x8000 \
   --chip ESP32 --name "Demo firmware" --version 2.0.0 --profile preserve \
   --board "M5Stack Core2" --board-key core2 --flash-mb 16 --usb 1a86:55d4 \
   --compat-region 0x1000:0x7000:98407b09f7cbc15d8bd846653ebae905622047013cd41b19d33f48c4345ebbb2 \
@@ -251,21 +275,44 @@ wrote demo-2-0-0.json: Demo firmware 2.0.0, 2 parts, 68608 bytes
       "usbProductId": 21972,
       "compatibility": {
         "regions": [
-          { "offset": 4096, "size": 28672, "sha256": "98407b09f7cbc15d8bd846653ebae905622047013cd41b19d33f48c4345ebbb2" }
+          {
+            "offset": 4096,
+            "size": 28672,
+            "sha256": "98407b09f7cbc15d8bd846653ebae905622047013cd41b19d33f48c4345ebbb2"
+          }
         ],
         "firstInstall": {
           "regions": [
-            { "offset": 4096, "size": 28672, "sha256": "98407b09f7cbc15d8bd846653ebae905622047013cd41b19d33f48c4345ebbb2" }
+            {
+              "offset": 4096,
+              "size": 28672,
+              "sha256": "98407b09f7cbc15d8bd846653ebae905622047013cd41b19d33f48c4345ebbb2"
+            }
           ],
           "empty": [
-            { "offset": 36864, "size": 24576 }
+            {
+              "offset": 36864,
+              "size": 24576
+            }
           ]
         },
-        "update": { "tableOffset": 32768 }
+        "update": {
+          "tableOffset": 32768
+        }
       },
       "parts": [
-        { "path": "partitions.bin", "offset": 32768, "size": 3072, "sha256": "12adc9dff80688800f2f591f0da6ab2f8109d61d910697801f57669ec0d719d3" },
-        { "path": "app.bin", "offset": 65536, "size": 65536, "sha256": "b7d3dbe2d17eb3d45e4cfd3f68d99a2cc3cdfb8dcd205a8793f0dafe38e3bc07" }
+        {
+          "path": "app.bin",
+          "offset": 65536,
+          "size": 65536,
+          "sha256": "7356b1ee6a4cffc72f6e5023c14f865cc101ea98f2a6945a34b707b919004267"
+        },
+        {
+          "path": "partitions.bin",
+          "offset": 32768,
+          "size": 3072,
+          "sha256": "b192e2b7b285a4b8b4b9c56c9b7470fb4dc438f45dc7198dc3603cdab4ce73c5"
+        }
       ]
     }
   ]
@@ -389,30 +436,49 @@ the declared size and checksum.
 python3 tools/check.py .
 ```
 
+On a copy that lists one schema 1 release:
+
 ```
 OK csp index.html pins default-src to 'self'
 OK vendor esptool-js-0.6.1.js matches the pinned checksum
+OK vendor serial.js matches the pinned checksum
+OK vendor const.js matches the pinned checksum
+OK vendor util/hex-formatter.js matches the pinned checksum
+OK vendor util/to-hex.js matches the pinned checksum
+OK vendor LICENSE matches the pinned checksum
 OK catalog catalog.json lists 1 system
 OK size build-1: demo.bin is 4096 bytes
 OK sha256 build-1: demo.bin
 OK layout build-1: 1 part, no overlap
 OK chip build-1: demo.bin is an ESP32 image
-SUMMARY 7 OK, 0 WARN, 0 FAIL
+SUMMARY 12 OK, 0 WARN, 0 FAIL
 ```
 
-On a `preserve` release where nothing is written at the bootloader offset, the
-chip line says so rather than inventing a verdict:
+The six `vendor` lines are the esptool-js bundle and the five files of the
+Improv client. On the shipped copy, whose catalog lists nothing, the last two
+lines read `WARN catalog catalog.json lists no systems; the page opens on the
+own-file path` and `SUMMARY 7 OK, 1 WARN, 0 FAIL`, and the exit code is still 0:
+an empty catalog is a state a fresh copy is meant to be in.
+
+A failure names the subject, the measurement and the claim. This is the
+`preserve` release above with one `sha256` blanked out:
 
 ```
+OK catalog catalog.json lists 1 system
+OK size core2: app.bin is 65536 bytes
+FAIL sha256 core2: app.bin is 7356b1ee6a4cffc72f6e5023c14f865cc101ea98f2a6945a34b707b919004267, manifest says 0000000000000000000000000000000000000000000000000000000000000000
+OK size core2: partitions.bin is 3072 bytes
+OK sha256 core2: partitions.bin
+OK layout core2: 2 parts, no overlap
 OK chip core2: nothing is written at the bootloader offset
+OK chip core2: app.bin at 0x10000 is an ESP32 image
+SUMMARY 14 OK, 0 WARN, 1 FAIL
 ```
 
-A failure names the subject, the measurement and the claim:
-
-```
-FAIL sha256 core2: app.bin is b7d3dbe2d17eb3d45e4cfd3f68d99a2cc3cdfb8dcd205a8793f0dafe38e3bc07, manifest says 0000000000000000000000000000000000000000000000000000000000000000
-SUMMARY 12 OK, 1 WARN, 1 FAIL
-```
+The chip line on a `preserve` release says what it found rather than inventing a
+verdict: nothing is written at the bootloader offset there, so the offset check
+has nothing to judge, and the image id is checked on every part that starts like
+an image instead.
 
 Checks it runs: the Content-Security-Policy meta tag in `index.html`, against
 the origins the catalog lists in `allowOrigins` and those passed as
