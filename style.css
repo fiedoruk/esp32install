@@ -46,6 +46,24 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
   color: var(--ink);
   text-decoration: none;
 }
+.switches { display: flex; align-items: center; gap: 14px; }
+/* Light or dark: two icon pills, the pressed one sits on the plate colour like the current language. */
+.theme { display: flex; gap: 2px; }
+.theme button {
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  width: 32px;
+  height: 32px;
+  padding: 0;
+  border: 0;
+  border-radius: 999px;
+  background: transparent;
+  color: var(--dim);
+  cursor: pointer;
+}
+.theme button svg { width: 18px; height: 18px; }
+.theme button[aria-pressed="true"] { background: var(--bg-2); color: var(--ink); }
 .lang { display: flex; gap: 2px; }
 .lang a {
   font-family: var(--font-display);

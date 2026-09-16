@@ -35,14 +35,19 @@ export function hideHatches() {
   for (const id of ['tech', 'log-details', 'alt-wrap']) $(id).hidden = true;
 }
 
-export function mountUi({ i18n, system }) {
-  const t = i18n.t;
-  const vars = { system };
-  for (const el of document.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n, vars);
-  for (const el of document.querySelectorAll('[data-i18n-attr]')) {
+/** Fills `data-i18n` text and `data-i18n-attr` attributes under `root`. */
+export function translateDom(t, vars, root = document) {
+  for (const el of root.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n, vars);
+  for (const el of root.querySelectorAll('[data-i18n-attr]')) {
     const [attr, key] = el.dataset.i18nAttr.split(':');
     el.setAttribute(attr, t(key, vars));
   }
+}
+
+export function mountUi({ i18n, system }) {
+  const t = i18n.t;
+  const vars = { system };
+  translateDom(t, vars);
   $('connect-label').textContent = t('action.connect');
   $('backup-label').textContent = t('action.backup', { minutes: 5 });
   $('door-update-hint').textContent = t('door.updateHint', vars);

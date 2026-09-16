@@ -11,14 +11,25 @@
   <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 32 32'%3E%3Ccircle cx='16' cy='16' r='11' fill='none' stroke='%231A56C4' stroke-width='6' stroke-dasharray='52 18' stroke-linecap='round'/%3E%3C/svg%3E">
   <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="style.css">
+  <script src="theme-init.js"></script>
 </head>
 <body>
 <header class="top">
   <a class="brand" href="./">esp32install</a>
-  <nav class="lang" data-i18n-attr="aria-label:app.language">
-    <a href="?lang=en" hreflang="en" lang="en">EN</a>
-    <a href="?lang=pl" hreflang="pl" lang="pl">PL</a>
-  </nav>
+  <div class="switches">
+    <div class="theme" role="group" data-i18n-attr="aria-label:action.theme">
+      <button type="button" id="theme-light" aria-pressed="false" data-i18n-attr="aria-label:action.themeLight">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="4"/><path d="M12 2.5v2.5M12 19v2.5M2.5 12H5M19 12h2.5M5.3 5.3l1.8 1.8M16.9 16.9l1.8 1.8M5.3 18.7l1.8-1.8M16.9 7.1l1.8-1.8"/></svg>
+      </button>
+      <button type="button" id="theme-dark" aria-pressed="false" data-i18n-attr="aria-label:action.themeDark">
+        <svg viewBox="0 0 24 24" aria-hidden="true"><path d="M20.5 14.5A8.5 8.5 0 0 1 9.5 3.5a8.5 8.5 0 1 0 11 11z"/></svg>
+      </button>
+    </div>
+    <nav class="lang" data-i18n-attr="aria-label:app.language">
+      <a href="?lang=en" hreflang="en" lang="en">EN</a>
+      <a href="?lang=pl" hreflang="pl" lang="pl">PL</a>
+    </nav>
+  </div>
 </header>
 
 <main id="app" class="app">

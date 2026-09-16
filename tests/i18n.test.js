@@ -61,6 +61,7 @@ const REQUIRED = [
   'gate.insecure', 'gate.noSerial', 'gate.altFirst',
   'action.connect', 'action.connecting', 'action.installing', 'action.retry',
   'action.cancel', 'action.backup', 'action.saveBackup', 'action.chooseBackup', 'action.chooseBackupTitle', 'action.chooseBackupHint', 'action.erase',
+  'action.theme', 'action.themeLight', 'action.themeDark',
   'stage.idle', 'stage.connecting', 'stage.detecting', 'stage.matching', 'stage.downloading',
   'stage.verifying', 'stage.checkingDevice', 'stage.backup', 'stage.erasing', 'stage.writing',
   'stage.md5', 'stage.done', 'stage.error',

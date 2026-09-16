@@ -247,6 +247,13 @@ files and their entries from `assets/fonts/SHA256SUMS` as well.
 `style.css` is layout and can be edited too, but every element there does
 something, and the ones that look decorative are usually a state indicator.
 
+The two buttons in the header let a visitor pick light or dark by hand. The
+choice is kept in the browser's `localStorage` under the key `theme` and put on
+`<html data-theme>` by `theme-init.js`, a classic script loaded synchronously in
+`<head>` so the page never paints in the wrong theme first. It is a separate file
+because the policy allows no inline script. With no stored choice the page
+follows the system setting, and `theme.css` already has both variants.
+
 ## Counting downloads
 
 The product deliberately has no telemetry and no counter. If a publisher needs

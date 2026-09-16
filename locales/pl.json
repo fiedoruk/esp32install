@@ -33,7 +33,10 @@
     "chooseBackup": "Wybierz zapisaną przed chwilą kopię",
     "chooseBackupTitle": "Teraz wskaż kopię zapisaną przed chwilą",
     "chooseBackupHint": "Przeglądarka zapisała ją jako {file}, zwykle w folderze Pobrane.",
-    "erase": "Wyczyść całe urządzenie przed instalacją"
+    "erase": "Wyczyść całe urządzenie przed instalacją",
+    "theme": "Jasny albo ciemny",
+    "themeLight": "Jasny",
+    "themeDark": "Ciemny"
   },
   "stage": {
     "idle": "Czekam na start",

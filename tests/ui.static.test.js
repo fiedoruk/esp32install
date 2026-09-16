@@ -94,8 +94,20 @@ test('every input has a <label for> or an aria-label', () => {
   assert.deepEqual(unlabelled, []);
 });
 
-test('no theme toggle: the system colour scheme decides', () => {
-  assert.doesNotMatch(html, /theme-toggle|data-theme=/);
+test('theme: a synchronous init script in <head>, two named buttons, and no theme hard-coded in the markup', () => {
+  const head = html.slice(0, html.indexOf('</head>'));
+  assert.match(head, /<script src="theme-init\.js"><\/script>/, 'a classic script, no defer, no module: it must run before the first paint');
+  assert.doesNotMatch(html, /data-theme=/, 'only the script sets data-theme; theme.css follows the system until then');
+  const init = read('theme-init.js');
+  assert.match(init, /try\s*\{[^}]*localStorage\.getItem\('theme'\)[\s\S]*?\}\s*catch/, 'storage is read inside try/catch');
+  assert.match(init, /setAttribute\('data-theme', theme\)/);
+  assert.doesNotMatch(init, /\b(import|export)\b/, 'not a module');
+  assert.match(html, /<div class="theme" role="group" data-i18n-attr="aria-label:action\.theme">/);
+  for (const name of ['light', 'dark']) {
+    const cap = name[0].toUpperCase() + name.slice(1);
+    assert.match(html, new RegExp(`<button type="button" id="theme-${name}" aria-pressed="false" data-i18n-attr="aria-label:action\\.theme${cap}">`), name);
+  }
+  assert.match(read('app/main.js'), /mountThemeToggle\(\{ buttons: \{ light: document\.getElementById\('theme-light'\), dark: document\.getElementById\('theme-dark'\) \} \}\)/);
   assert.match(theme, /--backdrop:/);
 });
 

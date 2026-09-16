@@ -33,7 +33,10 @@
     "chooseBackup": "Choose the copy you just saved",
     "chooseBackupTitle": "Now choose the copy you just saved",
     "chooseBackupHint": "Your browser saved it as {file}, usually in the Downloads folder.",
-    "erase": "Clear everything on the device before installing"
+    "erase": "Clear everything on the device before installing",
+    "theme": "Light or dark",
+    "themeLight": "Light",
+    "themeDark": "Dark"
   },
   "stage": {
     "idle": "Ready",

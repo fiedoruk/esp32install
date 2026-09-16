@@ -8,7 +8,8 @@ import { normalizeManifest } from './manifest.js';
 import { createInstaller, fetchBytes } from './engine.js';
 import { esptoolCommand } from './verify.js';
 import { saveBlob, saveBackupWithHandle } from './backup.js';
-import { mountUi, fileNameOf, hideHatches } from './ui.js';
+import { mountUi, translateDom, fileNameOf, hideHatches } from './ui.js';
+import { mountThemeToggle } from './theme.js';
 import { InstallError } from './errors.js';
 
 const AVAILABLE = ['en', 'pl'];
@@ -43,6 +44,7 @@ async function boot() {
   i18n = createI18n(dicts, lang);
   document.documentElement.lang = lang;
   setupLangLinks(lang);
+  translateDom(i18n.t, { system: '' }, document.querySelector('header.top')); // named even when the catalog fails
 
   let catalog;
   try { catalog = await loadJson(new URL('catalog.json', document.baseURI).href); }
@@ -120,6 +122,9 @@ async function boot() {
   ui.bindRetry(() => ui.showScreen('prepare'));
   window.addEventListener('beforeunload', () => installer.cancel());
 }
+
+// Before anything loads: the header buttons work whatever happens to the catalog.
+mountThemeToggle({ buttons: { light: document.getElementById('theme-light'), dark: document.getElementById('theme-dark') } });
 
 boot().catch((e) => {
   const err = e instanceof InstallError ? e : new InstallError('catalog.fetch', {}, e);
