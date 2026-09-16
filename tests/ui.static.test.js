@@ -233,6 +233,34 @@ test('the own-file path: an entry under the list, a row list on the prepare scre
   assert.doesNotMatch(ui, /innerHTML/);
 });
 
+test('the own-file path speaks about the visitor\'s own file, in one voice, with the hex beside the field', () => {
+  const ui = read('app/ui.js');
+  const map = ui.slice(ui.indexOf('const OWN_PROBLEM_KEY'), ui.indexOf('const ownFilled'));
+  // Every check the page runs before connecting has an own-file sentence; nothing falls through to
+  // the catalogue's "this release" / "tell whoever published it".
+  for (const code of ['verify.overlap', 'verify.wrongChip', 'verify.notAnImage', 'verify.beyondFlash', 'verify.totalTooLarge', 'verify.chipUnknown']) {
+    assert.ok(map.includes(`'${code}':`), code + ' needs an own-file sentence');
+  }
+  assert.match(ui, /const key = OWN_PROBLEM_KEY\[e\?\.code\];\s*return key \? t\(key, safeParams\(e\.params\)\) : t\('simple\.own\.problem'\);/, 'the fallback is an own-file sentence, never error.*');
+  for (const k of ['overlap', 'wrongDevice', 'notAnImage', 'tooFar', 'tooMuch', 'deviceUnknown', 'problem']) {
+    assert.doesNotMatch(en.simple.own[k], /release|publish|written/i, 'simple.own.' + k + ' must not blame a publisher or claim anything was written');
+  }
+  // One reason, one voice: two polite live regions must not read the same sentence out twice.
+  assert.match(ui, /\$\('own-note'\)\.textContent = why \? '' :/, 'the note falls silent while the line above the button speaks');
+  // The example with hex belongs beside the address box, not above the main button.
+  assert.match(ui, /if \(filled\.some\(\(r\) => parseAddress\(r\.address\.value\) === null\)\) return t\('simple\.own\.needAddress'\);/);
+  assert.doesNotMatch(en.simple.own.needAddress, /0x/);
+  assert.match(en.simple.own.badAddress, /0x1000/);
+  assert.match(ui, /r\.info\.textContent = bad \? `\$\{r\.kindText\} \$\{t\('simple\.own\.badAddress'\)\}`\.trim\(\) : r\.kindText;/);
+});
+
+test('a file read from an address cannot outrun the rows: the button follows the set, and bytes leave with a removed row', () => {
+  const ui = read('app/ui.js');
+  assert.match(ui, /setOwnReading\(on\) \{[\s\S]*?if \(!on\) refreshOwn\(\);/, 'the read button is re-decided by the page, not switched on blind');
+  assert.match(ui, /const row = ownRows\.find\(\(r\) => r\.id === id\);\s*if \(!row\) return false;/, 'setOwnPart reports a row that is gone');
+  assert.match(read('app/main.js'), /if \(!ui\.setOwnPart\(id, \{ name, size: bytes\.length, sha256, \.\.\.facts \}\)\) \{ picked\.delete\(id\); return; \}/, 'and main.js drops the bytes it was holding for it');
+});
+
 test('the simple layer of the own-file path never says .bin; only the file input and the technical layer may', () => {
   const flatOwn = (o, p = '') => Object.entries(o).flatMap(([k, v]) => (typeof v === 'object' ? flatOwn(v, p + k + '.') : [[p + k, v]]));
   for (const [k, v] of flatOwn(en.simple.own)) assert.doesNotMatch(v, /\.bin/i, k);

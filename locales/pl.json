@@ -125,10 +125,15 @@
       "part": "Plik {n}",
       "remove": "Usuń",
       "needFile": "Najpierw wskaż plik.",
+      "needAddress": "Jeden z plików nie ma jeszcze adresu na urządzeniu. Obok tego pola jest napisane, co wpisać.",
       "planMany": "Wszystkie pliki trafią na {device}. Instalator zatrzyma się, jeśli podłączone urządzenie okaże się inne.",
       "overlap": "Dwa z tych plików trafiłyby w to samo miejsce na urządzeniu. Zmień jeden z adresów.",
       "wrongDevice": "{name} jest przeznaczony do innego urządzenia niż pozostałe pliki. Sprawdź, czy wszystkie pliki są do tego samego urządzenia.",
       "notAnImage": "Plik na początku urządzenia nie jest programem, od którego urządzenie potrafi wystartować. Sprawdź adresy plików.",
+      "tooFar": "Jeden z tych adresów sięga dalej niż pamięć jakiegokolwiek urządzenia. Sprawdź wpisane adresy.",
+      "tooMuch": "Razem te pliki są większe, niż instalator potrafi wysłać za jednym razem. Usuń któryś z nich.",
+      "deviceUnknown": "Instalator nie zna urządzenia wybranego powyżej. Wskaż inne z listy.",
+      "problem": "Tych plików nie da się zainstalować razem na tym urządzeniu. Sprawdź adres każdego z nich i urządzenie wybrane powyżej.",
       "kind": {
         "whole": "Wygląda na cały system.",
         "app": "Wygląda na program.",
@@ -168,8 +173,8 @@
     "file": "Plik"
   },
   "board": {
-    "pick": "Która to płytka?",
-    "pickHint": "W urządzeniu jest {chip} i {flash} pamięci. Pasujące wersje: {count}. Wskaż swoją."
+    "pick": "Które z nich to twoje urządzenie?",
+    "pickHint": "W urządzeniu jest {device} i {memory} pamięci. Pasujących wersji: {count}. Wskaż tę, którą masz."
   },
   "alt": {
     "title": "Inne sposoby instalacji",

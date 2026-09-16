@@ -54,7 +54,9 @@ test('a key that lands on a namespace is missing, not [object Object]', () => {
   assert.equal(enI18n.t('error'), 'error');
 });
 
-const SIMPLE = ['simple', 'door', 'stage', 'result', 'gate', 'action'];
+// Every namespace a beginner reads on a real screen, the board dialog included: it is shown to
+// everyone who installs a release with more than one build.
+const SIMPLE = ['simple', 'door', 'stage', 'result', 'gate', 'action', 'board'];
 const JARGON = /\b(firmware|flash(ing|ed)?|offset|bootloader|md5|sha-?256|serial|baud|esptool|manifest|chip|partition|erase-all|binary|\.bin)\b/i;
 // The names Chrome itself prints in its port picker; the page has to say them so a beginner can recognise the entry.
 const DEVICE_NAMES = /USB Serial|CP210x|CH9102|Unnamed device/g;
@@ -91,6 +93,7 @@ const REQUIRED = [
   'simple.own.pickDevice', 'simple.own.plan', 'simple.own.planMany', 'simple.own.unknownDevice', 'simple.own.badAddress', 'simple.own.needFile',
   'simple.own.url', 'simple.own.urlHint', 'simple.own.urlGo', 'simple.own.addFile', 'simple.own.part', 'simple.own.remove',
   'simple.own.overlap', 'simple.own.wrongDevice', 'simple.own.notAnImage',
+  'simple.own.needAddress', 'simple.own.tooFar', 'simple.own.tooMuch', 'simple.own.deviceUnknown', 'simple.own.problem',
   'simple.own.kind.whole', 'simple.own.kind.app', 'simple.own.kind.table', 'simple.own.kind.boot', 'simple.own.kind.otadata', 'simple.own.kind.data',
   'simple.wifi.title', 'simple.wifi.hint', 'simple.wifi.network', 'simple.wifi.password', 'simple.wifi.ok', 'simple.wifi.skip', 'simple.wifi.open',
   'action.wifiSend', 'action.console', 'action.consoleStop',

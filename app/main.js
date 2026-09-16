@@ -221,9 +221,11 @@ async function startOwn(lang) {
     const facts = describePart(name, bytes, ui.ownChipFamily());
     const sha256 = await sha256Hex(bytes);
     const id = rowId ?? ui.addOwnPart();
-    if (id === null) return; // every row is taken; the page has already switched the button off
-    picked.set(id, { name, bytes, sha256, url });
-    ui.setOwnPart(id, { name, size: bytes.length, sha256, ...facts });
+    if (id === null) return; // every row is taken, and the page keeps the read button off until one frees up
+    picked.set(id, { name, bytes, sha256, url }); // before the row is told: its refresh reads these bytes
+    // The row can be removed while the file is being read. Then the page says so and the bytes go
+    // with it, instead of staying in memory for the life of the page.
+    if (!ui.setOwnPart(id, { name, size: bytes.length, sha256, ...facts })) { picked.delete(id); return; }
     retitle();
   };
   ui.bindOwnFile(async (rowId, file) => {

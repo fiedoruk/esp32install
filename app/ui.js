@@ -149,9 +149,20 @@ export function mountUi({ i18n, system }) {
   // Rows are built here; the bytes never enter this module. main.js keeps them and answers with what
   // each file says about itself (setOwnPart) and whether the set fits together (the bindOwnChange
   // callback returns the problem, or null).
-  const ownRows = []; // { id, li, title, fileText, file, address, info, remove, part }
+  const ownRows = []; // { id, li, title, fileText, file, address, info, remove, part, kindText }
   let ownSeq = 0, onOwnFile = null, onOwnRemove = null, onOwnChange = null, ownProblem = null;
-  const OWN_PROBLEM_KEY = { 'verify.overlap': 'simple.own.overlap', 'verify.wrongChip': 'simple.own.wrongDevice', 'verify.notAnImage': 'simple.own.notAnImage' };
+  // Nothing on this path was published by anyone and nothing has been written yet, so the
+  // catalogued wording ("this release", "tell whoever published it") would be wrong in both
+  // halves. Every code the checks can raise gets an own-file sentence, and anything else falls
+  // back to a generic one instead of leaking the catalogue's.
+  const OWN_PROBLEM_KEY = {
+    'verify.overlap': 'simple.own.overlap',
+    'verify.wrongChip': 'simple.own.wrongDevice',
+    'verify.notAnImage': 'simple.own.notAnImage',
+    'verify.beyondFlash': 'simple.own.tooFar',
+    'verify.totalTooLarge': 'simple.own.tooMuch',
+    'verify.chipUnknown': 'simple.own.deviceUnknown',
+  };
   const ownFilled = () => ownRows.filter((r) => r.part);
   const ownChipFamily = () => $('own-chip').value || null;
   /** Every file with a valid address and one chosen device, or null while anything is missing. */
@@ -169,13 +180,17 @@ export function mountUi({ i18n, system }) {
   };
   const ownProblemText = (e) => {
     const key = OWN_PROBLEM_KEY[e?.code];
-    return key ? t(key, safeParams(e.params)) : t('error.' + (e?.code ?? 'engine.unexpected'), safeParams(e?.params));
+    return key ? t(key, safeParams(e.params)) : t('simple.own.problem');
   };
-  /** Why the button is off, as one sentence, or '' when it may turn on. */
+  /**
+   * Why the button is off, as one sentence, or '' when it may turn on. A bad address is named
+   * here without hex: the example of what to type belongs beside the field it is about, not as
+   * the headline above the main button.
+   */
   const ownWhy = () => {
     const filled = ownFilled();
     if (filled.length === 0) return t('simple.own.needFile');
-    if (filled.some((r) => parseAddress(r.address.value) === null)) return t('simple.own.badAddress');
+    if (filled.some((r) => parseAddress(r.address.value) === null)) return t('simple.own.needAddress');
     if (!ownChipFamily()) return t('simple.own.unknownDevice');
     if (ownProblem) return ownProblemText(ownProblem);
     return '';
@@ -195,6 +210,12 @@ export function mountUi({ i18n, system }) {
       r.title.textContent = t('simple.own.part', { n: i + 1 });
       r.title.hidden = ownRows.length === 1;
       r.remove.hidden = ownRows.length === 1 && !r.part; // the only empty row stays
+      // What the file looks like, and — while its address cannot be read — the example of what
+      // to type, next to the box it is about.
+      if (r.part) {
+        const bad = parseAddress(r.address.value) === null;
+        r.info.textContent = bad ? `${r.kindText} ${t('simple.own.badAddress')}`.trim() : r.kindText;
+      }
     });
     $('title').textContent = has ? t('app.title', { system: filled.map((r) => r.part.name).join(', ') }) : t('simple.own.title');
     const chipFamily = ownChipFamily();
@@ -204,7 +225,9 @@ export function mountUi({ i18n, system }) {
     const choice = ownChoice();
     ownProblem = choice ? (onOwnChange?.(choice) ?? null) : null;
     const why = ownWhy();
-    $('own-note').textContent = why || (choice.parts.length === 1
+    // Two live regions must not say the same thing: the note carries the plan, the line above the
+    // button carries the reason it is off. Exactly one of them speaks at a time.
+    $('own-note').textContent = why ? '' : (choice.parts.length === 1
       ? t('simple.own.plan', { name: choice.parts[0].name, address: '0x' + choice.parts[0].offset.toString(16), device: chipFamily })
       : t('simple.own.planMany', { device: chipFamily }));
     $('connect').disabled = why !== '';
@@ -251,7 +274,7 @@ export function mountUi({ i18n, system }) {
     remove.className = 'small';
     remove.textContent = t('simple.own.remove');
     li.append(title, fileLabel, fields, remove);
-    const row = { id, li, title, fileText, file, address, info, remove, part: null };
+    const row = { id, li, title, fileText, file, address, info, remove, part: null, kindText: '' };
     file.addEventListener('change', () => { const f = file.files?.[0]; if (f) onOwnFile?.(id, f); });
     address.addEventListener('input', refreshOwn);
     remove.addEventListener('click', () => {
@@ -364,6 +387,9 @@ export function mountUi({ i18n, system }) {
     setOwnReading(on) {
       for (const id of ['own-url', 'own-url-go']) $(id).disabled = on;
       for (const r of ownRows) r.file.disabled = on;
+      // Whether the address button may come back on is decided in one place only: a full set of
+      // rows keeps it off, and turning it on here would fetch a file that has nowhere to go.
+      if (!on) refreshOwn();
     },
     /** `fn(choice)` runs on every change and returns the problem with the set, or null. */
     bindOwnChange(fn) { onOwnChange = fn; },
@@ -376,17 +402,21 @@ export function mountUi({ i18n, system }) {
     /**
      * What one file says about itself, from main.js: its size and checksum, the family its header
      * names, what it looks like and the address a build tool would have given it. All of it stays
-     * editable and visible; the first header to name a family fills the device list.
+     * editable and visible; the first header to name a family fills the device list. Returns
+     * false when the row is gone — removed while the file was being read — so the caller can drop
+     * the bytes it is holding for it.
      */
     setOwnPart(id, { name, size, sha256, chipFamily, kind, offset }) {
       const row = ownRows.find((r) => r.id === id);
-      if (!row) return;
+      if (!row) return false;
       row.part = { name, size, sha256 };
       row.fileText.textContent = t('simple.own.read', { name, size: formatSize(size) });
       row.address.value = offset === null || offset === undefined ? '' : '0x' + offset.toString(16);
-      row.info.textContent = t('simple.own.kind.' + kind) + (chipFamily ? ' ' + chipFamily + '.' : '');
+      row.kindText = t('simple.own.kind.' + kind) + (chipFamily ? ' ' + chipFamily + '.' : '');
+      row.info.textContent = row.kindText;
       if (chipFamily && !$('own-chip').value) $('own-chip').value = chipFamily;
       refreshOwn();
+      return true;
     },
     ownChoice,
     mode() { return document.querySelector('input[name="mode"]:checked')?.value ?? 'first'; },
@@ -396,6 +426,7 @@ export function mountUi({ i18n, system }) {
     bindRetry(fn) { $('retry').addEventListener('click', fn); },
     setBusy(on) {
       $('connect').disabled = on || !ownReady();
+      $('connect').classList.toggle('is-busy', on); // only a working button may show a busy pointer
       $('connect-label').textContent = on ? t('action.connecting') : t('action.connect');
       for (const r of document.querySelectorAll('input[name="mode"]')) r.disabled = on;
       for (const id of ['backup', 'own-url', 'own-url-go', 'own-chip', 'own-add']) $(id).disabled = on;
@@ -572,7 +603,7 @@ export function mountUi({ i18n, system }) {
       return new Promise((resolve) => {
         const d = $('board-dialog');
         clear($('board-list'));
-        $('board-hint').textContent = t('board.pickHint', { chip: hw.chipFamily, flash: hw.flashSizeMB + ' MB', count: builds.length });
+        $('board-hint').textContent = t('board.pickHint', { device: hw.chipFamily, memory: hw.flashSizeMB + ' MB', count: builds.length });
         let settled = false;
         const finish = (v) => { if (settled) return; settled = true; d.close(); resolve(v); };
         for (const b of builds) {

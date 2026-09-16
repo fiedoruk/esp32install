@@ -125,10 +125,15 @@
       "part": "File {n}",
       "remove": "Remove",
       "needFile": "Choose a file first.",
+      "needAddress": "One of the files does not say yet where it goes on the device. The note beside that box says what to type.",
       "planMany": "All the files go on {device}. The installer stops if the connected device turns out to be a different one.",
       "overlap": "Two of these files would land on the same place on the device. Change one of the addresses.",
       "wrongDevice": "{name} is made for a different device than the others. Check that every file is for the same device.",
       "notAnImage": "The file at the start of the device is not a program the device can start from. Check the address of each file.",
+      "tooFar": "One of these addresses reaches further than the memory of any device goes. Check the addresses you typed.",
+      "tooMuch": "Together these files are more than the installer can send at once. Remove one of them.",
+      "deviceUnknown": "The installer does not know the device chosen above. Pick another one from the list.",
+      "problem": "These files cannot go on this device together. Check the address of each one, and the device chosen above.",
       "kind": {
         "whole": "Looks like a complete system.",
         "app": "Looks like a program.",
@@ -168,8 +173,8 @@
     "file": "File"
   },
   "board": {
-    "pick": "Which board is this?",
-    "pickHint": "We found {chip} with {flash} of flash. {count} builds fit it. Pick yours."
+    "pick": "Which of these is your device?",
+    "pickHint": "The device has {device} inside and {memory} of memory. {count} of the versions on offer fit it. Pick the one you have."
   },
   "alt": {
     "title": "Other ways to install",
