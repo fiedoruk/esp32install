@@ -19,8 +19,17 @@ const read = (p) => readFileSync(new URL('../' + p, import.meta.url), 'utf8');
  * system list that carry a version and an address to copy, and the footer the deployment fills in
  * from site.json. Style stood at 25 541 B before the round and at 29 495 B after; theme did not
  * move. Gzipped that is roughly 7.4 KB, still one small request.
+ *
+ * Raised again 2026-09-16, 30 500 to 35 000 (style stood at 29 665 B before this round). The
+ * design-QC round stopped borrowing the browser's own controls: the checkbox and the device list
+ * are drawn here now, in one language and in both themes, which is most of the new weight. The
+ * rest is the row in the system list becoming the action it always was (a chevron, and Copy link
+ * a level quieter), the status lamps turning into one lens instead of a ring inside a ring, and
+ * a 44px target under the 30px "?" ring. Nothing here is decoration: every block replaces a
+ * control the platform was painting for us in its own colours. Reason for the round and the list
+ * of moves: docs/design/2026-09-16-tozsamosc-i-stopka.md.
  */
-const CEILING = { 'style.css': 30500, 'theme.css': 5200 };
+const CEILING = { 'style.css': 35000, 'theme.css': 5200 };
 
 test('neither stylesheet has grown past its ceiling', () => {
   const over = Object.entries(CEILING)

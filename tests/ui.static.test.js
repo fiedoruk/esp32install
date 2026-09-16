@@ -176,7 +176,7 @@ test('the visual upgrade kept its four structural hooks in the markup and nothin
   for (const cls of ['picto-pc', 'picto-link', 'picto-body', 'picto-screen', 'picto-led']) assert.match(html, new RegExp(`<svg class="picto"[\\s\\S]*?class="${cls}"[\\s\\S]*?</svg>`), cls);
   assert.match(html, /<svg class="ring" id="ring"[^>]*>\s*<circle class="ring-dial" cx="60" cy="60" r="44" aria-hidden="true"\/>\s*<circle class="ring-track"/);
   assert.match(html, /<svg class="mark" id="mark"[^>]*>\s*<circle class="mark-fill" cx="60" cy="60" r="46"\/>\s*<circle class="ring-dial" cx="60" cy="60" r="44"\/>\s*<circle class="mark-ring"/);
-  assert.match(html, /<div class="hatches">\s*<details class="tech" id="tech">[\s\S]*?<details class="log" id="log-details">[\s\S]*?<details class="alt-wrap" id="alt-wrap">[\s\S]*?<\/details>\s*<\/div>\s*<\/div>/, 'the three hatches sit in one chamber, last on the plate');
+  assert.match(html, /<div class="hatches">\s*<details class="tech" id="tech">[\s\S]*?<details class="log" id="log-details" hidden>[\s\S]*?<details class="alt-wrap" id="alt-wrap">[\s\S]*?<\/details>\s*<\/div>\s*<\/div>/, 'the three hatches sit in one chamber, last on the plate');
   assert.match(html, /<a class="brand" href="\.\/"><svg class="signet" viewBox="0 0 32 32" aria-hidden="true">[\s\S]*?<\/svg><span class="word"><b>esp32<\/b>install<\/span><\/a>/);
   assert.match(html, /<link rel="icon" href="favicon\.svg">/);
 });
@@ -293,12 +293,16 @@ test('the Wi-Fi step lives on the done screen, hidden until the device asks for 
 });
 
 test('the console lives inside the technical log: one button, hidden until a port was picked, lines through textContent under a cap', () => {
-  assert.match(html, /<details class="log" id="log-details">[\s\S]*?<pre id="log"><\/pre>[\s\S]*?<button type="button" class="btn" id="console-toggle" hidden aria-pressed="false" data-i18n="action\.console"><\/button>[\s\S]*?<\/details>/);
+  // The hatch starts hidden and the box is focusable: a scrollable region has to be reachable
+  // from the keyboard, and a log hatch that opens on nothing is a promise the page cannot keep.
+  assert.match(html, /<details class="log" id="log-details" hidden>[\s\S]*?<pre id="log" tabindex="0"><\/pre>[\s\S]*?<button type="button" class="btn" id="console-toggle" hidden aria-pressed="false" data-i18n="action\.console"><\/button>[\s\S]*?<\/details>/);
   const ui = read('app/ui.js');
   assert.match(ui, /const logLines = createLineBuffer\(\);/, 'the log <pre> is fed from the capped buffer');
-  assert.match(ui, /pre\.textContent = logLines\.text\(\);/);
+  assert.match(ui, /const text = logLines\.text\(\);\s*pre\.textContent = text;/);
   assert.doesNotMatch(ui, /innerHTML/, 'nothing the device prints is ever parsed as markup');
   assert.match(ui, /appendDeviceLine\(line\)/);
+  assert.match(ui, /\$\('log-details'\)\.hidden = text === '';\s*\$\('copy-log'\)\.disabled = text === '';/, 'the hatch and the copy button wait for the first line');
+  assert.match(ui, /if \(on\) \$\('log-details'\)\.hidden = false;/, 'and the console button is never walled into a hidden hatch');
   assert.match(ui, /ui\.setConsoleAvailable\(false\);/, 'startInstall hides the button');
   const main = read('app/main.js');
   assert.match(main, /if \(monitor\) \{ const m = monitor; monitor = null; await m\.stop\(\); ui\.setConsoleRunning\(false\); \}/, 'releasePort stops the console');
@@ -384,14 +388,17 @@ test('the backup checkbox estimates from the detected flash, and says "a few min
 });
 
 test('a phone gets a copy-the-link control and no empty hatches; a typo in ?fw= gets a way to the list', () => {
-  assert.match(html, /<section class="gate" id="gate" hidden aria-live="polite">\s*<p id="gate-text"><\/p>\s*<button class="cta" id="copy-link" type="button" hidden data-i18n="action\.copyLink"><\/button>\s*<a class="quiet" id="gate-link" hidden><\/a>\s*<\/section>/);
+  assert.match(html, /<section class="gate" id="gate" hidden aria-live="polite">\s*<h1 id="gate-title"><\/h1>\s*<p id="gate-text"><\/p>\s*<button class="cta" id="copy-link" type="button" hidden data-i18n="action\.copyLink"><\/button>\s*<p class="note" id="gate-why" hidden data-i18n="gate\.copyWhy"><\/p>\s*<a class="cta" id="gate-link" hidden><\/a>\s*<\/section>/, 'a heading like every other screen, and the one way on is the button');
   const ui = read('app/ui.js');
+  assert.match(ui, /\$\('gate-title'\)\.textContent = t\(kind === 'noSerial' \? 'gate\.titleNoSerial' : 'gate\.titleInsecure'\);/);
+  assert.match(ui, /\$\('gate-why'\)\.hidden = false;/, 'and one line says what the copied link is for');
   assert.match(ui, /if \(kind === 'noSerial'\) \{[\s\S]*?\$\('tech'\)\.hidden = true;\s*\$\('log-details'\)\.hidden = true;\s*\$\('alt-wrap'\)\.open = false;\s*\$\('copy-link'\)\.hidden = false;/, 'no Details, no log, esptool folded away, the link first');
   assert.match(ui, /navigator\.share\(\{ url: location\.href/, 'a phone shares the link to itself');
   assert.match(ui, /navigator\.clipboard\.writeText\(location\.href\)/, 'a desktop without Web Serial copies it');
   assert.match(ui, /t\('action\.linkCopied'\)/);
   const main = read('app/main.js');
-  assert.match(main, /if \(err\.code\.startsWith\('catalog\.unknown'\)\) \{[\s\S]*?link\.href = location\.pathname;[\s\S]*?link\.textContent = i18n\.t\('pick\.title'\)/, 'the sentence points at the list, and the link goes there');
+  assert.match(main, /if \(unknown\) \{[\s\S]*?link\.href = location\.pathname;[\s\S]*?link\.textContent = i18n\.t\('pick\.title'\)/, 'the sentence points at the list, and the link goes there');
+  assert.match(main, /gate-title'\)\.textContent = i18n \? i18n\.t\(unknown \? 'gate\.titleUnknown' : 'gate\.titleError'\) : ''/, 'a boot failure names the screen too');
   assert.doesNotMatch(en.error['catalog.unknownSystem'], /published/, 'a typo in the address is not the publisher\'s fault');
   assert.match(en.error['catalog.unknownSystem'], /list of systems/);
 });
@@ -468,6 +475,7 @@ test('the signet is drawn in fills on a 2px grid, and the favicon is the same dr
     const numbers = [...(/d="(M2[^"]*)"/.exec(src)?.[1] ?? '').matchAll(/\d+/g)].map((m) => Number(m[0]));
     assert.ok(numbers.length >= 8, what + ': the lead is drawn');
     assert.deepEqual(numbers.filter((n) => n % 2 !== 0), [], what + ': the lead sits on even units');
+    for (const n of [16, 20, 8, 4, 2]) assert.equal(n % 2, 0);
   }
   // Fills, not strokes: a 1.5px line disappears at 16px, which is what the old sign did.
   assert.doesNotMatch(icon, /stroke/, 'no strokes in the favicon');
@@ -496,4 +504,77 @@ test('a row in the system list carries its release and its own address, and the 
   assert.equal((style.match(/border:\s*2px dashed/g) ?? []).length, 1);
   assert.match(style, /\.own-card \{[^}]*border: 2px dashed/);
   for (const k of ['newest', 'copy', 'copied']) assert.ok(en.pick[k], 'pick.' + k);
+});
+
+/* --- the design-QC round (2026-09-16): our controls, our lamps, our row ---- */
+
+test('every control the visitor touches is drawn here, in one language and in both themes', () => {
+  // The file picker was already ours. These two were not: a native checkbox is white in the light
+  // theme and a muddy square in the dark one, and a native select brings the platform's own
+  // chrome onto a panel that has its own.
+  const box = style.match(/\.opt input \{([^}]*)\}/);
+  assert.ok(box, '.opt input');
+  assert.match(box[1], /appearance:\s*none/, 'the box is painted here');
+  assert.match(box[1], /border:\s*2px solid var\(--line-2\)/);
+  assert.match(box[1], /background:\s*var\(--bg-2\)/);
+  assert.doesNotMatch(box[1], /accent-color/, 'accent-color only tints what the browser still draws');
+  assert.match(style, /\.opt input:checked \{[^}]*background:\s*var\(--accent\)/);
+  assert.match(style, /\.opt input::before \{[^}]*clip-path/, 'the tick is a shape, not a glyph from a font that may not load');
+  assert.match(style, /\.opt \{[^}]*min-height:\s*44px/, 'the label is the target');
+  assert.match(style, /\.field select \{[^}]*appearance:\s*none/);
+  assert.match(style, /\.field:has\(select\)::after \{[^}]*border-right: 2px solid var\(--dim\);\s*border-bottom: 2px solid var\(--dim\);\s*transform: rotate\(45deg\)/, 'the same chevron the hatches use');
+  assert.match(style, /\.field input, \.field select \{[^}]*min-height:\s*48px/);
+  assert.match(style, /input:focus-visible, select:focus-visible/, 'and the list keeps a focus ring');
+  // Never display:none on a real input: it has to stay focusable and stay a checkbox to a reader.
+  assert.doesNotMatch(style, /\.opt input \{[^}]*display:\s*none/);
+  assert.match(style, /\.file input \{[^}]*clip-path: inset\(50%\)/, 'the file input is clipped, not removed');
+});
+
+test('a row in the system list wears the action, and Copy link sits a level under it', () => {
+  assert.match(style, /\.sys \{[^}]*grid-template-columns:\s*1fr auto auto auto/, 'name, release, copy, chevron');
+  assert.match(style, /\.sys-arrow \{[^}]*border-right: 2\.5px solid var\(--ink\)/, 'the chevron is in the ink: it is the row action');
+  const copy = style.match(/\n\.sys-copy \{([^}]*)\}/);
+  assert.ok(copy, '.sys-copy');
+  assert.match(copy[1], /color:\s*var\(--dim\)/);
+  assert.match(copy[1], /text-transform:\s*uppercase/, 'panel lettering, not a second button');
+  assert.match(copy[1], /opacity:\s*0/);
+  assert.match(style, /\.sys:hover \.sys-copy, \.sys-copy:focus-visible \{ opacity: 1; \}/, 'the pointer and the keyboard both bring it back');
+  assert.match(style, /@media \(hover: none\) \{ \.sys-copy \{ opacity: 1; \} \}/, 'a touch screen has no hover, so there it is always out');
+  assert.match(read('app/ui.js'), /arrow\.className = 'sys-arrow';\s*arrow\.setAttribute\('aria-hidden', 'true'\);/);
+});
+
+test('a status lamp is a lens, not a radio mark, and it is the same object in both themes', () => {
+  const lamp = style.match(/\.lamp i \{([^}]*)\}/);
+  assert.ok(lamp, '.lamp i');
+  // A filled circle inside a ring of plate colour inside a second ring is exactly the mark a
+  // chosen door wears one screen earlier, so two lit lamps read as two ticked options.
+  assert.doesNotMatch(lamp[1], /0 0 0 2px var\(--bg-2\)/, 'no halo of plate colour: that is what made it a radio');
+  assert.match(lamp[1], /border:\s*2px solid var\(--line\)/, 'a rim on the glass');
+  assert.match(lamp[1], /box-shadow:\s*inset[^;]*rgb\(255 255 255[^;]*inset[^;]*rgb\(0 0 0/, 'light off the top of the lens, shade under it');
+  const unplug = style.match(/#done-unplug::before \{([^}]*)\}/);
+  assert.ok(unplug, '#done-unplug::before');
+  for (const decl of [/width: 20px; height: 20px/, /border: 2px solid var\(--line\)/, /inset 0 3px 2px -2px rgb\(255 255 255 \/ 0\.7\)/]) {
+    assert.match(unplug[1], decl, 'the released cable lamp is the same lens: ' + decl);
+  }
+  assert.doesNotMatch(unplug[1], /0 0 0 2px var\(--bg-2\)/);
+});
+
+test('the "?" ring keeps its size and gets a 44px target under it', () => {
+  assert.match(style, /\.hint \{[^}]*position:\s*relative/);
+  assert.match(style, /\.hint \{[^}]*width: 30px; height: 30px/, 'a 44px ring beside a sentence would be a second headline');
+  assert.match(style, /\.hint::after \{[^}]*width: 44px; height: 44px[^}]*transform: translate\(-50%, -50%\)/);
+});
+
+test('nothing renders an empty box: the emptied note, the empty log, the table of dashes', () => {
+  assert.match(style, /\.hint-text:empty \{ display: none; \}/, 'the own-file note is emptied in place, and must not leave its bar behind');
+  assert.doesNotMatch(style, /\.facts dd:empty::before/, 'a row of dashes is not a row');
+  assert.match(style, /\.facts-none \{/, 'and a table with no rows says so in a sentence');
+  assert.match(html, /<p class="facts-none" id="fact-none" data-i18n="tech\.nothingYet"><\/p>/);
+  const ui = read('app/ui.js');
+  assert.match(ui, /export function refreshFacts\(\)/);
+  assert.match(ui, /dd\.hidden = empty;\s*if \(dd\.previousElementSibling\) dd\.previousElementSibling\.hidden = empty;/, 'the label goes with its value');
+  assert.match(ui, /\$\('fact-none'\)\.hidden = known > 0;/);
+  assert.match(ui, /export function refreshAlt\(\)/);
+  assert.match(ui, /\$\('alt-files-label'\)\.hidden = !hasFiles;/, 'a heading with no list under it does not render');
+  assert.ok(en.tech.nothingYet && !/\{/.test(en.tech.nothingYet));
 });

@@ -23,6 +23,11 @@
   "gate": {
     "insecure": "This page has to be opened over a secure (https) address before it can talk to a device.",
     "noSerial": "This browser cannot talk to a device over a cable. Use Chrome, Edge, Opera or Firefox 151 or newer, on a computer. A phone will not do.",
+    "titleInsecure": "This page needs a secure address.",
+    "titleNoSerial": "This browser cannot reach a device.",
+    "titleError": "The installer could not start.",
+    "titleUnknown": "This link does not point to a system.",
+    "copyWhy": "Talking to a device over a cable only works on a computer. Open the copied link there and carry on from the same page.",
     "altFirst": "You can still install from a terminal window:"
   },
   "action": {
@@ -181,7 +186,8 @@
     "release": "Release",
     "checksum": "Checksum",
     "log": "Technical log",
-    "file": "File"
+    "file": "File",
+    "nothingYet": "Nothing is known about the device until it is connected."
   },
   "board": {
     "pick": "Which of these is your device?",

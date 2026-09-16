@@ -24,7 +24,7 @@ body {
 }
 
 a { color: var(--accent); }
-a:focus-visible, button:focus-visible, input:focus-visible, summary:focus-visible {
+a:focus-visible, button:focus-visible, input:focus-visible, select:focus-visible, summary:focus-visible {
   outline: 3px solid var(--accent);
   outline-offset: 3px;
 }
@@ -189,9 +189,12 @@ h2 { font-size: var(--t-h2); font-weight: 600; }
 h3 { font-size: 17px; margin-top: 8px; }
 p { margin: 0; }
 .lead { font-size: var(--t-lead); }
-/* The gate: one sentence, and when there is a way out, one button or one quiet link under it. */
+/* The gate: a heading, one sentence, and the way out as the action — not as a whisper under a
+   button for something else. Whoever reads this screen has already been stopped once. */
 .gate { display: flex; flex-direction: column; margin-bottom: var(--s5); }
 .gate:last-child { margin-bottom: 0; }
+#gate-title { margin: var(--s4) 0; }
+#gate-why { margin-top: var(--s3); }
 #copy-link { margin-top: var(--s5); }
 #gate-link { margin-top: var(--s4); }
 
@@ -230,6 +233,7 @@ p { margin: 0; }
 
 /* "?" hints: a small ring at the end of the sentence it belongs to, opening underneath, never a tooltip. */
 .hint {
+  position: relative;
   display: inline-flex;
   align-items: center;
   justify-content: center;
@@ -244,7 +248,19 @@ p { margin: 0; }
   font: 600 15px var(--font-display);
   cursor: pointer;
 }
+/* The ring stays 30px, because a 44px ring beside a sentence is a second headline. The thumb
+   gets 44px anyway, centred on it and reaching past it into the margin. */
+.hint::after {
+  content: "";
+  position: absolute;
+  top: 50%; left: 50%;
+  width: 44px; height: 44px;
+  transform: translate(-50%, -50%);
+}
 .hint[aria-expanded="true"] { border-color: var(--accent); color: var(--accent); }
+/* Emptied, it still drew its bar: a stripe and a grey box around no words, which is the one
+   thing on the page that says "this did not finish loading". Nothing is not a note. */
+.hint-text:empty { display: none; }
 .hint-text {
   margin-top: var(--s3);
   border-left: 3px solid var(--accent);
@@ -297,9 +313,38 @@ p { margin: 0; }
 
 /* Before the copy option on a first install: why it starts with a copy, said once, in the quiet voice. */
 #backup-first { margin-top: var(--s3); font-size: var(--t-body); color: var(--dim); }
-.opt-row { display: flex; align-items: flex-start; gap: 10px; margin-top: var(--s3); }
-.opt { display: flex; gap: 10px; align-items: flex-start; color: var(--dim); cursor: pointer; }
-.opt input { width: 20px; height: 20px; margin: 4px 0 0; accent-color: var(--accent); flex: none; }
+.opt-row { display: flex; align-items: center; gap: 10px; margin-top: var(--s3); }
+/* The one checkbox on the page, drawn here rather than by the browser. Native it is two different
+   objects — white in light, a muddy square in dark — and neither is on this panel. The input keeps
+   its place: still focusable, still announced as a checkbox, only its painting is ours. The label
+   is the target, and it is 44px tall. */
+.opt { display: flex; gap: 12px; align-items: center; min-height: 44px; color: var(--dim); cursor: pointer; }
+.opt input {
+  appearance: none;
+  width: 24px; height: 24px;
+  margin: 0;
+  flex: none;
+  border: 2px solid var(--line-2);
+  border-radius: 6px;
+  background: var(--bg-2);
+  cursor: pointer;
+  display: grid;
+  place-content: center;
+}
+/* The tick is a shape, not a glyph: a font that fails to load must not take the mark with it. */
+.opt input::before {
+  content: "";
+  width: 14px; height: 14px;
+  transform: scale(0);
+  background: var(--accent-ink);
+  clip-path: polygon(13% 46%, 0 61%, 39% 100%, 100% 21%, 84% 8%, 37% 69%);
+  transition: transform var(--motion-fast) var(--ease);
+}
+.opt input:checked { border-color: var(--accent); background: var(--accent); }
+.opt input:checked::before { transform: scale(1); }
+.opt:hover input:not(:disabled) { border-color: var(--accent); }
+.opt input:disabled { opacity: 0.45; cursor: default; }
+.opt:has(input:disabled) { cursor: default; }
 
 /* The one button. */
 .cta {
@@ -381,19 +426,23 @@ p { margin: 0; }
   border-radius: var(--radius-in);
 }
 .lamp { display: flex; align-items: center; gap: 12px; color: var(--dim); font-weight: 600; }
+/* A lens in a rim, and one recipe for both themes. It used to be a filled circle inside a ring of
+   plate colour inside a second ring — which is exactly the mark a chosen door wears one screen
+   earlier, so two lamps read as two ticked options on a screen where nothing may be touched.
+   The rim sits on the glass now, and the light comes off the top of the lens, not off a halo. */
 .lamp i {
-  width: 18px; height: 18px;
+  width: 20px; height: 20px;
   border-radius: 999px;
-  border: 0;
+  border: 2px solid var(--line);
   background: var(--lamp-off);
-  box-shadow: inset 0 1px 2px var(--shade-2), 0 0 0 2px var(--bg-2), 0 0 0 3px var(--line);
+  box-shadow: inset 0 3px 2px -2px rgb(255 255 255 / 0.7), inset 0 -3px 3px -2px rgb(0 0 0 / 0.35);
   flex: none;
 }
 .lamp.is-on { color: var(--ink); }
-.lamp.is-on i { background: var(--accent); box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.45), 0 0 0 2px var(--bg-2), 0 0 0 3px var(--line); }
+.lamp.is-on i { background: var(--accent); }
 .lamp.is-on.is-pulse i { animation: pulse 2s ease-in-out infinite; }
 .lamp.is-off i { background: var(--lamp-off); }
-.lamp.is-done i { background: var(--done); box-shadow: inset 0 1px 1px rgb(255 255 255 / 0.45), 0 0 0 2px var(--bg-2), 0 0 0 3px var(--line); }
+.lamp.is-done i { background: var(--done); }
 @keyframes pulse { 50% { opacity: 0.35; } }
 
 /* ---- screen 3 ----------------------------------------------------------- */
@@ -410,17 +459,20 @@ p { margin: 0; }
 .is-error .mark-stop { display: block; }
 #done-title { margin-top: var(--s5); color: var(--done); }
 .is-error #done-title { color: var(--ink); }
-/* The cable lamp from screen 2, released: the same lens, now green, before the sentence that frees the cable. */
+/* The cable lamp from screen 2, released: the same lens with the same rim and the same reflection,
+   now green. It was a bare dot in the dark theme and a haloed ring in the light one — one element,
+   two objects, which is the thing rule 7 is for. */
 #done-unplug { margin-top: var(--s3); }
 #done-unplug::before {
   content: "";
   display: inline-block;
-  width: 14px; height: 14px;
+  width: 20px; height: 20px;
   margin-right: 10px;
-  vertical-align: -1px;
+  vertical-align: -4px;
   border-radius: 999px;
+  border: 2px solid var(--line);
   background: var(--done);
-  box-shadow: 0 0 0 2px var(--bg-2), 0 0 0 3px var(--line);
+  box-shadow: inset 0 3px 2px -2px rgb(255 255 255 / 0.7), inset 0 -3px 3px -2px rgb(0 0 0 / 0.35);
 }
 #done-text { margin-top: var(--s3); }
 .is-error #done-text {
@@ -483,7 +535,8 @@ details[open] > summary::before { transform: rotate(45deg); }
 }
 .facts dt { color: var(--dim); font: 700 var(--t-micro) var(--font-display); letter-spacing: 0.06em; text-transform: uppercase; align-self: center; }
 .facts dd { margin: 0; overflow-wrap: anywhere; }
-.facts dd:empty::before { content: "\2014"; color: var(--line); }
+/* The sentence that stands in for a table of nothing; ui.js hides the rows it has no value for. */
+.facts-none { margin-top: var(--s2); color: var(--dim); font-size: 16px; }
 
 pre {
   margin: 0;
@@ -499,6 +552,7 @@ pre {
 /* The vendored mono font is asked for only once a hatch is open, so it never loads for the first layer. */
 details[open] pre, details[open] code { font-family: var(--font-mono); }
 .log pre { max-height: 240px; overflow: auto; min-height: 3em; background: var(--bg-2); }
+.log pre:focus-visible { outline: 3px solid var(--accent); outline-offset: 3px; }
 /* Every control that is not the one action: an outlined key on the panel, and a ghost for the
    quiet ways out. Neither ever fills with the accent, so the plate keeps one knob. Before this
    they borrowed whatever class was nearest and came out looking like browser defaults. */
@@ -539,7 +593,7 @@ details[open] pre, details[open] code { font-family: var(--font-mono); }
 .sys {
   position: relative;
   display: grid;
-  grid-template-columns: 1fr auto auto;
+  grid-template-columns: 1fr auto auto auto;
   align-items: center;
   gap: var(--s1) var(--s4);
   padding: 12px 16px;
@@ -548,6 +602,16 @@ details[open] pre, details[open] code { font-family: var(--font-mono); }
   transition: border-color var(--motion-fast) var(--ease);
 }
 .sys:hover { border-color: var(--accent); }
+/* The row is the action, and now it says so: the chevron of a hatch that opens, in the ink, at
+   the end of the row. Before this the only thing on the row shaped like a control was Copy link. */
+.sys-arrow {
+  width: 9px; height: 9px;
+  margin-right: 2px;
+  border-right: 2.5px solid var(--ink);
+  border-bottom: 2.5px solid var(--ink);
+  transform: rotate(-45deg);
+  justify-self: end;
+}
 /* The whole row is the link; the copy button sits above it, later in the paint order. */
 .sys-go { color: var(--ink); text-decoration: none; font: 700 19px var(--font-display); }
 .sys-go::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
@@ -555,7 +619,22 @@ details[open] pre, details[open] code { font-family: var(--font-mono); }
 .sys-meta { display: flex; align-items: center; gap: var(--s2); white-space: nowrap; }
 .sys-newest { font: 700 var(--t-micro) var(--font-display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
 .sys-version { font: 600 var(--t-small) var(--font-display); color: var(--dim); }
-.sys-copy { position: relative; margin-top: 0; }
+/* Copy link is a tool for whoever runs a page of their own, so it sits a level under the row's
+   own action: panel lettering, no box, and on a pointer it waits until the row is under the
+   cursor. Touch has no hover, so there it is always out; the keyboard brings it back on focus. */
+.sys-copy {
+  position: relative;
+  margin-top: 0;
+  padding: 10px;
+  color: var(--dim);
+  font: 700 var(--t-micro) var(--font-display);
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+  opacity: 0;
+  transition: opacity var(--motion-fast) var(--ease);
+}
+.sys:hover .sys-copy, .sys-copy:focus-visible { opacity: 1; }
+@media (hover: none) { .sys-copy { opacity: 1; } }
 /* The newest entry wears the same tint as a chosen door, so the list has a first and not a first of three. */
 .sys.is-newest { border-color: var(--accent); background: var(--accent-tint); }
 /* Your own file: a dashed card under the list, and a block on the prepare screen. */
@@ -592,11 +671,12 @@ details[open] pre, details[open] code { font-family: var(--font-mono); }
 .own-hint { color: var(--dim); }
 .own-url { display: flex; gap: 10px; align-items: flex-end; }
 .own-url .field { flex: 1; }
-.own-url .btn { margin: 0 0 1px; min-height: 45px; white-space: nowrap; }
+.own-url .btn { margin: 0; min-height: 48px; white-space: nowrap; } /* the same height as the box it sits beside */
 .fields { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .field { display: flex; flex-direction: column; gap: 6px; color: var(--dim); font-size: 16px; }
 .field input, .field select {
   width: 100%;
+  min-height: 48px;
   padding: 10px 12px;
   border: 2px solid var(--line);
   border-radius: calc(var(--radius) - 4px);
@@ -604,7 +684,25 @@ details[open] pre, details[open] code { font-family: var(--font-mono); }
   color: var(--ink);
   font: 17px var(--font-body);
 }
-.gate p { padding: 12px 16px; border-left: 3px solid var(--warn); background: var(--well); border-radius: 0 var(--radius-in) var(--radius-in) 0; }
+/* The device list is our box with our mark on it, not the browser's. Native, it came with the
+   platform's own chrome and its own dark grey, which is a second visual language on one screen.
+   The mark is the chevron the hatch summaries use, so the page has one way of saying "opens". */
+.field:has(select) { position: relative; }
+.field select { appearance: none; padding-right: 44px; }
+.field:has(select)::after {
+  content: "";
+  position: absolute;
+  right: 18px;
+  bottom: 20px;
+  width: 7px; height: 7px;
+  border-right: 2px solid var(--dim);
+  border-bottom: 2px solid var(--dim);
+  transform: rotate(45deg);
+  pointer-events: none;
+}
+.field select:hover:not(:disabled) { border-color: var(--line-2); }
+.field select:disabled, .field input:disabled { opacity: 0.55; cursor: not-allowed; }
+#gate-text { padding: 12px 16px; border-left: 3px solid var(--warn); background: var(--well); border-radius: 0 var(--radius-in) var(--radius-in) 0; }
 
 /* ---- dialogs: one sentence, two buttons -------------------------------- */
 
@@ -669,7 +767,10 @@ dialog p { margin-top: 8px; }
   .fields { grid-template-columns: 1fr; }
   .facts { grid-template-columns: 1fr; gap: 2px 0; }
   .sys { grid-template-columns: 1fr auto; }
-  .sys-copy { grid-column: 2; grid-row: 2; justify-self: end; }
+  .sys-go { grid-column: 1; grid-row: 1; }
+  .sys-meta { grid-column: 1; grid-row: 2; }
+  .sys-copy { grid-column: 2; grid-row: 2; justify-self: end; margin-right: -10px; }
+  .sys-arrow { grid-column: 2; grid-row: 1; justify-self: end; align-self: center; }
   .foot-cols { grid-template-columns: 1fr; gap: var(--s4); }
   .foot-bottom { margin-left: 0; } /* the licence line wraps under the mark instead of off the edge */
   .facts dt { margin-top: 6px; }
@@ -683,7 +784,7 @@ dialog p { margin-top: 8px; }
   .lamp.is-on.is-pulse i { animation: none; }
   .picto-link { animation: none !important; }
   .ring-arc { transition: none; }
-  .door, .door::after, .cta, .sys, summary::before { transition: none; }
+  .door, .door::after, .cta, .sys, .sys-copy, .opt input::before, summary::before { transition: none; }
 }
 
 /* ---- Wi-Fi after the install: one heading, two fields, one button ---------- */

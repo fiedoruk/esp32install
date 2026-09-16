@@ -23,6 +23,11 @@
   "gate": {
     "insecure": "Żeby połączyć się z urządzeniem, otwórz tę stronę pod adresem zaczynającym się od https.",
     "noSerial": "Ta przeglądarka nie potrafi połączyć się z urządzeniem przez kabel. Użyj Chrome, Edge, Opery albo Firefoksa od wersji 151 na komputerze. Telefon nie wystarczy.",
+    "titleInsecure": "Ta strona potrzebuje bezpiecznego adresu.",
+    "titleNoSerial": "Ta przeglądarka nie dosięgnie urządzenia.",
+    "titleError": "Instalator nie mógł wystartować.",
+    "titleUnknown": "Ten odnośnik nie prowadzi do żadnego systemu.",
+    "copyWhy": "Rozmowa z urządzeniem przez kabel działa tylko na komputerze. Otwórz tam skopiowany odnośnik i prowadź dalej z tej samej strony.",
     "altFirst": "Możesz też zainstalować z okna terminala:"
   },
   "action": {
@@ -181,7 +186,8 @@
     "release": "Wydanie",
     "checksum": "Suma kontrolna",
     "log": "Zapis techniczny",
-    "file": "Plik"
+    "file": "Plik",
+    "nothingYet": "Dopóki urządzenie nie jest podłączone, nic o nim nie wiadomo."
   },
   "board": {
     "pick": "Które z nich to twoje urządzenie?",

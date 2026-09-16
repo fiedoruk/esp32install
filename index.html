@@ -38,9 +38,11 @@
     <p class="pre-label" id="pre-label" hidden></p>
 
     <section class="gate" id="gate" hidden aria-live="polite">
+      <h1 id="gate-title"></h1>
       <p id="gate-text"></p>
       <button class="cta" id="copy-link" type="button" hidden data-i18n="action.copyLink"></button>
-      <a class="quiet" id="gate-link" hidden></a>
+      <p class="note" id="gate-why" hidden data-i18n="gate.copyWhy"></p>
+      <a class="cta" id="gate-link" hidden></a>
     </section>
 
     <section class="pick" id="pick" hidden>
@@ -130,7 +132,7 @@
         </svg>
         <div class="ring-center"><span class="eta" id="eta"></span></div>
       </div>
-      <p class="stage-text" id="stage-text" aria-live="polite"></p>
+      <h1 class="stage-text" id="stage-text" aria-live="polite"></h1>
       <button class="cta" id="save-backup" type="button" hidden data-i18n="action.saveBackup"></button>
       <ul class="lamps" aria-live="polite">
         <li class="lamp" id="lamp-device"><i aria-hidden="true"></i><span id="lamp-device-text"></span></li>
@@ -182,11 +184,12 @@
         <dt id="fact-release-label" data-i18n="tech.release"></dt><dd id="fact-release"></dd>
         <dt data-i18n="tech.checksum"></dt><dd id="fact-checksum"></dd>
       </dl>
+      <p class="facts-none" id="fact-none" data-i18n="tech.nothingYet"></p>
     </details>
 
-    <details class="log" id="log-details">
+    <details class="log" id="log-details" hidden>
       <summary id="log-summary" data-i18n="app.showLog"></summary>
-      <pre id="log"></pre>
+      <pre id="log" tabindex="0"></pre>
       <button type="button" class="btn" id="copy-log" data-i18n="app.copyLog"></button>
       <button type="button" class="btn" id="console-toggle" hidden aria-pressed="false" data-i18n="action.console"></button>
     </details>
@@ -194,9 +197,9 @@
     <details class="alt-wrap" id="alt-wrap">
       <summary data-i18n="alt.title"></summary>
       <section class="alt" id="alt">
-        <p data-i18n="alt.cmd"></p>
+        <p id="alt-cmd-label" data-i18n="alt.cmd"></p>
         <pre id="alt-cmd"></pre>
-        <h3 data-i18n="alt.files"></h3>
+        <h3 id="alt-files-label" data-i18n="alt.files"></h3>
         <ul id="alt-files"></ul>
         <h3 data-i18n="alt.drivers"></h3>
         <ul class="drivers">

@@ -331,9 +331,14 @@ boot().catch((e) => {
   const err = e instanceof InstallError ? e : new InstallError('catalog.fetch', {}, e);
   const el = document.getElementById('gate');
   el.hidden = false;
+  const unknown = err.code.startsWith('catalog.unknown');
+  // The same heading every other screen has. Whoever lands here arrived with a broken link and
+  // has already stumbled once; the first line they read should say where they are.
+  document.getElementById('gate-title').textContent = i18n ? i18n.t(unknown ? 'gate.titleUnknown' : 'gate.titleError') : '';
   document.getElementById('gate-text').textContent = i18n ? i18n.t('error.' + err.code, err.params) : err.code;
-  if (err.code.startsWith('catalog.unknown')) {
-    // A typo in the address, most likely: the sentence points at the list, and so does this link.
+  if (unknown) {
+    // A typo in the address, most likely: the sentence points at the list, and so does this link —
+    // and since it is the only way on from here, it is the button, not a whisper under one.
     const link = document.getElementById('gate-link');
     link.href = location.pathname;
     link.textContent = i18n.t('pick.title');

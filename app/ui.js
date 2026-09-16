@@ -53,6 +53,33 @@ export function hideHatches() {
   for (const id of ['tech', 'log-details', 'alt-wrap']) $(id).hidden = true;
 }
 
+/**
+ * The fact table, and its own emptiness. A row whose value is not known yet is not a row — five
+ * dashes under a heading say "something should be here" and nothing else — so it goes, and when
+ * nothing at all is known the table says that in one sentence instead.
+ */
+export function refreshFacts() {
+  let known = 0;
+  for (const dd of document.querySelectorAll('#tech .facts dd')) {
+    const empty = dd.textContent.trim() === '';
+    dd.hidden = empty;
+    if (dd.previousElementSibling) dd.previousElementSibling.hidden = empty;
+    if (!empty) known += 1;
+  }
+  $('fact-none').hidden = known > 0;
+}
+
+/** The same rule in the esptool hatch: a command with nothing in it, and a heading with no list
+ *  under it, do not render. The drivers are always there, so the hatch itself always has content. */
+export function refreshAlt() {
+  const hasCmd = $('alt-cmd').textContent.trim() !== '';
+  $('alt-cmd-label').hidden = !hasCmd;
+  $('alt-cmd').hidden = !hasCmd;
+  const hasFiles = $('alt-files').childElementCount > 0;
+  $('alt-files-label').hidden = !hasFiles;
+  $('alt-files').hidden = !hasFiles;
+}
+
 /** Fills `data-i18n` text and `data-i18n-attr` attributes under `root`. */
 export function translateDom(t, vars, root = document) {
   for (const el of root.querySelectorAll('[data-i18n]')) el.textContent = t(el.dataset.i18n, vars);
@@ -132,6 +159,9 @@ export function mountUi({ i18n, system }) {
     }
   });
 
+  refreshFacts();
+  refreshAlt();
+  $('copy-log').disabled = true; // there is nothing to copy until the first line arrives
   $('log-details').addEventListener('toggle', (e) => {
     $('log-summary').textContent = t(e.target.open ? 'app.hideLog' : 'app.showLog');
   });
@@ -174,8 +204,13 @@ export function mountUi({ i18n, system }) {
   const logLines = createLineBuffer();
   const showLog = () => {
     const pre = $('log');
-    pre.textContent = logLines.text();
+    const text = logLines.text();
+    pre.textContent = text;
     pre.scrollTop = pre.scrollHeight;
+    // A hatch called "technical log" that opens on an empty box, over a button that copies
+    // nothing, is a promise the page cannot keep. Both wait for the first line.
+    $('log-details').hidden = text === '';
+    $('copy-log').disabled = text === '';
   };
 
   /** The device's own address after Wi-Fi setup, as a link; nothing is shown when it gave none. */
@@ -256,6 +291,7 @@ export function mountUi({ i18n, system }) {
     $('fact-board').textContent = chipFamily ?? '';
     $('fact-release').textContent = filled.map((r) => `${r.part.name}, ${r.part.size} bytes` + (parseAddress(r.address.value) === null ? '' : `, at 0x${parseAddress(r.address.value).toString(16)}`)).join('; ');
     $('fact-checksum').textContent = filled.map((r) => r.part.sha256).join(', ');
+    refreshFacts();
     const choice = ownChoice();
     ownProblem = choice ? (onOwnChange?.(choice) ?? null) : null;
     const why = ownWhy();
@@ -337,6 +373,9 @@ export function mountUi({ i18n, system }) {
      */
     showGate(kind) {
       $('gate').hidden = false;
+      // A screen a beginner lands on because something already went wrong needs a heading like
+      // every other screen; without one the first thing they read is the bad news, in body text.
+      $('gate-title').textContent = t(kind === 'noSerial' ? 'gate.titleNoSerial' : 'gate.titleInsecure');
       $('gate-text').textContent = t('gate.' + kind);
       for (const s of screens) { $('screen-' + s).hidden = true; $('screen-' + s).classList.remove('is-active'); }
       if (kind === 'noSerial') {
@@ -344,6 +383,9 @@ export function mountUi({ i18n, system }) {
         $('log-details').hidden = true;
         $('alt-wrap').open = false;
         $('copy-link').hidden = false;
+        // "Copy the link for a computer" out of context is a button for nothing. One line says
+        // what the copy is for, in the same place the picker note sits under the main button.
+        $('gate-why').hidden = false;
       } else {
         $('alt-wrap').open = true;
       }
@@ -353,6 +395,7 @@ export function mountUi({ i18n, system }) {
       $('pre-label').textContent = preRelease ? t('simple.preRelease') : '';
       $('pre-label').hidden = !preRelease;
       $('fact-release').textContent = release;
+      refreshFacts();
       showScreen('prepare');
     },
     /**
@@ -419,7 +462,13 @@ export function mountUi({ i18n, system }) {
             setTimeout(() => { copy.textContent = t('pick.copy'); }, 2000);
           } catch { /* the clipboard is blocked; the address is in the row's own link anyway */ }
         });
-        li.append(a, meta, copy);
+        // The chevron is the row's own affordance. Without it the only thing on the row shaped
+        // like a control was Copy link — which is for whoever runs a page of their own — so a
+        // first visitor's first click landed there and got a silent "Copied".
+        const arrow = document.createElement('span');
+        arrow.className = 'sys-arrow';
+        arrow.setAttribute('aria-hidden', 'true');
+        li.append(a, meta, copy, arrow);
         $('pick-list').append(li);
       });
     },
@@ -540,6 +589,7 @@ export function mountUi({ i18n, system }) {
     setHardware(hw) {
       $('fact-chip').textContent = hw.chipDescription;
       $('fact-flash').textContent = hw.flashSizeMB + ' MB';
+      refreshFacts();
       setLamp('lamp-device', 'is-on');
       // The copy's length is known now; the checkbox says it for the next run on this device.
       const minutes = backupMinutes(hw);
@@ -547,13 +597,18 @@ export function mountUi({ i18n, system }) {
     },
     setBuild(b) {
       $('fact-board').textContent = b.board;
+      refreshFacts();
       setLamp('lamp-device', 'is-on', b.board);
     },
     appendLog(line) { logLines.push(`[${new Date().toLocaleTimeString()}] ${line}`); showLog(); },
     /** A line the device itself printed; the same <pre>, marked, and under the same cap. */
     appendDeviceLine(line) { logLines.push(`[${new Date().toLocaleTimeString()}] > ${line}`); showLog(); },
     /** The console button is offered only when a port was picked and no install is running. */
-    setConsoleAvailable(on) { $('console-toggle').hidden = !on; if (!on) ui.setConsoleRunning(false); },
+    setConsoleAvailable(on) {
+      $('console-toggle').hidden = !on;
+      if (on) $('log-details').hidden = false; // the button lives in the hatch; it may not be walled in
+      if (!on) ui.setConsoleRunning(false);
+    },
     setConsoleRunning(on) {
       const btn = $('console-toggle');
       btn.setAttribute('aria-pressed', String(on));
@@ -580,7 +635,7 @@ export function mountUi({ i18n, system }) {
       if (nextHref) { $('done-next').href = nextHref; $('done-next').textContent = t('simple.done.next'); }
       $('retry').hidden = true;
       $('done-again').hidden = false;
-      if (checksum) $('fact-checksum').textContent = checksum;
+      if (checksum) { $('fact-checksum').textContent = checksum; refreshFacts(); }
       showScreen('done');
     },
     /**
@@ -624,6 +679,7 @@ export function mountUi({ i18n, system }) {
         $('alt-guide').href = guideHref;
         $('alt-guide').textContent = t('alt.guide', vars);
       }
+      refreshAlt();
     },
     /**
      * The Wi-Fi step on the done screen, shown only once the device has said it takes network
