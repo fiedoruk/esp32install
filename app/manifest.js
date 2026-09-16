@@ -87,6 +87,30 @@ function normalizePart(p, i, boardKey, base, allowOrigins, profile) {
   return part;
 }
 
+/**
+ * The other end of the alignment rule. A part's start has to sit on a sector boundary because the
+ * chip erases whole sectors; its *last byte* costs a whole sector too, and everything from that
+ * byte to the end of its sector is blanked — up to 4 095 bytes of whatever sat after the part,
+ * which on this profile is user data nothing declared and the read-back does not cover, because
+ * `checkUntouched` expects exactly that `0xff` and outside the header span nothing looks at all.
+ *
+ * So a `preserve` part has to be a whole number of sectors. Publishers pad the binary; the
+ * generator says so when it refuses.
+ *
+ * One exception, and it is the one the profile is built around: the part written at
+ * `update.tableOffset`. A partition table is 3 072 bytes and its page is 4 KiB, and this profile
+ * already writes and re-checks that page whole — the table against the part's `sha256` and the
+ * rest of the page against `0xff`. Nothing there is kept, so nothing there can be lost.
+ */
+function refuseUnalignedTails(parts, boardKey, tableOffset) {
+  for (const [i, part] of parts.entries()) {
+    if (part.offset === tableOffset) continue;
+    if (part.size !== undefined && part.size % SECTOR !== 0) {
+      fail('manifest.alignment', { boardKey, index: i + 1, offset: part.offset, size: part.size, sector: SECTOR });
+    }
+  }
+}
+
 function normalizeBuild(b, i, manifest, base, allowOrigins) {
   if (!isPlainObject(b)) fail('manifest.build', { index: i + 1 });
   const boardKey = b.boardKey === undefined ? `build-${i + 1}` : String(b.boardKey);
@@ -113,6 +137,8 @@ function normalizeBuild(b, i, manifest, base, allowOrigins) {
   if (b.improv !== undefined && b.improv !== null && typeof b.improv !== 'boolean') fail('manifest.improv', { boardKey });
   if (!Array.isArray(b.parts) || b.parts.length === 0) fail('manifest.noParts', { boardKey });
   const parts = b.parts.map((p, j) => normalizePart(p, j, boardKey, base, allowOrigins, profile));
+  const compatibility = normalizeCompatibility(b.compatibility, boardKey, profile, parts);
+  if (profile === 'preserve') refuseUnalignedTails(parts, boardKey, compatibility?.update?.tableOffset);
   return {
     boardKey,
     board: typeof b.board === 'string' && b.board.trim() ? b.board : (typeof b.name === 'string' ? b.name : boardKey),
@@ -125,7 +151,7 @@ function normalizeBuild(b, i, manifest, base, allowOrigins) {
     profile,
     eraseAll,
     improv: typeof b.improv === 'boolean' ? b.improv : undefined,
-    compatibility: normalizeCompatibility(b.compatibility, boardKey, profile, parts),
+    compatibility,
     parts,
   };
 }

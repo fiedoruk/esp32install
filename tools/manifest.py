@@ -397,6 +397,19 @@ def build_manifest(parts: Sequence[Part], opts: Any) -> Dict[str, Any]:
                              'also blank the %d bytes in front of it'
                              % (SECTOR, crooked[0]['file'].name, crooked[0]['offset'],
                                 crooked[0]['offset'] % SECTOR))
+        # And the other end of it. The sector holding a part's last byte is erased whole, so a
+        # length that is not a whole number of sectors blanks up to SECTOR-1 bytes of whatever sat
+        # after the part — user data this profile exists to keep, which the read-back does not
+        # cover. The table page is the exception: it is written and re-checked whole.
+        ragged = [m for m in measured if m['size'] % SECTOR and m['offset'] != options.update_table]
+        if ragged:
+            raise UsageError('the preserve profile needs every part to be a whole number of %d-byte '
+                             'sectors, and %s is %d bytes: the chip erases whole sectors, so writing '
+                             'it would also blank the %d bytes after it. Pad the file to a multiple '
+                             'of %d (the partition table named by --update-table is the one '
+                             'exception: its page is written and checked whole)'
+                             % (SECTOR, ragged[0]['file'].name, ragged[0]['size'],
+                                SECTOR - ragged[0]['size'] % SECTOR, SECTOR))
     if options.profile == 'preserve' and all(m['offset'] != options.update_table for m in measured):
         raise UsageError('--update-table 0x%x names an offset no part is written at; the preserve '
                          'profile needs the partition table among the parts' % options.update_table)

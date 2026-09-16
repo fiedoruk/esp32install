@@ -183,22 +183,34 @@ never calls `eraseFlash`.
 
 ### The sector-erase rule
 
-A part that does not start and end on a 4 KiB boundary still costs whole
-sectors. Writing 3 072 bytes at `0x8000` erases `0x8000`–`0x8FFF`, so the last
-1 024 bytes of that sector end up blank. The read-back in step 10 expects exactly
-that: `0xff` in the padding, unchanged bytes outside the touched sectors.
+A part costs whole sectors at **both** ends. Writing 3 072 bytes at `0x8000`
+erases `0x8000`–`0x8FFF`, so the last 1 024 bytes of that sector end up blank. The
+read-back in step 10 expects exactly that: `0xff` in the padding, unchanged bytes
+outside the touched sectors.
 
-This is why a partition table declared through `update.tableOffset` is checked as
-a full page: the table itself against the part's `sha256`, and the remainder of
-the page against `0xff`.
+So a `preserve` part has to *start* on a 4 KiB boundary. A part at `0x10800` would
+take the sector from `0x10000` with it and blank the 2 048 bytes in front of it —
+user data this profile exists to keep, and outside the header span nothing would
+notice.
 
-It is also why every `preserve` part has to *start* on a 4 KiB boundary. A part at
-`0x10800` would take the sector from `0x10000` with it and blank the 2 048 bytes in
-front of it — user data this profile exists to keep, and outside the header span
-nothing would notice. All three layers refuse such a release: the page with
-`manifest.alignment` before the device is opened, `tools/manifest.py` before it
-writes the manifest, and `tools/check.py` with `FAIL align`. The `factory` profile
-is not held to this: it writes a whole layout and keeps nothing.
+And it has to *end* on one, which is the same hazard read forwards: a part of
+5 000 bytes at `0x10000` is written into `0x10000`–`0x11FFF` and blanks the 3 192
+bytes after it. In practice ESP-IDF partitions begin on 4 KiB boundaries, so that
+tail usually lands inside the part's own partition — usually is not a promise this
+profile is allowed to make, and the read-back cannot tell the difference, because
+it expects `0xff` inside a touched sector and looks nowhere outside the header
+span. Publishers pad the binary; the generator says so when it refuses.
+
+**One exception, and it is the one the profile is built around:** the part written
+at `update.tableOffset`. A partition table is 3 072 bytes and its page is 4 KiB,
+and this profile writes and re-checks that page whole — the table against the
+part's `sha256`, the rest of the page against `0xff`. Nothing there is kept, so
+nothing there can be lost. Every other part is a whole number of sectors.
+
+All three layers refuse a release that breaks either half of the rule: the page
+with `manifest.alignment` before the device is opened, `tools/manifest.py` before
+it writes the manifest, and `tools/check.py` with `FAIL align`. The `factory`
+profile is held to neither: it writes a whole layout and keeps nothing.
 
 ### Where you can still cancel
 

@@ -172,6 +172,40 @@ test('preserve refuses a part that does not start on a 4 KiB boundary, and accep
   assert.ok(ok.parts.every((p) => p.offset % 0x1000 === 0));
 });
 
+/**
+ * The other end of the same rule. The chip erases the sector holding a part's last byte, blanking
+ * up to 4 095 bytes of whatever sat after it — user data this profile exists to keep, which the
+ * read-back cannot see. The partition table's page is the one place where that tail is written
+ * and checked whole, so it is the one exception.
+ */
+test('preserve refuses a part whose length is not a whole number of sectors, except the table page', () => {
+  for (const size of [1634176, 3072, 1, 0x1001]) {
+    const raw = load('manifest-v2-preserve.json');
+    raw.builds[0].parts[0].size = size; // the application, at 0x20000
+    assert.throws(() => normalizeManifest(raw, URL_M),
+      (e) => e.code === 'manifest.alignment' && e.params.size === size && e.params.sector === 0x1000,
+      `a part of ${size} bytes must be refused`);
+  }
+  // The table at 0x8000 is update.tableOffset: 3 072 bytes into a 4 KiB page, written and
+  // re-checked whole, is how this profile writes a partition table.
+  const table = load('manifest-v2-preserve.json');
+  assert.equal(table.builds[0].parts[1].size % 0x1000 !== 0, true, 'the fixture really does ship an unaligned table');
+  assert.equal(normalizeManifest(table, URL_M).builds[0].parts[1].size, 3072);
+  // And the exception is tied to that offset, not to the word "table": move the table offset and
+  // the same part is refused.
+  const moved = load('manifest-v2-preserve.json');
+  moved.builds[0].parts[0].offset = 0x8000;
+  moved.builds[0].parts[1].offset = 0x20000;
+  assert.throws(() => normalizeManifest(moved, URL_M), (e) => e.code === 'manifest.alignment' && e.params.size === 3072);
+});
+
+test('an unaligned length is only a preserve rule: a factory release may write any size', () => {
+  const raw = load('manifest-v2-factory.json');
+  raw.builds[1].parts[0].sha256 = 'a'.repeat(64);
+  raw.builds[0].parts[0].size = 1634176;
+  assert.equal(normalizeManifest(raw, URL_M).builds[0].parts[0].size, 1634176);
+});
+
 test('an unaligned offset is only a preserve rule: a factory release may write anywhere', () => {
   const raw = load('manifest-v2-factory.json');
   raw.builds[1].parts[0].sha256 = 'a'.repeat(64);

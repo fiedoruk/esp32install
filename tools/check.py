@@ -629,6 +629,18 @@ def preserve_problems(build: Dict[str, Any], parts: Sequence[Any], board: str) -
                                     'bytes before it, and the page refuses the release'
                                     % (board, part.get('path', 'a part'), part['offset'], SECTOR,
                                        part['offset'] % SECTOR)))
+        # The other end of the same rule: the chip erases the sector holding the part's last byte,
+        # so a length that is not a whole number of sectors blanks whatever sat after the part.
+        # The page refuses that too (manifest.alignment). The part written at update.tableOffset
+        # is the exception the profile is built around: its page is written and checked whole.
+        size = part.get('size')
+        if (isinstance(size, int) and not isinstance(size, bool) and size > 0
+                and size % SECTOR and part.get('offset') != table):
+            findings.append(Finding(FAIL, 'align', '%s: %s is %d bytes, which is not a multiple of %d; '
+                                    'the chip erases whole sectors, so writing it would also blank the '
+                                    '%d bytes after it, and the page refuses the release. Pad the file'
+                                    % (board, part.get('path', 'a part'), size, SECTOR,
+                                       SECTOR - size % SECTOR)))
     return findings
 
 

@@ -397,6 +397,37 @@ class GeneratorTest(unittest.TestCase):
         self.assertEqual([p['offset'] for p in json.loads(self.out.read_text('utf-8'))['builds'][0]['parts']],
                          [0x10000, 0x8000])
 
+    def test_preserve_refuses_a_part_that_is_not_a_whole_number_of_sectors(self):
+        """The end of a part costs a whole sector too, and blanks what sat after it."""
+        table = self.firmware / 'table.bin'
+        table.write_bytes(b'\x00' * 3072)
+        ragged = self.firmware / 'app.bin'
+        ragged.write_bytes(esp_image(0, length=5000))
+        common = ['--chip', 'ESP32', '--name', 'D', '--version', '1', '--out', self.out, '--profile', 'preserve',
+                  '--compat-region', '0x0:0x8000:' + 'a' * 64, '--update-table', '0x8000']
+        code, text = self.cli(f'{ragged}@0x10000', f'{table}@0x8000', *common)
+        self.assertEqual(code, 2, text)
+        self.assertIn('whole number', text)
+        self.assertIn('5000 bytes', text)
+        self.assertIn('Pad the file', text)
+        self.assertFalse(self.out.exists(), 'nothing is written when a part ends mid-sector')
+        # The table page is the exception, and the 4 096-byte application beside it is fine.
+        code, text = self.cli(f'{self.bin}@0x10000', f'{table}@0x8000', *common)
+        self.assertEqual(code, 0, text)
+        self.assertEqual([p['size'] for p in json.loads(self.out.read_text('utf-8'))['builds'][0]['parts']],
+                         [4096, 3072])
+
+    def test_the_ragged_length_exception_follows_the_table_offset(self):
+        """It is the part at --update-table that may end mid-sector, not any file called a table."""
+        table = self.firmware / 'table.bin'
+        table.write_bytes(b'\x00' * 3072)
+        code, text = self.cli(f'{table}@0x10000', f'{self.bin}@0x8000', '--chip', 'ESP32', '--name', 'D',
+                              '--version', '1', '--out', self.out, '--profile', 'preserve',
+                              '--compat-region', '0x0:0x8000:' + 'a' * 64, '--update-table', '0x8000')
+        self.assertEqual(code, 2, text)
+        self.assertIn('3072 bytes', text)
+        self.assertFalse(self.out.exists())
+
     def test_a_factory_manifest_may_be_written_at_an_unaligned_offset(self):
         """The rule belongs to preserve: factory writes a whole layout and keeps nothing."""
         code, text = self.cli(f'{self.bin}@0x10800', '--chip', 'ESP32', '--name', 'D', '--version', '1',

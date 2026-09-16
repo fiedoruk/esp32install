@@ -663,12 +663,12 @@ class ShapeTest(SiteFixture):
 
     def test_preserve_parts_out_of_rising_order_do_not_warn_when_the_table_is_last(self):
         app = self.firmware / 'app.bin'
-        app.write_bytes(b'\x00' * 1024)
+        app.write_bytes(b'\x00' * 4096)
         data = json.loads(self.manifest_path.read_text('utf-8'))
         data['profile'] = 'preserve'
         data['builds'][0]['compatibility'] = self.preserve_compat()
         data['builds'][0]['parts'].insert(0, {  # application at 0x10000 first, the 0x1000 table part last
-            'path': 'app.bin', 'offset': 0x10000, 'size': 1024,
+            'path': 'app.bin', 'offset': 0x10000, 'size': 4096,
             'sha256': hashlib.sha256(app.read_bytes()).hexdigest()})
         self.write_raw_manifest(data)
         found = self.findings()
@@ -677,12 +677,12 @@ class ShapeTest(SiteFixture):
 
     def test_preserve_with_the_table_part_not_last_fails(self):
         app = self.firmware / 'app.bin'
-        app.write_bytes(b'\x00' * 1024)
+        app.write_bytes(b'\x00' * 4096)
         data = json.loads(self.manifest_path.read_text('utf-8'))
         data['profile'] = 'preserve'
         data['builds'][0]['compatibility'] = self.preserve_compat()
         data['builds'][0]['parts'].append({  # table at 0x1000 first, application last: rising, and wrong
-            'path': 'app.bin', 'offset': 0x10000, 'size': 1024,
+            'path': 'app.bin', 'offset': 0x10000, 'size': 4096,
             'sha256': hashlib.sha256(app.read_bytes()).hexdigest()})
         self.write_raw_manifest(data)
         found = self.findings()
@@ -692,10 +692,10 @@ class ShapeTest(SiteFixture):
 
     def test_factory_parts_out_of_rising_order_still_only_warn(self):
         app = self.firmware / 'app.bin'
-        app.write_bytes(b'\x00' * 1024)
+        app.write_bytes(b'\x00' * 4096)
         data = json.loads(self.manifest_path.read_text('utf-8'))
         data['builds'][0]['parts'].insert(0, {
-            'path': 'app.bin', 'offset': 0x10000, 'size': 1024,
+            'path': 'app.bin', 'offset': 0x10000, 'size': 4096,
             'sha256': hashlib.sha256(app.read_bytes()).hexdigest()})
         self.write_raw_manifest(data)
         found = self.findings()
@@ -711,12 +711,12 @@ class ShapeTest(SiteFixture):
 
     def test_preserve_with_a_part_off_a_sector_boundary_fails(self):
         app = self.firmware / 'app.bin'
-        app.write_bytes(b'\x00' * 1024)
+        app.write_bytes(b'\x00' * 4096)
         data = json.loads(self.manifest_path.read_text('utf-8'))
         data['profile'] = 'preserve'
         data['builds'][0]['compatibility'] = self.preserve_compat()
         data['builds'][0]['parts'].insert(0, {
-            'path': 'app.bin', 'offset': 0x10800, 'size': 1024,
+            'path': 'app.bin', 'offset': 0x10800, 'size': 4096,
             'sha256': hashlib.sha256(app.read_bytes()).hexdigest()})
         self.write_raw_manifest(data)
         found = self.findings()
@@ -727,17 +727,47 @@ class ShapeTest(SiteFixture):
     def test_a_preserve_manifest_aligned_everywhere_reports_nothing_about_alignment(self):
         """Positive control for the alignment rule."""
         app = self.firmware / 'app.bin'
-        app.write_bytes(b'\x00' * 1024)
+        app.write_bytes(b'\x00' * 4096)
         data = json.loads(self.manifest_path.read_text('utf-8'))
         data['profile'] = 'preserve'
         data['builds'][0]['compatibility'] = self.preserve_compat()
         data['builds'][0]['parts'].insert(0, {
-            'path': 'app.bin', 'offset': 0x10000, 'size': 1024,
+            'path': 'app.bin', 'offset': 0x10000, 'size': 4096,
             'sha256': hashlib.sha256(app.read_bytes()).hexdigest()})
         self.write_raw_manifest(data)
         found = self.findings()
         self.assertEqual(self.levels(found, 'align'), [])
         self.assertEqual(self.fails(found), [])
+
+    def test_preserve_with_a_part_that_is_not_a_whole_number_of_sectors_fails(self):
+        """The other end of the rule: the sector holding a part's last byte is erased whole."""
+        app = self.firmware / 'app.bin'
+        app.write_bytes(b'\x00' * 5000)
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['profile'] = 'preserve'
+        data['builds'][0]['compatibility'] = self.preserve_compat()
+        data['builds'][0]['parts'].insert(0, {
+            'path': 'app.bin', 'offset': 0x10000, 'size': 5000,
+            'sha256': hashlib.sha256(app.read_bytes()).hexdigest()})
+        self.write_raw_manifest(data)
+        found = self.findings()
+        self.assertEqual(self.levels(found, 'align'), [check.FAIL])
+        self.assertTrue(any('5000 bytes' in detail for what, detail in self.fails(found) if what == 'align'))
+        self.assertTrue(any('3192 bytes after it' in detail for what, detail in self.fails(found) if what == 'align'))
+        self.assertEqual(self.cli(self.site)[0], 1)
+
+    def test_the_table_page_is_the_one_part_allowed_a_ragged_length(self):
+        """A 3 072-byte partition table in its 4 KiB page: written and re-checked whole."""
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['profile'] = 'preserve'
+        data['builds'][0]['compatibility'] = self.preserve_compat()
+        table = self.firmware / 'table.bin'
+        table.write_bytes(b'\x00' * 3072)
+        parts = data['builds'][0]['parts']
+        parts[0] = {'path': 'table.bin', 'offset': self.preserve_compat()['update']['tableOffset'],
+                    'size': 3072, 'sha256': hashlib.sha256(table.read_bytes()).hexdigest()}
+        self.write_raw_manifest(data)
+        self.assertEqual(self.levels(self.findings(), 'align'), [])
 
     def test_a_factory_part_off_a_sector_boundary_is_not_an_alignment_failure(self):
         self.write_one_part_manifest(0x10800)
