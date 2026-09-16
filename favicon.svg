@@ -1,12 +1,22 @@
-<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="#1A56C4">
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 32 32" fill="#4E7FE4">
   <!-- The esp32install signet: a lead going into a device with a screen.
        Same drawing as the header sign in index.html; keep the two in step.
-       A tab strip has no theme to read, so here the whole sign is the accent,
-       the screen is a hole and the state light is cut in white: legible on a white
-       strip and on a dark one, with no media query to be ignored.
-       Every edge lands on an even coordinate, so at 16px the drawing still falls on
-       whole pixels: the earlier lead rendered on halves and greyed away, and the
-       earlier round dot came out one pixel wide. -->
+
+       A tab strip has no theme to read and no theme to be told about: a media query here is
+       evaluated once, cached with the icon, and ignored outright by some browsers. So the sign
+       carries one colour and that colour has to survive every strip a browser might paint.
+       #4E7FE4 is that colour — the accent halfway between the two the page uses (#1A56C4 light,
+       #7FB2FF dark), chosen by measurement, not by eye: against white 3.8:1, against Chrome's
+       light bar #DEE1E6 2.9:1, its dark bar #202124 4.2:1, its dark active tab #35363A 3.2:1,
+       Firefox #2B2A33 3.7:1 and Safari #3B3B3B 2.9:1. The page's own #1A56C4 managed 1.7:1 on
+       a dark strip, which is what the proof renders were supposed to show and did not.
+
+       The screen is a hole, so it takes the colour of the strip, and the state light is cut in
+       white, which reads on the body at 3.8:1 whatever is behind it.
+
+       Every edge lands on an even coordinate, so at 16px the drawing still falls on whole
+       pixels: the earlier lead rendered on halves and greyed away, and the earlier round dot
+       came out one pixel wide. -->
   <path fill-rule="evenodd" d="M16 6h10a4 4 0 0 1 4 4v12a4 4 0 0 1-4 4H16a4 4 0 0 1-4-4V10a4 4 0 0 1 4-4ZM16 10h10v6H16Z"/>
   <path d="M2 12h6v2h4v4H8v2H2Z"/>
   <rect x="16" y="20" width="8" height="4" rx="2" fill="#FFFFFF"/>

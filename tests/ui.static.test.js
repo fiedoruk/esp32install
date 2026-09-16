@@ -492,6 +492,13 @@ test('the signet is drawn in fills on a 2px grid, and the favicon is the same dr
   }
   // Fills, not strokes: a 1.5px line disappears at 16px, which is what the old sign did.
   assert.doesNotMatch(icon, /stroke/, 'no strokes in the favicon');
+  // The tab strip has no theme, so the favicon may not borrow either theme's accent: #1A56C4
+  // sits at 1.7:1 on a dark strip and #7FB2FF at 1.7:1 on a light one. One measured value that
+  // clears both, and no media query, which some browsers cache past and others ignore.
+  assert.match(icon, /^<svg[^>]*fill="#4E7FE4"/m, 'the favicon carries its own measured accent');
+  const drawn = icon.replace(/<!--[\s\S]*?-->/g, ''); // the reasoning names both theme accents
+  assert.doesNotMatch(drawn, /#1A56C4|#7FB2FF|prefers-color-scheme|<style/i);
+  assert.match(icon, /<rect x="16" y="20"[^>]*fill="#FFFFFF"/, 'the state light is cut in white');
   assert.match(html, /fill-rule="evenodd"/, 'the screen is a hole in the body, not a second outline');
   assert.match(style, /\.signet \{[^}]*fill:\s*currentColor[^}]*stroke:\s*none/);
   assert.match(style, /\.signet-dot \{ fill: var\(--accent\); \}/, 'the one spot of accent');
