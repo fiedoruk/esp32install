@@ -10,7 +10,7 @@
                           "empty": [ { "offset": 65536, "size": 65536 } ] },
         "update": { "tableOffset": 32768 }
       },
-      "parts": [ { "path": "emini-home-0.4.4-note4c.bin", "offset": 131072, "size": 1634304,
+      "parts": [ { "path": "emini-home-0.4.4-note4c.bin", "offset": 131072, "size": 1634176,
                    "sha256": "2dc725e2c52a6117af3a508b1929c38b3103c69c217c4eb12f38c928dd8375d5" },
                  { "path": "emini-home-0.4.4-partition-table.bin", "offset": 32768, "size": 3072,
                    "sha256": "9375ba2d5bf131bdb991c07024cb1cdb40538e14698a602fa7d9c87f57b38946" } ] }

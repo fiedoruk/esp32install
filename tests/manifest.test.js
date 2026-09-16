@@ -173,30 +173,91 @@ test('preserve refuses a part that does not start on a 4 KiB boundary, and accep
 });
 
 /**
- * The other end of the same rule. The chip erases the sector holding a part's last byte, blanking
- * up to 4 095 bytes of whatever sat after it — user data this profile exists to keep, which the
- * read-back cannot see. The partition table's page is the one place where that tail is written
- * and checked whole, so it is the one exception.
+ * The other end of the same rule, and the shape it actually has. The chip erases the sector
+ * holding a part's last byte, so up to 4 095 bytes after the part are blanked without being
+ * written. That is what every real ESP-IDF release looks like and it is harmless while those
+ * bytes are nobody's. What is refused is a blanked tail that reaches something that has to
+ * survive. No offset is exempt: the table page passes because its own page is what the release
+ * replaces, not because it is named by `update.tableOffset`.
  */
-test('preserve refuses a part whose length is not a whole number of sectors, except the table page', () => {
-  for (const size of [1634176, 3072, 1, 0x1001]) {
-    const raw = load('manifest-v2-preserve.json');
-    raw.builds[0].parts[0].size = size; // the application, at 0x20000
-    assert.throws(() => normalizeManifest(raw, URL_M),
-      (e) => e.code === 'manifest.alignment' && e.params.size === size && e.params.sector === 0x1000,
-      `a part of ${size} bytes must be refused`);
+test('preserve accepts a ragged length whose blanked tail lands in the part\'s own space', () => {
+  // The shipped fixture: 1 634 176 bytes at 0x20000, which is not a multiple of 4096.
+  const raw = load('manifest-v2-preserve.json');
+  assert.equal(raw.builds[0].parts[0].size % 0x1000 !== 0, true, 'the fixture really does ship a ragged length');
+  assert.equal(raw.builds[0].parts[1].size % 0x1000 !== 0, true, 'and a ragged table too');
+  const ok = normalizeManifest(raw, URL_M).builds[0];
+  assert.deepEqual(ok.parts.map((p) => p.size), [1634176, 3072]);
+  // Any other ragged length is equally fine while nothing is declared in the tail.
+  for (const size of [1, 5000, 0x1001, 1634175]) {
+    const one = load('manifest-v2-preserve.json');
+    one.builds[0].parts[0].size = size;
+    assert.equal(normalizeManifest(one, URL_M).builds[0].parts[0].size, size, `${size} bytes must be accepted`);
   }
-  // The table at 0x8000 is update.tableOffset: 3 072 bytes into a 4 KiB page, written and
-  // re-checked whole, is how this profile writes a partition table.
-  const table = load('manifest-v2-preserve.json');
-  assert.equal(table.builds[0].parts[1].size % 0x1000 !== 0, true, 'the fixture really does ship an unaligned table');
-  assert.equal(normalizeManifest(table, URL_M).builds[0].parts[1].size, 3072);
-  // And the exception is tied to that offset, not to the word "table": move the table offset and
-  // the same part is refused.
+});
+
+test('preserve refuses a blanked tail that reaches a declared compatibility region', () => {
+  const OFFSET = 0x20000, SIZE = 1634176;
+  const tail = OFFSET + SIZE; // 0x1aef80: the first byte the chip blanks without writing it
+  for (const at of [tail, tail + 1, tail + 0x7f]) {
+    const raw = load('manifest-v2-preserve.json');
+    raw.builds[0].compatibility.regions.push({ offset: at, size: 1, sha256: 'b'.repeat(64) });
+    assert.throws(() => normalizeManifest(raw, URL_M),
+      (e) => e.code === 'manifest.alignment' && e.params.offset === OFFSET && e.params.size === SIZE,
+      `a region at 0x${at.toString(16)} must be refused`);
+  }
+  // firstInstall.regions and firstInstall.empty count the same.
+  for (const key of ['regions', 'empty']) {
+    const raw = load('manifest-v2-preserve.json');
+    raw.builds[0].compatibility.firstInstall[key].push({ offset: tail, size: 16, sha256: 'b'.repeat(64) });
+    assert.throws(() => normalizeManifest(raw, URL_M), (e) => e.code === 'manifest.alignment',
+      `firstInstall.${key} must be refused too`);
+  }
+  // Control: the same region one byte past the end of the blanked sector is fine.
+  const ok = load('manifest-v2-preserve.json');
+  ok.builds[0].compatibility.regions.push({ offset: 0x1af000, size: 1, sha256: 'b'.repeat(64) });
+  assert.equal(normalizeManifest(ok, URL_M).builds[0].compatibility.regions.length, 3);
+});
+
+/**
+ * A preserve part starts on a sector boundary, so a footprint that reaches the next part is also
+ * a plain overlap — and `normalizeManifest` has no overlap check of its own, so this rule is what
+ * the page has before the download layer gets to `verify.overlap`.
+ */
+test('preserve refuses a footprint that reaches the next part', () => {
+  const raw = load('manifest-v2-preserve.json');
+  raw.builds[0].parts[0].size = 0x1001; // 0x20000..0x21001, so the chip erases through 0x22000
+  raw.builds[0].parts.push({ path: 'extra.bin', offset: 0x21000, size: 0x100, sha256: 'c'.repeat(64) });
+  assert.throws(() => normalizeManifest(raw, URL_M), (e) => e.code === 'manifest.alignment');
+  // Control: the same part one sector further on is clear of the erased footprint.
+  const ok = load('manifest-v2-preserve.json');
+  ok.builds[0].parts[0].size = 0x1001;
+  ok.builds[0].parts.push({ path: 'extra.bin', offset: 0x22000, size: 0x100, sha256: 'c'.repeat(64) });
+  assert.equal(normalizeManifest(ok, URL_M).builds[0].parts.length, 3);
+});
+
+test('preserve refuses a blanked tail that runs past the end of the flash', () => {
+  const raw = load('manifest-v2-preserve.json');
+  raw.builds[0].flashSizeMB = 1; // the application alone needs 0x1af000 bytes
+  assert.throws(() => normalizeManifest(raw, URL_M), (e) => e.code === 'manifest.alignment' && e.params.size === 1634176);
+  const ok = load('manifest-v2-preserve.json');
+  ok.builds[0].flashSizeMB = 2;
+  assert.equal(normalizeManifest(ok, URL_M).builds[0].flashSizeMB, 2);
+});
+
+test('the table page needs no exemption: it passes wherever it is, and is refused when its tail is claimed', () => {
+  // Move the table clear of the application: a 3 072-byte part at 0x1b0000, whose page is what
+  // the release replaces, is accepted although nothing names it a table.
   const moved = load('manifest-v2-preserve.json');
-  moved.builds[0].parts[0].offset = 0x8000;
-  moved.builds[0].parts[1].offset = 0x20000;
-  assert.throws(() => normalizeManifest(moved, URL_M), (e) => e.code === 'manifest.alignment' && e.params.size === 3072);
+  moved.builds[0].parts[1].offset = 0x1b0000;
+  moved.builds[0].compatibility.update.tableOffset = 0x1b0000;
+  moved.builds[0].compatibility.firstInstall.regions[0].offset = 0x1b0000;
+  assert.equal(normalizeManifest(moved, URL_M).builds[0].parts[1].size, 3072);
+  // And the page's own declared region is excused only because the part replaces it whole:
+  // declare a region that covers the table's page and two sectors beyond, and it is refused.
+  const claimed = load('manifest-v2-preserve.json');
+  claimed.builds[0].compatibility.firstInstall.regions[0].size = 0x3000;
+  assert.throws(() => normalizeManifest(claimed, URL_M),
+    (e) => e.code === 'manifest.alignment' && e.params.offset === 0x8000);
 });
 
 test('an unaligned length is only a preserve rule: a factory release may write any size', () => {

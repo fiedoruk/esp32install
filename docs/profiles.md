@@ -193,19 +193,30 @@ take the sector from `0x10000` with it and blank the 2 048 bytes in front of it 
 user data this profile exists to keep, and outside the header span nothing would
 notice.
 
-And it has to *end* on one, which is the same hazard read forwards: a part of
-5 000 bytes at `0x10000` is written into `0x10000`–`0x11FFF` and blanks the 3 192
-bytes after it. In practice ESP-IDF partitions begin on 4 KiB boundaries, so that
-tail usually lands inside the part's own partition — usually is not a promise this
-profile is allowed to make, and the read-back cannot tell the difference, because
-it expects `0xff` inside a touched sector and looks nowhere outside the header
-span. Publishers pad the binary; the generator says so when it refuses.
+The other end is the same hazard read forwards, but it is **not** a rule about
+length. A part of 5 000 bytes at `0x10000` is written into `0x10000`–`0x11FFF` and
+blanks the 3 192 bytes after it. That is what an ordinary ESP-IDF application looks
+like — its length is hardly ever a whole number of sectors — and the blanked tail
+lands inside the application's own partition, where this release declares nothing
+and nothing is lost. Demanding a padded binary would refuse every real release,
+this project's own two included.
 
-**One exception, and it is the one the profile is built around:** the part written
-at `update.tableOffset`. A partition table is 3 072 bytes and its page is 4 KiB,
-and this profile writes and re-checks that page whole — the table against the
-part's `sha256`, the rest of the page against `0xff`. Nothing there is kept, so
-nothing there can be lost. Every other part is a whole number of sectors.
+What the profile refuses is a blanked tail that **reaches something that has to
+survive**. So the rule is stated on the *erase footprint*: `offset` rounded down to
+4 KiB, `offset + size` rounded up. The bytes inside that footprint which the part
+does not itself write may not touch a `compatibility` region, a `firstInstall`
+region or an `empty` range; and the footprint as a whole may not touch another
+part's bytes or run past the end of `flashSizeMB`. Outside the header span the
+read-back never looks, so nothing downstream would notice such a loss.
+
+**No offset is special-cased.** The partition table needs no exemption: 3 072 bytes
+at `update.tableOffset` erase exactly their own 4 KiB page, and the one span
+declared there — the `firstInstall` region covering that page — is a span this very
+part replaces whole. That is the single thing a blanked tail may fall in: a declared
+span that lies wholly inside the part's own sectors *and* that the part writes into.
+The page is written and re-checked whole anyway, the table against the part's
+`sha256` and the rest against `0xff`. A region reaching past that page, or one the
+part never writes into, is refused like any other.
 
 All three layers refuse a release that breaks either half of the rule: the page
 with `manifest.alignment` before the device is opened, `tools/manifest.py` before
@@ -276,7 +287,9 @@ or its sentence drifts from the file.
 | `catalog.unknownVersion` | This version of {fw} is not available on this site. Check the address you were given, or choose from the list of systems. |
 
 `manifest.alignment` is what a `preserve` release gets when a part is written to
-an offset that is not a multiple of 4096. `manifest.compatibility` is what it gets
+an offset that is not a multiple of 4096, or when the sectors that part's write
+erases reach a declared region, another part or the end of the flash.
+`manifest.compatibility` is what it gets
 when a region carries no checksum, when it declares no region at all, when
 `update.tableOffset` is missing, or when it names an offset no part is written at. All of that is
 decided when the manifest is read, before the device is opened. `manifest.profile`

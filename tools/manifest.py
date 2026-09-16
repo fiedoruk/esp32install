@@ -154,6 +154,56 @@ def overlaps(spans: Sequence[Tuple[int, int]]) -> Optional[Tuple[int, int]]:
     return None
 
 
+def erase_footprint(offset: int, size: int) -> Tuple[int, int]:
+    """The half-open range of flash a write of `size` bytes at `offset` blanks.
+
+    The chip erases whole sectors, so the write costs the sector holding its first byte and the
+    sector holding its last one, whole: `offset` rounded down and `offset + size` rounded up.
+    """
+    return offset // SECTOR * SECTOR, -(-(offset + size) // SECTOR) * SECTOR
+
+
+def _touches(a_from: int, a_to: int, b_from: int, b_to: int) -> bool:
+    """Whether two half-open ranges share a byte. An empty range shares none."""
+    return a_from < a_to and b_from < b_to and a_from < b_to and b_from < a_to
+
+
+def erase_spill(offset: int, size: int, others: Sequence[Tuple[int, int]],
+                declared: Sequence[Tuple[int, int]], flash_bytes: Optional[int]) -> Optional[str]:
+    """What this part's erase footprint reaches that has to survive, named, or None if nothing.
+
+    A part is written into whole sectors, so up to SECTOR-1 bytes in front of it and up to
+    SECTOR-1 bytes after it are blanked without being written. Blanking bytes nothing declares is
+    the normal case and is fine: an ESP-IDF application is hardly ever a whole number of sectors,
+    and its tail lands inside its own partition. The hazard is a blanked tail that reaches
+    something that has to survive -- another part, a compatibility region, or the end of the chip
+    -- because outside the header span the read-back never looks and nothing would notice.
+
+    One span those blanked bytes may fall in: a declared span that lies wholly inside this part's
+    own sectors *and* that the part writes into. That is a span the release replaces whole, on
+    purpose -- the partition-table page is exactly that, declared in `firstInstall.regions` and
+    rewritten by the table part -- and `preserve` writes and re-checks such a page whole. No
+    offset is special-cased.
+    """
+    start, end = erase_footprint(offset, size)
+    if flash_bytes is not None and end > flash_bytes:
+        return 'past the end of the %d-byte flash' % flash_bytes
+    for other_offset, other_size in others:
+        if _touches(start, end, other_offset, other_offset + other_size):
+            return 'the part written at 0x%x' % other_offset
+    # The bytes this part blanks without writing them: its first sector before it, its last after.
+    blanked = [(start, offset), (offset + size, end)]
+    for region_offset, region_size in declared:
+        region_end = region_offset + region_size
+        if not any(_touches(a, b, region_offset, region_end) for a, b in blanked):
+            continue
+        if (region_offset >= start and region_end <= end
+                and _touches(offset, offset + size, region_offset, region_end)):
+            continue  # the release replaces this span whole, on purpose
+        return 'the declared region at 0x%x (%d bytes)' % (region_offset, region_size)
+    return None
+
+
 def sha256_file(path: Path) -> str:
     digest = hashlib.sha256()
     with path.open('rb') as handle:
@@ -397,19 +447,24 @@ def build_manifest(parts: Sequence[Part], opts: Any) -> Dict[str, Any]:
                              'also blank the %d bytes in front of it'
                              % (SECTOR, crooked[0]['file'].name, crooked[0]['offset'],
                                 crooked[0]['offset'] % SECTOR))
-        # And the other end of it. The sector holding a part's last byte is erased whole, so a
-        # length that is not a whole number of sectors blanks up to SECTOR-1 bytes of whatever sat
-        # after the part — user data this profile exists to keep, which the read-back does not
-        # cover. The table page is the exception: it is written and re-checked whole.
-        ragged = [m for m in measured if m['size'] % SECTOR and m['offset'] != options.update_table]
-        if ragged:
-            raise UsageError('the preserve profile needs every part to be a whole number of %d-byte '
-                             'sectors, and %s is %d bytes: the chip erases whole sectors, so writing '
-                             'it would also blank the %d bytes after it. Pad the file to a multiple '
-                             'of %d (the partition table named by --update-table is the one '
-                             'exception: its page is written and checked whole)'
-                             % (SECTOR, ragged[0]['file'].name, ragged[0]['size'],
-                                SECTOR - ragged[0]['size'] % SECTOR, SECTOR))
+        # And the other end of it. The sector holding a part's last byte is erased whole too, so a
+        # ragged length blanks up to SECTOR-1 bytes of whatever sat after the part. That is normal
+        # and harmless while those bytes are nobody's -- an ESP-IDF application is hardly ever a
+        # whole number of sectors, and its tail stays inside its own partition. It is refused only
+        # when the erased footprint reaches something declared, which the read-back would not
+        # notice outside the header span.
+        declared = [(r.offset, r.size) for r in
+                    list(options.compat_regions) + list(options.first_regions) + list(options.first_empty)]
+        flash_bytes = None if options.flash_mb is None else options.flash_mb * 1024 * 1024
+        for index, m in enumerate(measured):
+            others = [(o['offset'], o['size']) for j, o in enumerate(measured) if j != index]
+            reaches = erase_spill(m['offset'], m['size'], others, declared, flash_bytes)
+            if reaches is not None:
+                start, end = erase_footprint(m['offset'], m['size'])
+                raise UsageError('the preserve profile refuses %s: %d bytes at 0x%x makes the chip erase '
+                                 '0x%x-0x%x, and that reaches %s. The profile may blank only bytes '
+                                 'nothing declares, so move the part or correct the region'
+                                 % (m['file'].name, m['size'], m['offset'], start, end, reaches))
     if options.profile == 'preserve' and all(m['offset'] != options.update_table for m in measured):
         raise UsageError('--update-table 0x%x names an offset no part is written at; the preserve '
                          'profile needs the partition table among the parts' % options.update_table)

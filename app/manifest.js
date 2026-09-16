@@ -87,26 +87,55 @@ function normalizePart(p, i, boardKey, base, allowOrigins, profile) {
   return part;
 }
 
+const sectorDown = (n) => Math.floor(n / SECTOR) * SECTOR;
+const sectorUp = (n) => Math.ceil(n / SECTOR) * SECTOR;
+/** Whether two half-open ranges share a byte. An empty range shares none. */
+const touches = (aFrom, aTo, bFrom, bTo) => aFrom < aTo && bFrom < bTo && aFrom < bTo && bFrom < aTo;
+
 /**
- * The other end of the alignment rule. A part's start has to sit on a sector boundary because the
- * chip erases whole sectors; its *last byte* costs a whole sector too, and everything from that
- * byte to the end of its sector is blanked — up to 4 095 bytes of whatever sat after the part,
- * which on this profile is user data nothing declared and the read-back does not cover, because
- * `checkUntouched` expects exactly that `0xff` and outside the header span nothing looks at all.
+ * The other end of the alignment rule. A write costs whole sectors at *both* ends: the chip
+ * erases the sector holding the part's first byte and the sector holding its last one, so up to
+ * 4 095 bytes after the part are blanked without ever being written.
  *
- * So a `preserve` part has to be a whole number of sectors. Publishers pad the binary; the
- * generator says so when it refuses.
+ * That by itself is not a hazard, and it is what every real release looks like — an ESP-IDF
+ * application is hardly ever a whole number of sectors, and its tail falls inside its own
+ * partition, where this release declares nothing and nothing is lost. The hazard is a blanked
+ * tail that reaches something that has to survive. So the rule is stated on the erase footprint,
+ * not on the length: the bytes a part blanks without writing them may not touch a compatibility
+ * region, a `firstInstall` region or empty range; and the footprint as a whole may not touch
+ * another part's bytes or run past the end of the flash. Outside the header span the read-back
+ * never looks, so nothing downstream would notice the loss.
  *
- * One exception, and it is the one the profile is built around: the part written at
- * `update.tableOffset`. A partition table is 3 072 bytes and its page is 4 KiB, and this profile
- * already writes and re-checks that page whole — the table against the part's `sha256` and the
- * rest of the page against `0xff`. Nothing there is kept, so nothing there can be lost.
+ * One span those blanked bytes may fall in: one that lies wholly inside this part's own sectors
+ * *and* that the part writes into. That is a span the release replaces whole, on purpose — the
+ * partition-table page is exactly that, declared in `firstInstall.regions` and rewritten by the
+ * table part — and `preserve` writes and re-checks such a page whole, the table against the
+ * part's `sha256` and the rest of the page against `0xff`. No offset is special-cased.
  */
-function refuseUnalignedTails(parts, boardKey, tableOffset) {
+function refuseErasedSpill(parts, boardKey, compatibility, flashSizeMB) {
+  const declared = compatibility
+    ? [...compatibility.regions, ...compatibility.firstInstall.regions, ...compatibility.firstInstall.empty]
+    : [];
+  const flashBytes = flashSizeMB === undefined ? undefined : flashSizeMB * 1024 * 1024;
   for (const [i, part] of parts.entries()) {
-    if (part.offset === tableOffset) continue;
-    if (part.size !== undefined && part.size % SECTOR !== 0) {
-      fail('manifest.alignment', { boardKey, index: i + 1, offset: part.offset, size: part.size, sector: SECTOR });
+    if (part.size === undefined) continue;
+    const from = sectorDown(part.offset);
+    const to = sectorUp(part.offset + part.size);
+    const refuse = () => fail('manifest.alignment',
+      { boardKey, index: i + 1, offset: part.offset, size: part.size, from, to, sector: SECTOR });
+    if (flashBytes !== undefined && to > flashBytes) refuse();
+    for (const [j, other] of parts.entries()) {
+      if (j === i || other.size === undefined) continue;
+      if (touches(from, to, other.offset, other.offset + other.size)) refuse();
+    }
+    // The bytes this part blanks without writing them: its first sector before it, its last after.
+    const blanked = [[from, part.offset], [part.offset + part.size, to]];
+    for (const r of declared) {
+      const end = r.offset + r.size;
+      if (!blanked.some(([a, b]) => touches(a, b, r.offset, end))) continue;
+      // Replaced whole, on purpose: inside this part's own sectors and written into by it.
+      if (r.offset >= from && end <= to && touches(part.offset, part.offset + part.size, r.offset, end)) continue;
+      refuse();
     }
   }
 }
@@ -138,12 +167,13 @@ function normalizeBuild(b, i, manifest, base, allowOrigins) {
   if (!Array.isArray(b.parts) || b.parts.length === 0) fail('manifest.noParts', { boardKey });
   const parts = b.parts.map((p, j) => normalizePart(p, j, boardKey, base, allowOrigins, profile));
   const compatibility = normalizeCompatibility(b.compatibility, boardKey, profile, parts);
-  if (profile === 'preserve') refuseUnalignedTails(parts, boardKey, compatibility?.update?.tableOffset);
+  const flashSizeMB = optInt(b.flashSizeMB, 'manifest.flashSizeMB', 1024, 1); // 0 would match no device at all
+  if (profile === 'preserve') refuseErasedSpill(parts, boardKey, compatibility, flashSizeMB);
   return {
     boardKey,
     board: typeof b.board === 'string' && b.board.trim() ? b.board : (typeof b.name === 'string' ? b.name : boardKey),
     chipFamily: b.chipFamily,
-    flashSizeMB: optInt(b.flashSizeMB, 'manifest.flashSizeMB', 1024, 1), // 0 would match no device at all
+    flashSizeMB,
     usbVendorId: optInt(b.usbVendorId, 'manifest.usb', 0xffff),
     usbProductId: optInt(b.usbProductId, 'manifest.usb', 0xffff),
     chipDescriptionIncludes: strList(b.chipDescriptionIncludes, 'manifest.filters'),

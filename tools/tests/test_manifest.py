@@ -397,36 +397,103 @@ class GeneratorTest(unittest.TestCase):
         self.assertEqual([p['offset'] for p in json.loads(self.out.read_text('utf-8'))['builds'][0]['parts']],
                          [0x10000, 0x8000])
 
-    def test_preserve_refuses_a_part_that_is_not_a_whole_number_of_sectors(self):
-        """The end of a part costs a whole sector too, and blanks what sat after it."""
+    def preserve_cli(self, *parts, regions=('0x0:0x8000:' + 'a' * 64,), table='0x8000', extra=()):
+        """Generate a preserve manifest; parts are given as the command line wants them."""
+        common = ['--chip', 'ESP32', '--name', 'D', '--version', '1', '--out', self.out,
+                  '--profile', 'preserve', '--update-table', table]
+        for region in regions:
+            common += ['--compat-region', region]
+        return self.cli(*parts, *common, *extra)
+
+    def test_preserve_accepts_a_ragged_length_whose_tail_lands_in_the_parts_own_space(self):
+        """An ESP-IDF application is hardly ever a whole number of sectors, and that is fine."""
         table = self.firmware / 'table.bin'
         table.write_bytes(b'\x00' * 3072)
         ragged = self.firmware / 'app.bin'
         ragged.write_bytes(esp_image(0, length=5000))
-        common = ['--chip', 'ESP32', '--name', 'D', '--version', '1', '--out', self.out, '--profile', 'preserve',
-                  '--compat-region', '0x0:0x8000:' + 'a' * 64, '--update-table', '0x8000']
-        code, text = self.cli(f'{ragged}@0x10000', f'{table}@0x8000', *common)
-        self.assertEqual(code, 2, text)
-        self.assertIn('whole number', text)
-        self.assertIn('5000 bytes', text)
-        self.assertIn('Pad the file', text)
-        self.assertFalse(self.out.exists(), 'nothing is written when a part ends mid-sector')
-        # The table page is the exception, and the 4 096-byte application beside it is fine.
-        code, text = self.cli(f'{self.bin}@0x10000', f'{table}@0x8000', *common)
+        code, text = self.preserve_cli(f'{ragged}@0x10000', f'{table}@0x8000')
         self.assertEqual(code, 0, text)
         self.assertEqual([p['size'] for p in json.loads(self.out.read_text('utf-8'))['builds'][0]['parts']],
-                         [4096, 3072])
+                         [5000, 3072])
+        self.assertNotIn('Pad the file', text)
 
-    def test_the_ragged_length_exception_follows_the_table_offset(self):
-        """It is the part at --update-table that may end mid-sector, not any file called a table."""
+    def test_preserve_refuses_a_tail_that_reaches_a_declared_region(self):
+        """The hazard is not the ragged length; it is a blanked tail reaching what must survive."""
         table = self.firmware / 'table.bin'
         table.write_bytes(b'\x00' * 3072)
-        code, text = self.cli(f'{table}@0x10000', f'{self.bin}@0x8000', '--chip', 'ESP32', '--name', 'D',
-                              '--version', '1', '--out', self.out, '--profile', 'preserve',
-                              '--compat-region', '0x0:0x8000:' + 'a' * 64, '--update-table', '0x8000')
+        ragged = self.firmware / 'app.bin'
+        ragged.write_bytes(esp_image(0, length=5000))  # 0x10000..0x11388, erased through 0x12000
+        code, text = self.preserve_cli(
+            f'{ragged}@0x10000', f'{table}@0x8000',
+            regions=('0x0:0x8000:' + 'a' * 64, '0x11400:0x100:' + 'b' * 64))
         self.assertEqual(code, 2, text)
-        self.assertIn('3072 bytes', text)
+        self.assertIn('0x10000-0x12000', text)
+        self.assertIn('the declared region at 0x11400', text)
+        self.assertNotIn('Pad the file', text)
+        self.assertFalse(self.out.exists(), 'nothing is written when a tail reaches a declared region')
+        # Positive control: the same region one byte past the erased sector is fine.
+        code, text = self.preserve_cli(
+            f'{ragged}@0x10000', f'{table}@0x8000',
+            regions=('0x0:0x8000:' + 'a' * 64, '0x12000:0x100:' + 'b' * 64))
+        self.assertEqual(code, 0, text)
+
+    def test_erase_spill_names_what_a_footprint_reaches(self):
+        """The rule itself, once: a preserve part's start is sector-aligned, so a footprint that
+        reaches the next part is also a plain overlap and the overlap check gets there first.
+        The arm still exists for the page, which has no overlap check of its own."""
+        spill = manifest.erase_spill
+        self.assertEqual(manifest.erase_footprint(0x10000, 5000), (0x10000, 0x12000))
+        self.assertEqual(manifest.erase_footprint(0x10800, 1), (0x10000, 0x11000))
+        # Nothing declared in the blanked tail: the normal case.
+        self.assertIsNone(spill(0x10000, 5000, [], [(0x0, 0x8000)], 16 * 1024 * 1024))
+        # The next part's bytes.
+        self.assertEqual(spill(0x10000, 5000, [(0x11800, 0x100)], [], None),
+                         'the part written at 0x11800')
+        self.assertIsNone(spill(0x10000, 5000, [(0x12000, 0x100)], [], None))
+        # A declared region in the tail, and the first byte past the erased sector.
+        self.assertEqual(spill(0x10000, 5000, [], [(0x11400, 0x100)], None),
+                         'the declared region at 0x11400 (256 bytes)')
+        self.assertIsNone(spill(0x10000, 5000, [], [(0x12000, 0x100)], None))
+        # The end of the chip.
+        self.assertEqual(spill(0x10000, 0x100000, [], [], 1024 * 1024),
+                         'past the end of the 1048576-byte flash')
+        self.assertIsNone(spill(0x10000, 0x100000, [], [], 2 * 1024 * 1024))
+        # The table page: a declared span that is exactly this part's own sectors, written into.
+        self.assertIsNone(spill(0x8000, 3072, [], [(0x8000, 0x1000)], None))
+        # But not one that reaches beyond them, and not one the part never writes into.
+        self.assertEqual(spill(0x8000, 3072, [], [(0x8000, 0x3000)], None),
+                         'the declared region at 0x8000 (12288 bytes)')
+        self.assertEqual(spill(0x8000, 3072, [], [(0x8e00, 0x100)], None),
+                         'the declared region at 0x8e00 (256 bytes)')
+
+    def test_preserve_refuses_a_footprint_that_runs_past_the_end_of_the_flash(self):
+        table = self.firmware / 'table.bin'
+        table.write_bytes(b'\x00' * 3072)
+        big = self.firmware / 'app.bin'
+        big.write_bytes(esp_image(0, length=0x100000))
+        code, text = self.preserve_cli(f'{big}@0x10000', f'{table}@0x8000', extra=('--flash-mb', '1'))
+        self.assertEqual(code, 2, text)
+        self.assertIn('past the end of the 1048576-byte flash', text)
         self.assertFalse(self.out.exists())
+        # Positive control: the same release on a 2 MiB part.
+        code, text = self.preserve_cli(f'{big}@0x10000', f'{table}@0x8000', extra=('--flash-mb', '2'))
+        self.assertEqual(code, 0, text)
+
+    def test_the_table_page_needs_no_exemption_and_no_offset_is_special_cased(self):
+        """A 3 072-byte table passes because its own page is what the release replaces."""
+        table = self.firmware / 'table.bin'
+        table.write_bytes(b'\x00' * 3072)
+        # The table part is ragged and at update.tableOffset: accepted, as before.
+        code, text = self.preserve_cli(f'{self.bin}@0x10000', f'{table}@0x8000')
+        self.assertEqual(code, 0, text)
+        # And a ragged part that is *not* the table is accepted too, when its tail reaches nothing:
+        # the old rule refused this one purely because 3 072 is not a multiple of 4 096.
+        other = self.firmware / 'other.bin'
+        other.write_bytes(b'\x00' * 3072)
+        code, text = self.preserve_cli(f'{other}@0x10000', f'{table}@0x8000')
+        self.assertEqual(code, 0, text)
+        self.assertEqual([p['size'] for p in json.loads(self.out.read_text('utf-8'))['builds'][0]['parts']],
+                         [3072, 3072])
 
     def test_a_factory_manifest_may_be_written_at_an_unaligned_offset(self):
         """The rule belongs to preserve: factory writes a whole layout and keeps nothing."""

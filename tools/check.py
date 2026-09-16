@@ -31,9 +31,11 @@ from pathlib import Path
 from typing import Any, Dict, List, Optional, Sequence, Tuple
 
 if __package__:
-    from .manifest import CHIPS, HEAD_SAMPLE, SECTOR, boot_image_problem, covering, image_part_problem, overlaps
+    from .manifest import (CHIPS, HEAD_SAMPLE, SECTOR, boot_image_problem, covering, erase_footprint,
+                           erase_spill, image_part_problem, overlaps)
 else:  # run as a script: tools/ is already on sys.path
-    from manifest import CHIPS, HEAD_SAMPLE, SECTOR, boot_image_problem, covering, image_part_problem, overlaps
+    from manifest import (CHIPS, HEAD_SAMPLE, SECTOR, boot_image_problem, covering, erase_footprint,
+                          erase_spill, image_part_problem, overlaps)
 
 OK = 'OK'
 WARN = 'WARN'
@@ -593,6 +595,7 @@ def preserve_problems(build: Dict[str, Any], parts: Sequence[Any], board: str) -
     first = first if isinstance(first, dict) else {}
     regions = [r for key in (compat.get('regions'), first.get('regions'))
                if isinstance(key, list) for r in key]
+    empty = first.get('empty') if isinstance(first.get('empty'), list) else []
     if not regions:
         findings.append(Finding(FAIL, 'manifest', '%s: the preserve profile needs compatibility with at '
                                 'least one region, in regions or firstInstall.regions' % board))
@@ -629,18 +632,40 @@ def preserve_problems(build: Dict[str, Any], parts: Sequence[Any], board: str) -
                                     'bytes before it, and the page refuses the release'
                                     % (board, part.get('path', 'a part'), part['offset'], SECTOR,
                                        part['offset'] % SECTOR)))
-        # The other end of the same rule: the chip erases the sector holding the part's last byte,
-        # so a length that is not a whole number of sectors blanks whatever sat after the part.
-        # The page refuses that too (manifest.alignment). The part written at update.tableOffset
-        # is the exception the profile is built around: its page is written and checked whole.
-        size = part.get('size')
-        if (isinstance(size, int) and not isinstance(size, bool) and size > 0
-                and size % SECTOR and part.get('offset') != table):
-            findings.append(Finding(FAIL, 'align', '%s: %s is %d bytes, which is not a multiple of %d; '
-                                    'the chip erases whole sectors, so writing it would also blank the '
-                                    '%d bytes after it, and the page refuses the release. Pad the file'
-                                    % (board, part.get('path', 'a part'), size, SECTOR,
-                                       SECTOR - size % SECTOR)))
+    findings.extend(erase_spill_problems(build, parts, board, list(regions) + list(empty)))
+    return findings
+
+
+def erase_spill_problems(build: Dict[str, Any], parts: Sequence[Any], board: str,
+                         declared_regions: Sequence[Any]) -> List[Finding]:
+    """The other end of the alignment rule, as the page states it (`manifest.alignment`).
+
+    A write costs whole sectors at both ends, so up to SECTOR-1 bytes after a part are blanked
+    along with it. A ragged length is the normal case -- an ESP-IDF application is hardly ever a
+    whole number of sectors, and its tail lands inside its own partition, where nothing is
+    declared and nothing is lost. What is refused is a footprint that reaches something the
+    release makes a claim about: another part, a compatibility region, or the end of the chip.
+    Outside the header span the read-back never looks, so nothing downstream would notice.
+    """
+    findings: List[Finding] = []
+    sized = [(p.get('offset'), p.get('size'), p.get('path', 'a part')) for p in parts
+             if isinstance(p, dict) and is_offset(p.get('offset'))
+             and isinstance(p.get('size'), int) and not isinstance(p.get('size'), bool) and p['size'] > 0]
+    declared = [(r['offset'], r['size']) for r in declared_regions
+                if isinstance(r, dict) and is_offset(r.get('offset'))
+                and isinstance(r.get('size'), int) and not isinstance(r.get('size'), bool) and r['size'] > 0]
+    flash_mb = build.get('flashSizeMB')
+    flash_bytes = (flash_mb * 1024 * 1024 if isinstance(flash_mb, int)
+                   and not isinstance(flash_mb, bool) and flash_mb > 0 else None)
+    for index, (offset, size, path) in enumerate(sized):
+        others = [(o, s) for j, (o, s, _) in enumerate(sized) if j != index]
+        reaches = erase_spill(offset, size, others, declared, flash_bytes)
+        if reaches is None:
+            continue
+        start, end = erase_footprint(offset, size)
+        findings.append(Finding(FAIL, 'align', '%s: %s is %d bytes at 0x%x, so the chip erases '
+                                '0x%x-0x%x whole, and that reaches %s; the page refuses the release'
+                                % (board, path, size, offset, start, end, reaches)))
     return findings
 
 

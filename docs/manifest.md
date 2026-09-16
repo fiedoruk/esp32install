@@ -87,7 +87,7 @@ developer has to hand. Both work.
 |---|---|---|---|
 | `path` | 1 | string | Resolved against the manifest's own URL. |
 | `offset` | 1 | integer ≥ 0 | Where the file goes in flash. `preserve` requires a multiple of 4096: the chip erases whole 4 KiB sectors, so a part that starts mid-sector would blank the user data in front of it. |
-| `size` | 2 | integer > 0 | Exact byte count. Required by `preserve`, which also requires a multiple of 4096: the sector holding the part's last byte is erased whole, so a ragged length blanks what sat after the part. The part at `update.tableOffset` is exempt — its page is written and checked whole. |
+| `size` | 2 | integer > 0 | Exact byte count. Required by `preserve`. A length that is not a multiple of 4096 is normal and fine; what `preserve` refuses is a write whose erased sectors reach past the part into a declared region, another part or the end of the flash. |
 | `sha256` | 2 | 64 hex characters | Accepted in either case and compared lower-cased; the generator emits lowercase. Required by `preserve`. Without it the installer hashes the download anyway and writes the hash to the log, but nothing can compare it with anything, so `tools/check.py` reports a part without one as a FAIL (`--allow-unhashed` lowers that to a warning). |
 
 ### `compatibility`, for the `preserve` profile
@@ -105,8 +105,9 @@ claim the installer cannot check; a missing `update.tableOffset`, or one that no
 part is written at, leaves update mode with nothing to compare. The `preserve`
 profile also needs at least one region between `regions` and
 `firstInstall.regions`, it may not set `eraseAll`, and every one of its parts has
-to start on a 4 KiB boundary and — except for the table page — to be a whole
-number of 4 KiB sectors (`manifest.alignment` otherwise). `tools/manifest.py`
+to start on a 4 KiB boundary and none of them may erase, beyond the bytes it
+writes, anything the manifest declares (`manifest.alignment` otherwise; see
+`docs/profiles.md` for the footprint rule). `tools/manifest.py`
 refuses to write a `preserve` manifest that breaks any of these rules, and
 `tools/check.py` reports one that does.
 
