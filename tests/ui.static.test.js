@@ -309,3 +309,10 @@ test('beginner copy: the port picker names what the browser shows, the busy port
   for (const [k, v] of Object.entries(pl.error)) assert.doesNotMatch(v, /0x\{|\(kod |\(\{schema\}\)/, k);
   assert.match(read('app/engine.js'), /log\('ERROR ' \+ error\.code \+ paramText\(error\.params\)/, 'the offsets, ids and schema go to the technical log instead');
 });
+
+test('own-file path: the copy option is offered only once a file exists (setBackupAvailable runs before showOwn)', () => {
+  const main = read('app/main.js');
+  const a = main.indexOf("ui.setBackupAvailable(true); // the own-file path");
+  const b = main.indexOf("ui.showOwn([...CHIP_FAMILIES]);");
+  assert.ok(a > 0 && b > a, 'showOwn must run last, so its refresh decides what is visible');
+});

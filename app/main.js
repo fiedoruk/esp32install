@@ -205,8 +205,8 @@ function makeInstaller({ esptool, ui, fw, guide, nameOf }) {
 async function startOwn(lang) {
   const ui = mountUi({ i18n, system: '' });
   document.title = i18n.t('simple.own.title');
-  ui.showOwn([...CHIP_FAMILIES]);
-  ui.setBackupAvailable(true); // the own-file path is always the factory profile
+  ui.setBackupAvailable(true); // the own-file path is always the factory profile...
+  ui.showOwn([...CHIP_FAMILIES]); // ...and showOwn then keeps the copy hidden until there is a file
   const esptool = await loadEngine(ui);
   if (!esptool) return;
   const picked = new Map(); // row id → { name, bytes, sha256, url? }
