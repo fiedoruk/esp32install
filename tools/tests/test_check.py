@@ -1181,3 +1181,26 @@ class ShippedDemoTest(unittest.TestCase):
 
 if __name__ == '__main__':
     unittest.main()
+
+
+class StaleCacheTest(unittest.TestCase):
+    """A page nobody can bust out of a cache is a page that lies after a deployment."""
+
+    def test_a_long_max_age_is_a_warning(self):
+        problem = check.stale_cache_problem({'cache-control': 'public, max-age=2592000'})
+        self.assertIsNotNone(problem)
+        self.assertIn('2592000', problem)
+
+    def test_no_header_at_all_is_a_warning(self):
+        self.assertIsNotNone(check.stale_cache_problem({}))
+
+    def test_no_cache_passes(self):
+        self.assertIsNone(check.stale_cache_problem({'cache-control': 'no-cache'}))
+        self.assertIsNone(check.stale_cache_problem({'cache-control': 'no-store'}))
+
+    def test_a_short_max_age_passes_and_one_second_more_does_not(self):
+        self.assertIsNone(check.stale_cache_problem({'cache-control': 'max-age=300'}))
+        self.assertIsNotNone(check.stale_cache_problem({'cache-control': 'max-age=301'}))
+
+    def test_a_directory_has_no_headers_and_is_not_judged(self):
+        self.assertIsNone(check.stale_cache_problem(None))

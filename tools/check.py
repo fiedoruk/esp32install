@@ -406,6 +406,10 @@ def unreachable_origins(policies: Sequence[str], catalog_origins: Sequence[str])
     return [o for o in catalog_origins if o not in connect]
 
 
+# Powyżej tylu sekund powłoka aplikacji bez wersji w nazwie zaczyna kłamać po wdrożeniu.
+MAX_SHELL_AGE = 300
+
+
 def framing_problem(headers: Optional[Dict[str, str]]) -> Optional[str]:
     """Why another site could put this page in a frame and steer clicks at it, or None.
 
@@ -434,6 +438,45 @@ def framing_problem(headers: Optional[Dict[str, str]]) -> Optional[str]:
             'so another site can put this page in a frame; the page cannot set that itself')
 
 
+
+def stale_cache_problem(headers: Optional[Dict[str, str]]) -> Optional[str]:
+    """Why a visitor could be served yesterday's page, or None.
+
+    This project has no build step, so a file never changes its name and a browser has no way
+    to tell one deployment from the next. A long `max-age` on the page or its scripts therefore
+    means a visitor who came once keeps the old copy until it expires — they see an installer
+    that was fixed days ago, and nothing tells either of you. Measured 16.09.2026: Safari held
+    a stylesheet for a month because the host sent `max-age=2592000` to a file with no version
+    in its address.
+
+    `no-cache` is the answer, and it does not mean "do not store": it means "ask before you use
+    it". With an ETag the answer is a 304 with no body, so revalidating costs almost nothing.
+    A directory on disk has no headers and is not judged.
+
+    Fonts and vendored binaries may keep a long `max-age` — their names carry a version — but
+    this checks the page, which never may.
+    """
+    if headers is None:
+        return None
+    control = headers.get('cache-control', '').lower()
+    if 'no-store' in control or 'no-cache' in control:
+        return None
+    if 'must-revalidate' in control and 'max-age=0' in control:
+        return None
+    match = re.search(r'max-age\s*=\s*(\d+)', control)
+    age = int(match.group(1)) if match else None
+    if age is not None and age <= MAX_SHELL_AGE:
+        return None
+    if age is not None:
+        return ('the host caches it for %d seconds and the file has no version in its address, '
+                'so a visitor keeps this copy until it expires even after you deploy a fix; '
+                'send Cache-Control: no-cache instead — with an ETag that costs a 304, not a '
+                'download' % age)
+    return ('the host sends no Cache-Control, so the browser guesses how long to keep it and '
+            'Safari guesses generously; send Cache-Control: no-cache so a deployment reaches '
+            'people who already visited')
+
+
 def check_index(source: Source, catalog_origins: Sequence[str] = (),
                 extra_origins: Sequence[str] = ()) -> List[Finding]:
     ref = source.join(source.root(), INDEX)
@@ -457,6 +500,12 @@ def check_index(source: Source, catalog_origins: Sequence[str] = (),
     elif fetched.headers is not None:
         findings.append(Finding(OK, 'framing', '%s: the host sends a header that stops other sites '
                                 'framing the page' % INDEX))
+    problem = stale_cache_problem(fetched.headers)
+    if problem is not None:
+        findings.append(Finding(WARN, 'cache', '%s: %s' % (INDEX, problem)))
+    elif fetched.headers is not None:
+        findings.append(Finding(OK, 'cache', '%s: a deployment reaches people who already '
+                                'visited' % INDEX))
     for origin_ in unreachable_origins(policies, catalog_origins):
         findings.append(Finding(WARN, 'csp', '%s: connect-src does not name %s, which %s lists in '
                                 'allowOrigins; the page will refuse to download from there'

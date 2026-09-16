@@ -28,6 +28,37 @@ whole page. Every mainstream server gets this right out of the box.
 single-page-app catch-all rule that answers every request with `index.html` will
 produce puzzling JSON parse errors.
 
+**Let the page revalidate.** This is the one that bites after a deployment. There
+is no build step here, so a file never changes its name: `style.css` is
+`style.css` in every version you will ever publish. If your host caches it for a
+month — and many send `max-age` of thirty days for CSS and JavaScript by default
+— then somebody who opened your installer once keeps that copy for a month, and
+your fix never reaches them. Nothing warns either of you. Send
+`Cache-Control: no-cache` for the page, the stylesheets, the scripts and the
+JSON. That does not mean "do not store": it means "ask before you use it", and
+with an ETag the answer is a 304 with no body, so revalidating costs almost
+nothing. Fonts and the vendored bundles may keep a long `max-age` — their names
+carry a version.
+
+On Apache, scoped to the directory you serve the installer from:
+
+```apache
+SetEnvIf Request_URI "^/install(/|$)" INSTALLER
+SetEnvIf Request_URI "^/install/assets/fonts/" !INSTALLER
+Header set Cache-Control "no-cache" env=INSTALLER
+Header unset Expires env=INSTALLER
+```
+
+⚠ Match the address **without** the trailing slash too. A server that answers
+`/install/` with a redirect to `/install` serves the document under the shorter
+address, and a pattern that insists on the slash silently misses the page itself.
+
+On nginx, `location /install/ { add_header Cache-Control "no-cache"; }` with a
+nested `location /install/assets/fonts/` that overrides it.
+
+`tools/check.py <your url>` warns when the page comes back with a long
+`max-age`, or with no `Cache-Control` at all.
+
 Nothing else matters. No PHP, no Node, no server-side code of any kind.
 
 One thing the files cannot do for themselves: stop another site from framing
