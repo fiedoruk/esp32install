@@ -72,7 +72,7 @@ developer has to hand. Both work.
 | `parts` | 1 | array | At least one part. |
 | `boardKey` | 2 | string | Stable id for this build. Must start with a letter or digit, then letters, digits, `.`, `-`, `_`, up to 80 characters. Must be unique in the file. Absent means `build-1`, `build-2` and so on. |
 | `board` | 2 | string | Name shown when several builds fit. Falls back to `name`, then to the board key. |
-| `flashSizeMB` | 2 | integer 0–1024 | The build is offered only on a chip with exactly this flash size. It is an equality filter, not a capacity: a 4 MB build is not offered to a 16 MB chip. |
+| `flashSizeMB` | 2 | integer 1–1024 | The build is offered only on a chip with exactly this flash size. It is an equality filter, not a capacity: a 4 MB build is not offered to a 16 MB chip. |
 | `usbVendorId`, `usbProductId` | 2 | integer 0–65535 | Filter the browser's port picker, and reject a board whose ids differ. The ids are compared only when both sides know them: a port that reports no ids is accepted. |
 | `chipDescriptionIncludes` | 2 | array of strings | Every string must appear in the chip description, case-insensitively. |
 | `featuresAll` | 2 | array of strings | Every string must appear in one of the chip's feature strings. |
@@ -304,7 +304,9 @@ which makes a fresh copy open on the own-file path.
 
 `id` is what goes in the URL. `name` and `device` are shown on the chooser.
 `guide` is an optional link offered after a successful install; a release may
-override it with its own `guide`.
+override it with its own `guide`. It has to be an `https:` address or a path
+relative to the installer page. Anything else — `javascript:`, `data:`, plain
+`http:`, `//another.example` — is dropped, and the page simply shows no link.
 
 ### Ordering
 

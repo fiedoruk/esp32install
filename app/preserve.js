@@ -7,7 +7,9 @@
  * checks → download + verify → mandatory verified backup, saved where the user chooses and
  * read back from disk (or, without a save picker, downloaded and re-selected by the user)
  * → identity + header re-check → write part by part with an MD5 read-back →
- * read-back of everything outside the written parts → hard reset.
+ * re-read of the header span, to prove that what the manifest makes claims about is either
+ * unchanged or the 0xff a touched sector leaves behind → hard reset. Flash outside that span
+ * is never read back: the per-part MD5 is what vouches for the parts themselves.
  */
 import { InstallError } from './errors.js';
 import { sha256Hex } from './verify.js';

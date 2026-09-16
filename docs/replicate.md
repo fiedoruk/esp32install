@@ -244,7 +244,8 @@ the one that was requested, the download is rejected.
 
 `id` is what appears in the address as `?fw=mysystem`. With no `?fw=` the page
 lists every system and lets the visitor choose, so a site with one system and a
-site with twelve need no different code.
+site with twelve need no different code. `guide` has to be an `https:` address or
+a path on this site; anything else is dropped and no link is shown.
 
 ## A new release
 

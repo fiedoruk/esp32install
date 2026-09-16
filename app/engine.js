@@ -3,7 +3,7 @@
  * through `createInstaller(deps)` so the whole flow runs against a fake in tests.
  *
  * Factory profile: connect → detect → match → security state → download + verify every part →
- * layout check → boot-image check → (optional backup) → (erase) → write with MD5 → hard reset.
+ * layout check → boot-image check → (optional verified backup) → (erase) → write with MD5 → hard reset.
  * Nothing is erased or written until every verification step has passed.
  * Preserve profile: see preserve.js; it shares connect/pick/download and never erases.
  */
@@ -13,7 +13,7 @@ import { checkFetchedPart, checkLayout, checkBootImage, checkImageParts, sha256H
 import { md5Hex } from './md5.js';
 import { runPreserve } from './preserve.js';
 import { checkSecurity } from './security.js';
-import { readWholeFlash, backupFilename } from './backup.js';
+import { verifiedBackup, backupFilename } from './backup.js';
 import { etaSeconds } from './progress.js';
 
 const BAUD = 460800;
@@ -236,14 +236,16 @@ export function createInstaller(deps) {
     check();
     const parts = await download(build, hw);
     check();
-    // Optional keepsake copy (D-04): one read, saved, not re-verified and never a gate.
+    // Optional copy. The page offers it as a way to put the device back exactly as it was, so
+    // it is read twice and the two reads must agree, as in `preserve`: a copy that cannot be
+    // trusted is worse than none, and this is still before the erase, so stopping costs nothing.
     if (job.options?.backup) {
       stage('backup', 33);
       const flashBytes = hw.flashSizeMB * 1024 * 1024;
       const startedAt = now();
-      const bytes = await readWholeFlash(loader, flashBytes, (done, total) => stage('backup', 33 + (done / total) * 2, {}, etaSeconds(startedAt, done, total, now)));
+      const backup = await verifiedBackup(loader, flashBytes, (done, total) => stage('backup', 33 + (done / total) * 2, {}, etaSeconds(startedAt, done, total, now)));
       stage('backup', 35, { phase: 'save' }); // the page shows the save button on this event
-      await saveBackup(bytes, backupFilename(manifest.name, await sha256Hex(bytes)));
+      await saveBackup(backup.bytes, backupFilename(manifest.name, backup.sha256));
       check();
     }
     // Nothing is erased without the dialog. A build with `eraseAll` erases whatever door the

@@ -244,7 +244,10 @@ Two caveats worth knowing before you publish:
 verifies every part, optionally offers to erase the whole chip first, then writes
 all parts in one call. Saved Wi-Fi credentials and settings survive only if the
 erase is declined and the release does not overwrite the area that holds them. A
-whole-flash backup is offered as an optional keepsake; it is never a gate.
+whole-flash backup is optional; when it is asked for, the flash is read twice and
+the two reads must agree, because the copy is offered as a way to put the device
+back exactly as it was. Two reads that differ stop the install — before the erase,
+so the device is untouched.
 
 **`preserve`** exists for a device that already has a factory bootloader,
 partition table and user data that must stay. It never erases. It writes only the

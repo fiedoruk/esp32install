@@ -1,6 +1,6 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { pickRelease } from '../app/catalog.js';
+import { pickRelease, safeHref } from '../app/catalog.js';
 const C = { site: 'x', systems: [
   { id: 'radio', name: 'Open Radio', device: 'Core2', releases: [
     { version: '0.5.0-rc1', manifest: 'manifests/radio-0-5-0-rc1.json', channel: 'pre' },
@@ -22,4 +22,17 @@ test('a stable listed after a pre-release still wins by default', () => {
 test('errors are coded', () => {
   assert.throws(() => pickRelease(C, { fw: 'nope' }), (e) => e.code === 'catalog.unknownSystem');
   assert.throws(() => pickRelease(C, { fw: 'radio', v: '9' }), (e) => e.code === 'catalog.unknownVersion');
+});
+
+test('safeHref keeps https and relative links and drops everything else', () => {
+  for (const good of ['https://example.org/guide', 'https://example.org', 'guide.html', './guide',
+    '../docs/guide', '/os/radio/guide', 'guide?v=2#top', 'HTTPS://EXAMPLE.ORG/g']) {
+    assert.equal(safeHref(good), good, good);
+  }
+  assert.equal(safeHref('  https://example.org/guide  '), 'https://example.org/guide', 'trimmed');
+  for (const bad of ['javascript:alert(1)', 'JavaScript:alert(1)', ' javascript:alert(1)', 'data:text/html,x',
+    'http://example.org/guide', 'vbscript:x', '//evil.example/guide', '\\\\evil.example/guide',
+    '/\\evil.example', '', '   ', null, undefined, 42, {}]) {
+    assert.equal(safeHref(bad), '', JSON.stringify(bad));
+  }
 });

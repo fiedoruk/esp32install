@@ -290,6 +290,16 @@ test('the stopped title depends on whether the engine had begun erasing or writi
   assert.match(en.simple.stopped.during, /Keep the cable in/);
 });
 
+test('a guide link from the catalog is filtered before it can become an href', () => {
+  const ui = read('app/ui.js');
+  const main = read('app/main.js');
+  assert.match(main, /const guide = safeHref\(release\.guide \?\? system\.guide\);/, 'once at the source');
+  assert.match(ui, /const nextHref = safeHref\(next\);/);
+  assert.match(ui, /const guideHref = safeHref\(guide\);/);
+  assert.doesNotMatch(ui, /\$\('done-next'\)\.href = next;/);
+  assert.doesNotMatch(ui, /\$\('alt-guide'\)\.href = guide;/);
+});
+
 test('the erase dialog of a release that always clears offers no way to keep anything', () => {
   const ui = read('app/ui.js');
   assert.match(ui, /confirmErase\(build, mode, \{ required = false \} = \{\}\)/);

@@ -48,11 +48,15 @@ already on the device. `preserve` cannot be chosen for it: there is no
    well, wherever it is written; an application for another chip is refused even
    when nothing covers the bootloader offset. A data part that happens to start
    with `0xE9` is refused too. ESP8266 images carry no chip id and are not judged.
-7. **Optional backup.** If the user ticked the box, the whole flash is read once
-   and a **Save the copy** button appears. On a browser with a save picker the
-   click opens it, suggesting `<name>-backup-<8 hex>.bin`; elsewhere the click
-   downloads the file under that name. It is a keepsake: it is not read back,
-   not re-verified, and never blocks the install.
+7. **Optional backup.** If the user ticked the box, the whole flash is read
+   twice and the two reads must agree byte for byte, as in `preserve`: the box
+   promises a copy that puts the device back exactly as it was, and a copy nothing
+   vouches for would not. Two reads that differ stop with `backup.mismatch`, still
+   before the erase, so the device is untouched. Then a **Save the copy** button
+   appears. On a browser with a save picker the click opens it, suggesting
+   `<name>-backup-<8 hex>.bin`; elsewhere the click downloads the file under that
+   name. Unlike `preserve`, the saved file is not read back from disk: the copy is
+   the user's to keep, and the install does not depend on it.
 8. **The erase prompt.** Nothing is erased without a dialog, whichever door the
    person came through. If the manifest sets `new_install_prompt_erase`, the
    dialog asks. In *first installation* mode it reads *"This will erase everything

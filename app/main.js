@@ -6,7 +6,7 @@
  * The portal may define `window.__esp32installAnalytics(name, props)`; this file only calls it.
  */
 import { detectLang, createI18n, langLinkHref } from './i18n.js';
-import { pickRelease } from './catalog.js';
+import { pickRelease, safeHref } from './catalog.js';
 import { CHIP_FAMILIES, normalizeManifest, localManifest } from './manifest.js';
 import { createInstaller, fetchBytes, fetchOwnFile } from './engine.js';
 import { esptoolCommand, sha256Hex } from './verify.js';
@@ -304,7 +304,7 @@ async function boot() {
   ui.setPreserve(manifest.profile === 'preserve');
   ui.setOwnLink(ownHref(lang));
   const b0 = manifest.builds[0];
-  const guide = release.guide ?? system.guide;
+  const guide = safeHref(release.guide ?? system.guide); // only https or a path of this site reaches an href
   ui.setAltRoute({
     cmd: esptoolCommand(b0.chipFamily, b0.parts, b0.parts.map((p) => fileNameOf(p.url))),
     files: manifest.builds.flatMap((b) => b.parts.map((p) => ({ name: fileNameOf(p.url), url: p.url, sha256: p.sha256 }))),

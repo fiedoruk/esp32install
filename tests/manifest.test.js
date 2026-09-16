@@ -148,6 +148,17 @@ test('filter lists are copied, so mutating the raw manifest cannot reach the nor
   assert.deepEqual(b.featuresAll, ['WiFi']);
 });
 
+test('flashSizeMB must be at least 1: a build declaring 0 would match no device at all', () => {
+  const raw = load('manifest-v2-factory.json');
+  raw.builds[1].parts[0].sha256 = 'a'.repeat(64);
+  raw.builds[0].flashSizeMB = 0;
+  assert.throws(() => normalizeManifest(raw, URL_M), (e) => e.code === 'manifest.flashSizeMB' && e.params.boardKey === 'core2');
+  raw.builds[0].flashSizeMB = 1;
+  assert.equal(normalizeManifest(raw, URL_M).builds[0].flashSizeMB, 1);
+  delete raw.builds[0].flashSizeMB;
+  assert.equal(normalizeManifest(raw, URL_M).builds[0].flashSizeMB, undefined, 'absent still means "any size"');
+});
+
 test('preserve refuses a part that does not start on a 4 KiB boundary, and accepts every aligned one', () => {
   for (const offset of [0x10800, 0x8001, 0xfff, 0x20000 + 1]) {
     const raw = load('manifest-v2-preserve.json');

@@ -15,11 +15,15 @@ const ESPRESSIF_VENDOR_ID = 0x303a;
  * The assumption, measured on the fixture devices and rounded down to be honest rather than
  * flattering: a whole-flash read runs at roughly 1 MB per minute through a UART bridge (CP210x,
  * CH9102 and the like, at 460800 baud) and roughly 8 MB per minute through the chip's own USB
- * port. Nothing is known before the device has been read, so the caller falls back to words then.
+ * port. A copy is two such reads, because both profiles read the flash twice and compare the
+ * two before they call it a copy. Nothing is known before the device has been read, so the
+ * caller falls back to words then.
  */
+const READS_PER_COPY = 2;
+
 export function backupMinutes(hw) {
   const mb = Number(hw?.flashSizeMB);
   if (!Number.isFinite(mb) || mb <= 0) return null;
   const perMinute = hw?.usbVendorId === ESPRESSIF_VENDOR_ID ? 8 : 1;
-  return Math.max(1, Math.ceil(mb / perMinute));
+  return Math.max(1, Math.ceil((mb * READS_PER_COPY) / perMinute));
 }

@@ -8,6 +8,7 @@ import { InstallError } from './errors.js';
 import { createLineBuffer } from './console.js';
 import { MAX_PARTS } from './own.js';
 import { backupMinutes } from './progress.js';
+import { safeHref } from './catalog.js';
 
 const $ = (id) => document.getElementById(id);
 const clear = (el) => { while (el.firstChild) el.removeChild(el.firstChild); };
@@ -464,8 +465,9 @@ export function mountUi({ i18n, system }) {
       $('done-title').textContent = t('simple.done.title');
       $('done-unplug').hidden = false; // the cable promise from screen 2 is released here
       $('done-text').textContent = t('result.ok', { system: name, version });
-      $('done-next').hidden = !next;
-      if (next) { $('done-next').href = next; $('done-next').textContent = t('simple.done.next'); }
+      const nextHref = safeHref(next);
+      $('done-next').hidden = !nextHref;
+      if (nextHref) { $('done-next').href = nextHref; $('done-next').textContent = t('simple.done.next'); }
       $('retry').hidden = true;
       $('done-again').hidden = false;
       if (checksum) $('fact-checksum').textContent = checksum;
@@ -505,9 +507,10 @@ export function mountUi({ i18n, system }) {
         }
         $('alt-files').append(li);
       }
-      if (guide) {
+      const guideHref = safeHref(guide);
+      if (guideHref) {
         $('alt-guide').hidden = false;
-        $('alt-guide').href = guide;
+        $('alt-guide').href = guideHref;
         $('alt-guide').textContent = t('alt.guide', vars);
       }
     },

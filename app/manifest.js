@@ -98,9 +98,9 @@ function normalizeBuild(b, i, manifest, base, allowOrigins) {
   if (b.profile !== undefined && b.profile !== profile) fail('manifest.profile', { boardKey });
   const eraseAll = Boolean(b.eraseAll ?? manifest.eraseAll);
   if (profile === 'preserve' && eraseAll) fail('manifest.preserveNoErase', { boardKey });
-  const optInt = (v, code, max) => {
+  const optInt = (v, code, max, min = 0) => {
     if (v === undefined || v === null) return undefined;
-    if (!isInt(v) || v < 0 || v > max) fail(code, { boardKey });
+    if (!isInt(v) || v < min || v > max) fail(code, { boardKey });
     return v;
   };
   const strList = (v, code) => {
@@ -117,7 +117,7 @@ function normalizeBuild(b, i, manifest, base, allowOrigins) {
     boardKey,
     board: typeof b.board === 'string' && b.board.trim() ? b.board : (typeof b.name === 'string' ? b.name : boardKey),
     chipFamily: b.chipFamily,
-    flashSizeMB: optInt(b.flashSizeMB, 'manifest.flashSizeMB', 1024),
+    flashSizeMB: optInt(b.flashSizeMB, 'manifest.flashSizeMB', 1024, 1), // 0 would match no device at all
     usbVendorId: optInt(b.usbVendorId, 'manifest.usb', 0xffff),
     usbProductId: optInt(b.usbProductId, 'manifest.usb', 0xffff),
     chipDescriptionIncludes: strList(b.chipDescriptionIncludes, 'manifest.filters'),

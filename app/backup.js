@@ -1,6 +1,7 @@
 /**
  * Whole-flash backup. The preserve profile requires a verified copy before it writes
- * anything (D-04); the factory profile offers the same read as an optional keepsake.
+ * anything (D-04); the factory profile offers the same two-read copy when the user asks for one.
+ * Both go through `verifiedBackup`, because both are offered as a way back to what was there.
  * Reads go through `loader.readFlash` in 256 KiB chunks so progress can be reported.
  */
 import { InstallError } from './errors.js';

@@ -321,7 +321,7 @@ test('a hand-built Response with url === "" passes the origin check', async () =
   assert.equal(r.verified, true);
 });
 
-test('factory with options.backup: true saves one whole-flash copy before the erase; false never calls saveBackup', async () => {
+test('factory with options.backup: true saves a verified whole-flash copy before the erase; false never calls saveBackup', async () => {
   const saved = [];
   const { inst, manifest, fake } = await setup({ saveBackup: async (bytes, name) => { fake.calls.push(['saveBackup', name]); saved.push({ bytes, name }); } });
   const r = await inst.run({ manifest, mode: 'first', options: { backup: true } });
@@ -334,8 +334,8 @@ test('factory with options.backup: true saves one whole-flash copy before the er
   assert.ok(saved[0].bytes.every((b) => b === 0xff), 'the copy is the blank flash the fake started with');
   assert.match(saved[0].name, /^Demo-backup-[0-9a-f]{8}\.bin$/);
   assert.equal(saved[0].name.slice(12, 20), (await sha256Hex(saved[0].bytes)).slice(0, 8));
-  // Only one read pass: a keepsake, not a gate.
-  assert.equal(fake.calls.filter((c) => c[0] === 'readFlash').length, 64);
+  // Two read passes that had to agree: the page promises a copy that puts the device back.
+  assert.equal(fake.calls.filter((c) => c[0] === 'readFlash').length, 128);
 
   const s2 = await setup();
   await s2.inst.run({ manifest: s2.manifest, mode: 'first', options: { backup: false } });
@@ -346,6 +346,20 @@ test('factory with options.backup: true saves one whole-flash copy before the er
   assert.ok(!called(s3.fake, 'saveBackup'));
 });
 
+test('the factory copy is read twice: two reads that disagree stop the install before the erase', async () => {
+  // The page offers the copy as a way to put the device back exactly as it was, so a copy it
+  // cannot vouch for is a stop, not a shrug. Nothing has been erased or written at this point.
+  const fake = makeFakeEsptool({ tamperRead: (addr, n, index, data) => { if (index === 70) data[0] ^= 0xff; } });
+  const saved = [];
+  const { inst, manifest, events } = await setup({ fake, saveBackup: async (bytes, name) => { saved.push(name); } });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: { backup: true } }), (e) => e.code === 'backup.mismatch');
+  assert.deepEqual(saved, [], 'a copy that failed its own check is never offered');
+  assert.ok(!called(fake, 'eraseFlash'));
+  assert.ok(!called(fake, 'writeFlash'));
+  assert.equal(events.at(-1).type, 'error');
+  assert.equal(events.at(-1).changed, false);
+});
+
 test('the optional factory backup reports a time estimate after the first chunk', async () => {
   let t = 0;
   const { inst, manifest, events } = await setup({ saveBackup: async () => {}, now: () => (t += 1500) });
@@ -353,7 +367,7 @@ test('the optional factory backup reports a time estimate after the first chunk'
   const backup = events.filter((e) => e.type === 'stage' && e.stage === 'backup' && e.params?.phase === undefined);
   assert.equal(backup[0].eta, undefined);
   const measured = backup.slice(1);
-  assert.equal(measured.length, 64, 'one 16 MiB read in 256 KiB chunks');
+  assert.equal(measured.length, 128, 'two 16 MiB reads in 256 KiB chunks');
   assert.ok(measured.every((e) => Number.isFinite(e.eta) && e.eta >= 0));
   assert.equal(measured.at(-1).eta, 0);
   // The save button is announced after the read, without a stale estimate beside it.
