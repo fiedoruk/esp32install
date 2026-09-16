@@ -2,3 +2,7 @@
 node_modules/
 __pycache__/
 *.bak
+# A whole-flash backup is an unencrypted copy of a device's secrets, Wi-Fi passwords
+# included, and the browser drops it wherever downloads go. This is the name the page
+# suggests for it. See docs/security.md, "Backups contain your data".
+*-backup-*.bin

@@ -27,6 +27,10 @@ silently, and gets nothing at all if the person closes the dialog.
 
 ## What the installer verifies
 
+Every one of these is a hard stop. Some are checked before the device is opened
+at all; the rest need the chip to answer first. Nothing is written until all of
+them have passed.
+
 Against the release:
 
 - Every part URL resolves to the manifest's origin, or to an origin the site
@@ -44,7 +48,9 @@ Against the release:
 
 Against the device:
 
-- The flash size comes from the JEDEC id, with no fallback to a guess.
+- The flash size comes from the JEDEC id the chip returns, with no fallback to a
+  guess. An id of `0x000000` or `0xffffff`, or a size code the vendored library
+  has no entry for, stops the install.
 - Nothing may reach past the end of flash, and no two parts may overlap.
 - Whatever lands at the chip's bootloader offset must start with `0xE9` and carry
   this chip family's image id.
@@ -63,6 +69,9 @@ After writing:
 - The `preserve` profile reads the MD5 back again itself, then re-reads the flash
   header to prove that bytes outside the written parts are unchanged and that the
   sector padding around them reads `0xff`.
+- A hard reset is attempted last, and a reset that fails does not fail the
+  install: the image is written and verified by then, so the log says to press
+  reset or replug instead.
 
 Both profiles refuse a device with secure boot or encrypted flash before they
 erase or write anything: the plaintext this installer sends would leave such a

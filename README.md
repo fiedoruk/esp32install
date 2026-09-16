@@ -1,81 +1,142 @@
 # esp32install
 
-A browser page that writes firmware to an ESP32 over a USB cable. It is a set of
-static files: no build step, no bundler, no CDN, nothing to install on a server
-beyond copying a directory. Anyone can put their own firmware behind it by
-writing one JSON manifest and listing it in `catalog.json`, and anyone visiting
-can install a file of their own without one.
+<p align="center">
+  <img src="docs/img/list-light.png"
+       alt="The installer listing three systems with their boards and versions, the newest one highlighted, above a card offering to install a file of your own"
+       width="820">
+</p>
 
-Live demo: <https://esp32ai.me/install>
+<p align="center">
+  <em>A configured copy, live at <a href="https://esp32ai.me/install">esp32ai.me/install</a>:
+  three systems, each with its board and the version it would install.</em>
+</p>
 
-## Install your own file
+[![Tests](https://github.com/fiedoruk/esp32install/actions/workflows/tests.yml/badge.svg)](https://github.com/fiedoruk/esp32install/actions/workflows/tests.yml)
+&nbsp;MIT licence &nbsp;·&nbsp; no dependencies, no build step
 
-Open the page with `?own=1` (the list of systems links there too, under *Install
-your own file*). Two ways in, side by side: choose a `.bin` from your disk, or
-paste the address of one (a path on the same site such as
-`/os/emini-home/0.4.4/emini-home-0.4.4-note4c.bin`, or a full URL) and press
-*Read it*. Nothing is uploaded: the bytes are read into the browser, the header
-is inspected, and they go through the same checks as a catalogued release: not
-empty, within the size limits, held to the size and SHA-256 measured when they
-were read, no two files on the same place, nothing past the end of the flash the
-chip reports, and the image chip id must be the chip that is plugged in. Then
-they are written with esptool-js's MD5 read-back and the device is reset.
+**Install ESP32 firmware from a web page, over a USB cable.** One directory of
+static files. Copy it to any server that serves HTTPS and it works — no build
+step, no bundler, no CDN, no account.
 
-**Several files.** A PlatformIO or Arduino build does not produce one file but
-three or four: the bootloader, the partition table, on the classic ESP32 also
-`boot_app0.bin`, and the application. *Add another file* opens a row per file,
-up to six, each with its own address. The page suggests the address a build
-tool would have used, from what the file says about itself: a merged image
-(bootloader at the chip's offset, `0xff` before it, partition table at `0x8000`)
-goes to `0x0`; a partition table, recognised by its magic, to `0x8000`; a file
-called `boot_app0` to `0xE000`; an image called `bootloader` to the chip's
-bootloader offset (`0x1000` on ESP32 and ESP32-S2, `0x0` on ESP32-S3, C3, C6
-and H2, `0x2000` on C5 and P4); any other image to `0x10000`. A file that looks
-like none of those, a SPIFFS or LittleFS image say, gets no suggestion and the
-address has to be typed. Every suggestion stays editable, and the button turns
-on only once every row has a valid address, the device is chosen, and the set
-passes the same overlap and chip-id checks the engine runs after connecting. A
-set that brings its own bootloader is offered the same erase prompt as a
-release with `new_install_prompt_erase`; a set without one never erases,
-because the bootloader on the device is what it relies on.
+It reads the [esp-web-tools](https://github.com/esphome/esp-web-tools) manifest
+format unchanged, so a release you already publish works here as it is. It also
+takes a file straight off your disk — the three or four files a PlatformIO build
+leaves behind, each at its own address — for the times you have a binary and no
+manifest at all.
 
-The alternative to several rows is one file: `esptool merge_bin` glues a build
-into a single merged image that the page recognises and writes at `0x0`. See
-[docs/manifest.md](docs/manifest.md#files-from-a-build-tool).
+Before it writes a byte it checks the checksum, the layout, the flash size the
+chip reports, and the chip id inside the image. If any of those disagree, it
+stops and says which one.
 
-An address on this site always works. An address on another site is usually
-refused by the page's own policy (`connect-src 'self'`) or by that site's CORS
-headers; the page then says so and suggests downloading the file and choosing
-it from disk. A host that wants any `https:` address to work can widen
-`connect-src`, with the trade-off described in
-[docs/replicate.md](docs/replicate.md). A typed address is the visitor's own
-decision and is not held to the catalog's `allowOrigins`; a manifest still is.
+**[Try it →](https://esp32ai.me/install)** · Chrome, Edge, Opera or
+Firefox 151 or newer, on a computer.
 
-**Which chip it is for** is read from the first image header that names one;
-when none does, you pick it from the list, and the device-side check refuses if
-the plugged-in chip disagrees.
+Three words this page uses throughout: a **manifest** is one JSON file describing
+one release — its name, the boards it fits, and which file goes at which address.
+A **part** is one of those files at one of those addresses. A **profile** is how a
+release chooses to install itself: `factory` may erase the chip first, `preserve`
+never does.
 
-The own-file path is always the `factory` profile and needs no `catalog.json`:
-a copy of these files with no catalog opens on it directly.
+## Try it in one minute
 
-## What you need
+1. Open <https://esp32ai.me/install> in Chrome, Edge, Opera or
+   Firefox 151 or newer, on a desktop computer. Web Serial does not exist on
+   Safari, and no phone browser has it.
+2. Plug an ESP32 board into a USB port.
+3. Pick a system from the list, or choose *Install your own file* and point it at
+   a `.bin` you built yourself.
+4. Press **Connect and install**, then pick the port in the browser's own dialog.
 
-The page talks to the device through the Web Serial API, which today means
-**Chrome, Edge, Opera or Firefox 151 or newer, on a desktop computer** (Windows,
-macOS, Linux); Safari and every phone browser lack it. The page must be served
-over **HTTPS** or opened from `localhost`. The page tests for the API rather than
-for a browser name, so a browser that gains it later works without a change.
+<p align="center">
+  <img src="docs/img/prepare-light.png"
+       alt="One release ready to install: a drawing of a USB cable, the choice between a first installation and an update, an optional backup, and a Connect and install button"
+       width="820">
+</p>
 
-Anywhere else the page still loads, still shows the release, the files and their
-checksums, and still prints a ready-made `esptool` command line under *Other ways
-to install*. Only the button is replaced by a sentence:
+<p align="center">
+  <em>What a link to one release opens on — here the demo release that ships with
+  this repository. The same screen in the dark theme:
+  <a href="docs/img/prepare-dark.png">prepare-dark.png</a>.</em>
+</p>
 
-- Not a secure address: *"This page has to be opened over a secure (https)
-  address before it can talk to a device."*
-- No Web Serial (Safari, an older Firefox, any phone): *"This browser cannot
-  talk to a device over a cable. Use Chrome, Edge, Opera or Firefox 151 or
-  newer, on a computer. A phone will not do."* On a phone the page offers to
-  copy or share the link instead, so it can be opened on a computer.
+Nothing is uploaded anywhere. The bytes go from your disk, or from the server that
+serves the page, straight down the cable.
+
+The page tests for the Web Serial API rather than for a browser name, so a browser
+that gains it later works without a change here. It also has to be served over
+**HTTPS**, or opened from `localhost`.
+
+On a browser without Web Serial the page still loads and still says what the
+release is. The install button is replaced by a sentence saying why, the panel of
+technical facts is hidden, and the ready-made `esptool` command line with the
+files and their checksums stays on the page under *Other ways to install*, folded
+shut. On a phone the page offers to copy or share the link instead, so it can be
+opened on a computer. On a page served over plain `http:` the sentence is a
+different one and that same section is open, because there the `esptool` route is
+the next thing worth reading.
+
+## What it checks before it writes
+
+Every one of these is a hard stop. Some are checked before the device is opened
+at all; the rest need the chip to answer first. Nothing is written until all of
+them have passed.
+
+- **Where the files may come from.** Every part URL must resolve to the origin
+  that served the manifest, or to one the site listed in `allowOrigins`, over
+  `http:` or `https:` only. Redirects are followed, but the response that finally
+  delivers the bytes has to be on the origin that was requested.
+- **Size.** A part that declares `size` must arrive with exactly that many bytes.
+  No empty part, 32 MiB per part, 64 MiB in total.
+- **Checksum.** A part that declares `sha256` must hash to it. A part that
+  declares none is hashed anyway and the hash goes into the log.
+- **Layout.** No part may reach past the end of the flash the chip reported, and
+  no two parts may overlap.
+- **Flash size.** Read from the JEDEC id the chip returns. An unreadable or
+  unknown id stops the install; there is no silent fallback to 4 MB.
+- **The right chip.** Whatever covers the chip's bootloader offset must start
+  with the ESP image magic `0xE9` and carry this chip family's image id, and so
+  must every other part that starts with `0xE9`.
+- **The right build.** A build is offered only if the chip family, flash size,
+  USB ids, chip-description substrings and feature strings it declares match the
+  hardware that is plugged in.
+
+Both profiles also ask the chip whether secure boot or flash encryption is on,
+before anything is erased or written, because the plaintext this installer sends
+would leave such a board unable to start. They differ only in what an unreadable
+answer means: `factory` goes ahead and says so in the log, `preserve` refuses to
+write on a guess. A file chosen from disk has no origin and is never fetched;
+every other check above runs on it unchanged.
+
+The threat model, what is checked after writing, and what this cannot verify at
+all: [docs/security.md](docs/security.md).
+
+## Put your own firmware behind it
+
+The picture at the top is what a configured copy looks like. Three systems, each
+with the board it fits and the version it would install: emini Home for a ZECTRIX
+NOTE4C, Open Radio and RADBOX for an M5Stack Core2. The first row is tinted and
+tagged *Newest* because it is the first system in the file **and** the release it
+would install is a stable one — a test build is never the strongest thing on the
+screen. Each row carries *Copy link*, which puts a link straight to that system on
+the clipboard, for whoever is writing the page that sends people here.
+
+All of that comes out of one file. This is the entry that draws the highlighted
+row:
+
+```json
+{ "id": "emini-home", "name": "emini Home", "device": "ZECTRIX NOTE4C",
+  "releases": [ { "version": "0.5.0", "manifest": "firmware/emini-home-0-5-0.json", "channel": "stable" } ] }
+```
+
+`name` and `device` are the two lines of the row. `version` is the tag on the
+right. `id` and `manifest` are yours to name: the id is what a link means by
+`?fw=emini-home`, and the manifest is a path on your own site. Add older releases
+to `releases`, newest first — the page keeps your order and does not parse
+version numbers — and a visitor with no `?v=` in their link gets the newest
+stable one.
+
+Every field, including `allowOrigins`, `guide` and the channel rules:
+[docs/manifest.md](docs/manifest.md#catalogjson).
 
 ## Replicate in three steps
 
@@ -83,12 +144,13 @@ to install*. Only the button is replaced by a sentence:
 serves HTTPS. There is nothing to compile.
 
 ```
-rsync -a --exclude '.git' --exclude 'tests' --exclude '__pycache__' ./ /var/www/install/
+rsync -a --exclude '.git' --exclude 'tests' --exclude 'docs' --exclude '__pycache__' ./ /var/www/install/
 ```
 
-The whole site is about 860 KB, most of it the vendored esptool-js bundle and the
-fonts. `tests/` and `tools/` are not needed on the server; leaving `tools/` there
-is harmless and handy, because `check.py` then runs from the same machine.
+That is about 1.1 MB, of which roughly 875 KB is what a browser actually loads:
+mostly the vendored esptool-js bundle and the fonts. `tests/`, `tools/` and
+`docs/` are not needed on the server; leaving `tools/` there is harmless and
+handy, because `check.py` then runs from the same machine.
 
 **2. Write a manifest for your firmware.** Put the binaries next to the manifest
 and let the tool measure sizes and checksums. Give the output a name of your own;
@@ -117,99 +179,74 @@ nothing of its own. Add your release:
   "releases": [ { "version": "1.0.0", "manifest": "firmware/my-firmware-1-0-0.json", "channel": "stable" } ] } ] }
 ```
 
-Then ask the tool whether the site really serves everything the page will fetch:
+Then ask the tool whether everything the page will fetch is really there. It
+takes a directory, so you can run it before you upload:
 
 ```
-python3 tools/check.py https://example.com/install/
+python3 tools/check.py .
 ```
 
 ```
 OK csp index.html pins default-src to 'self'
 OK vendor esptool-js-0.6.1.js matches the pinned checksum
+OK vendor serial.js matches the pinned checksum
+OK vendor const.js matches the pinned checksum
+OK vendor util/hex-formatter.js matches the pinned checksum
+OK vendor util/to-hex.js matches the pinned checksum
+OK vendor LICENSE matches the pinned checksum
 OK catalog catalog.json lists 1 system
 OK size build-1: demo.bin is 4096 bytes
 OK sha256 build-1: demo.bin
 OK layout build-1: 1 part, no overlap
 OK chip build-1: demo.bin is an ESP32 image
-SUMMARY 7 OK, 0 WARN, 0 FAIL
+SUMMARY 12 OK, 0 WARN, 0 FAIL
 ```
 
-It exits 0 when nothing failed, 1 on any FAIL, 2 when the command was wrong. It
-takes a directory as well as a URL, so you can run it before you upload.
+Run it again as `python3 tools/check.py https://example.com/install/` once the
+files are up: given a URL it also reads the response headers and warns when the
+host sends neither `X-Frame-Options` nor a `frame-ancestors` policy, which a page
+cannot set for itself. It exits 0 when nothing failed, 1 on any FAIL, 2 when the
+command was wrong.
 
 Full walkthrough for Apache, nginx, GitHub Pages and other hosts:
 [docs/replicate.md](docs/replicate.md).
 
-## What is checked before anything is written
+## Install a file of your own
 
-Every one of these is a hard stop. The device is not touched until all of them
-have passed.
+Open the page with `?own=1`, or follow *Install your own file* from the list.
+Choose a `.bin` from your disk, or paste the address of one (a path on the same
+site, such as `/firmware/my-app-1-0-0.bin`, or a full URL) and press *Read it*.
+Nothing is uploaded: the bytes are read in the browser and go through the same
+checks as a catalogued release.
 
-- **Where the files may come from.** Every part URL must resolve to the origin
-  that served the manifest, or to an origin the site listed in `allowOrigins`.
-  Only `http:` and `https:` are accepted, and any user name or password in the
-  URL is stripped. An origin in `allowOrigins` also has to be added to
-  `connect-src` in the page's Content-Security-Policy, or the browser blocks the
-  fetch; `check.py` accepts exactly the listed origins there.
-- **Where the bytes actually came from.** Redirects are followed, but the final
-  response has to be on the same origin as the request; otherwise the download is
-  rejected. A file chosen from disk has no origin and is never fetched; every
-  other check below runs on it unchanged.
-- **Size.** A part that declares `size` must arrive with exactly that many bytes.
-  An empty part is refused, a single part above 32 MiB is refused, and all parts
-  together above 64 MiB are refused.
-- **Checksum.** A part that declares `sha256` must hash to it. A part that
-  declares none is hashed anyway and the hash is written to the log, so a reader
-  can compare it with the release notes; `tools/check.py` reports a manifest like
-  that as a failure, because nothing on the page can do that comparison for you.
-- **Layout.** No part may reach past the end of the flash the chip reported, and
-  no two parts may overlap.
-- **Flash size.** Read from the JEDEC id the chip returns. An id of `0x000000` or
-  `0xffffff`, or a size code the library does not know, stops the install. There
-  is no silent fallback to 4 MB.
-- **The right chip.** The part that covers the chip's bootloader offset must
-  start with the ESP image magic `0xE9`, and the chip id inside that header must
-  be the one this chip family declares. Every other part that starts with `0xE9`
-  is held to the same chip id, so an application built for another chip is
-  refused even when nothing is written at the bootloader offset.
-- **The right build.** A build is offered only if its chip family, and any
-  `flashSizeMB`, USB vendor and product id, chip-description substrings and
-  feature strings it declares, match the hardware that is plugged in.
-  `flashSizeMB` is an equality filter, not a minimum. USB ids are compared only
-  when both the build and the port report them.
+A PlatformIO or Arduino build leaves three or four files, not one. *Add another
+file* opens a row per file, up to six. The page reads each header and suggests
+the address a build tool would have used, and every suggestion stays editable.
+An address has to be hex on a 4 KiB boundary; anything else is shown as a bad
+address rather than guessed at. One file works too, if `esptool merge_bin` glued
+the build into a merged image.
 
-The `preserve` profile adds more before it writes: the chip must not have secure
-boot or flash encryption enabled, its MAC address is read and re-read so the
-device cannot be swapped mid-install, the existing flash header must match the
-regions the manifest declares, and a whole-flash backup must be read twice, agree
-byte for byte, be saved where the user chooses, and then be read back from disk
-and match. On a browser without a save picker the user picks the downloaded file
-instead, and the page checks that.
+An address on another site is usually refused, by the page's own
+`connect-src 'self'` or by that site's CORS headers; the page says so and
+suggests downloading the file and choosing it from disk.
 
-## What is checked after writing
+Addresses, per-chip offsets and the rules in full:
+[docs/manifest.md](docs/manifest.md#files-from-a-build-tool).
 
-- esptool-js hashes each file before compression, reads the MD5 back from the
-  chip after writing it, and throws when the two differ. That applies to both
-  profiles.
-- The `preserve` profile reads the MD5 back a second time itself, per part, and
-  compares it with its own hash of the same bytes.
-- The `preserve` profile then re-reads the flash header span and proves two
-  things: bytes outside every written part are unchanged, and bytes inside a
-  4 KiB sector a write touched but outside the part itself read back as `0xff`.
-- A hard reset is attempted last. If it fails, the log says to press reset or
-  replug, because the image is already written and verified at that point.
+## Manifests it reads
 
-Two things follow the install and can never fail it:
+**Schema 1 is the esp-web-tools manifest**, key for key, so a release you already
+publish installs here as it is. **Schema 2** is a superset: the same file plus the
+fields the extra checks and the `preserve` profile need. A file with no `schema`
+key is read as schema 1.
 
-- **Wi-Fi setup over the cable.** The page reopens the port and asks whether
-  the device speaks [Improv Serial](https://www.improv-wifi.com/serial/). If it
-  does, the done screen offers one optional step: pick a network the device can
-  see, type the password, send. A device that stays silent gets no step. See
-  [`improv` in the manifest](docs/manifest.md#improv-wi-fi-setup-after-the-install).
-- **What the device says.** Inside the technical log, *Show what the device
-  says* streams the device's own output at 115200 baud, on the done screen and
-  on the stopped screen alike, so a failed boot can be read without another
-  tool. The page keeps the last 500 lines.
+One difference worth knowing before you publish: a part with no `sha256` still
+installs, and its hash is printed in the log, but `tools/check.py` reports such a
+manifest as a failure rather than a warning, because nothing on the page can
+compare a hash against a claim that was never made.
+
+Every field, both example manifests and the `catalog.json` format:
+[docs/manifest.md](docs/manifest.md).
 
 ## Supported chips
 
@@ -232,62 +269,44 @@ The manifest always carries the first-column name.
 | ESP32-H2 | `esp32h2` | `0x0` | 16 |
 | ESP32-P4 | `esp32p4` | `0x2000` | 18 |
 
-Two caveats worth knowing before you publish:
+Two caveats: an **ESP8266** image carries no chip id field, so only the `0xE9`
+magic byte is checked on it, and **ESP32-C61** is the one family esptool-js 0.6.1
+gives no bootloader offset for, so the check at that offset is skipped there.
+Parts that start with `0xE9` are still held to the C61 image id.
 
-- **ESP8266** images carry no chip id field, so only the `0xE9` magic byte is
-  checked. An image built for a different ESP8266 board will pass that check.
-- **ESP32-C61** is the one chip esptool-js 0.6.1 does not give a bootloader
-  offset for. The check at the bootloader offset is skipped for it; parts that
-  start with `0xE9` are still checked for the C61 image id. Everything else still
-  applies.
+## After the install
+
+Two things follow a successful install and neither can fail it. The page reopens
+the port and asks whether the device speaks
+[Improv Serial](https://www.improv-wifi.com/serial/); if it does, the done screen
+offers one optional step to send it a Wi-Fi network and password over the cable.
+And inside the technical log, *Show what the device says* streams the device's own
+output at 115200 baud, on the done screen and on the stopped screen alike, so a
+failed boot can be read without another tool.
 
 ## The two profiles
 
-**`factory`** is the default and behaves like a classic flasher. It downloads and
-verifies every part, optionally offers to erase the whole chip first, then writes
-all parts in one call. Saved Wi-Fi credentials and settings survive only if the
-erase is declined and the release does not overwrite the area that holds them. A
-whole-flash backup is optional; when it is asked for, the flash is read twice and
-the two reads must agree, because the copy is offered as a way to put the device
-back exactly as it was. Two reads that differ stop the install — before the erase,
-so the device is untouched.
+**`factory`** is the default and behaves like a classic flasher: verify every
+part, optionally offer to erase the whole chip first, write everything in one go.
 
-**`preserve`** exists for a device that already has a factory bootloader,
-partition table and user data that must stay. It never erases. It writes only the
-parts the manifest lists, one at a time, and it refuses to start unless the flash
-already looks the way the manifest says it should. The backup is mandatory there:
-one click saves it where the user chooses, and the page reads it back through
-the same file handle before the first write. Browsers do not expose folder
-paths, so the page never learns where the copy went, only its name. Without a
-save picker the click downloads the file and the user hands it back to the page.
+**`preserve`** is for a device that already works and whose user data has to
+stay. It never erases, writes only the parts the manifest lists, refuses to start
+unless the existing flash matches what the manifest says it should be, and takes
+a whole-flash backup it reads back from disk before the first write.
 
-Step by step, with every stop condition: [docs/profiles.md](docs/profiles.md).
+Step by step, with every stop condition and every message the page can show:
+[docs/profiles.md](docs/profiles.md).
 
 ## Third-party code in the bundle
 
-`vendor/esptool-js/esptool-js-0.6.1.js` is esptool-js 0.6.1, Apache-2.0, vendored
-rather than fetched from a CDN. Its checksum is pinned in
-`vendor/esptool-js/SHA256SUMS` and `tools/check.py` verifies it on every run:
+Three things are vendored rather than fetched from a CDN: esptool-js 0.6.1
+(Apache-2.0, with pako 2.1.0 embedded for deflate), the headless protocol client
+from improv-wifi-serial-sdk 2.8.1 (Apache-2.0), and three font families under the
+SIL Open Font License 1.1. Every file's SHA-256 is pinned in a `SHA256SUMS` next
+to it and checked by `tools/check.py` on every run.
 
-```
-ef7d5a237d3f273ecf546bcee65dddad90bd82cf02f22a980d1537e0cd79a152  esptool-js-0.6.1.js
-```
-
-The bundle embeds pako 2.1.0 (MIT AND Zlib) for deflate.
-
-`vendor/improv-wifi/` holds the headless protocol client from
-improv-wifi-serial-sdk 2.8.1, Apache-2.0: four files, no dependencies, pinned in
-`vendor/improv-wifi/SHA256SUMS` and verified by `tools/check.py` when present.
-Two import specifiers carry a `.js` extension the upstream files lack; the
-notices file records both hashes and `tests/vendor.improv.test.js` proves that
-is the only difference.
-
-Three font families are vendored under `assets/fonts/`, all under the SIL Open
-Font License 1.1, with the licence text next to each family: Figtree, Source
-Sans 3 and Recursive Mono Casual. Their checksums are in
-`assets/fonts/SHA256SUMS`.
-
-Full attributions: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
+Versions, licences, checksums and the three-byte change to two Improv import
+specifiers: [THIRD-PARTY-NOTICES.md](THIRD-PARTY-NOTICES.md).
 
 ## Running the tests
 
@@ -298,7 +317,8 @@ python3 -m unittest discover -s tools/tests -t .
 
 The first runs the browser-side suite against a fake esptool, so no hardware is
 needed. The second runs the Python tools' suite. Both are expected to pass with
-no failures.
+no failures. Node 20 or newer and Python 3.9 or newer; nothing else is required,
+and there is nothing to install first.
 
 ## Security
 
@@ -316,6 +336,13 @@ needs a test that fails without it.
 
 Keep the product free of local paths, private addresses and anything specific to
 one publisher's site; the demo site is an example, not a dependency.
+
+## Who made this
+
+Tomasz Fiedoruk. It came out of needing an install page for my own ESP32 devices,
+and not wanting to hand a stranger's CDN the code that writes to someone's flash.
+It is maintained in spare time, by one person. [SECURITY.md](SECURITY.md) says
+honestly what that means if you find a bug.
 
 ## Licence
 

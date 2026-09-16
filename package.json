@@ -5,7 +5,20 @@
   "type": "module",
   "description": "Browser-based ESP32 firmware installer. Static files, no build step, no CDN.",
   "license": "MIT",
+  "author": "Tomasz Fiedoruk",
+  "homepage": "https://github.com/fiedoruk/esp32install#readme",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/fiedoruk/esp32install.git"
+  },
+  "bugs": {
+    "url": "https://github.com/fiedoruk/esp32install/issues"
+  },
+  "engines": {
+    "node": ">=20"
+  },
   "scripts": {
-    "test": "node --test"
+    "test": "node --test",
+    "test:py": "python3 -m unittest discover -s tools/tests -t ."
   }
 }
