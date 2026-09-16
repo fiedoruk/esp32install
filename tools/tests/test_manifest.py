@@ -16,6 +16,11 @@ from pathlib import Path
 from tools import manifest
 
 
+def ref(path, file):
+    """A path as the generator records it: the name, then the file's checksum as a query."""
+    return '%s?sha256=%s' % (path, hashlib.sha256(Path(file).read_bytes()).hexdigest())
+
+
 def esp_image(chip_id=0, length=4096, magic=0xE9, header_at=0):
     """A synthetic ESP image: magic byte, then the chip id at bytes 12-13 (little endian)."""
     blob = bytearray(b'\xff' * length)
@@ -71,7 +76,7 @@ class GeneratorTest(unittest.TestCase):
         build = data['builds'][0]
         self.assertEqual(build['chipFamily'], 'ESP32')
         part = build['parts'][0]
-        self.assertEqual(part['path'], 'demo.bin')
+        self.assertEqual(part['path'], ref('demo.bin', self.bin))
         self.assertEqual(part['offset'], 0x1000)
         self.assertEqual(part['size'], self.bin.stat().st_size)
         self.assertEqual(part['sha256'], hashlib.sha256(self.bin.read_bytes()).hexdigest())
@@ -123,7 +128,35 @@ class GeneratorTest(unittest.TestCase):
         self.assertEqual(code, 0, text)
         parts = json.loads(self.out.read_text('utf-8'))['builds'][0]['parts']
         self.assertEqual([p['offset'] for p in parts], [0x1000, 0x10000])
-        self.assertEqual([p['path'] for p in parts], ['demo.bin', 'app.bin'])
+        self.assertEqual([p['path'] for p in parts], [ref('demo.bin', self.bin), ref('app.bin', app)])
+
+    # --- the checksum in the address ------------------------------------
+
+    def test_the_checksum_in_the_address_is_the_one_in_the_field(self):
+        """The whole point: the address changes with the bytes, so a cache cannot hide a release."""
+        self.assertEqual(self.generate()[0], 0)
+        part = json.loads(self.out.read_text('utf-8'))['builds'][0]['parts'][0]
+        self.assertEqual(part['path'], 'demo.bin?sha256=' + part['sha256'])
+        first = part['path']
+        self.bin.write_bytes(esp_image(0, length=8192))
+        self.assertEqual(self.generate()[0], 0)
+        again = json.loads(self.out.read_text('utf-8'))['builds'][0]['parts'][0]['path']
+        self.assertNotEqual(first, again, 'new bytes, new address')
+        self.assertTrue(again.startswith('demo.bin?sha256='))
+
+    def test_no_checksum_in_path_writes_the_bare_name(self):
+        self.assertEqual(self.generate('--no-checksum-in-path')[0], 0)
+        part = json.loads(self.out.read_text('utf-8'))['builds'][0]['parts'][0]
+        self.assertEqual(part['path'], 'demo.bin')
+        self.assertEqual(part['sha256'], hashlib.sha256(self.bin.read_bytes()).hexdigest(),
+                         'the field is unaffected either way')
+
+    def test_a_prefix_that_already_has_a_query_is_refused_rather_than_mangled(self):
+        code, text = self.generate('--path-prefix', 'dl.php?f=')
+        self.assertEqual(code, 2, text)
+        self.assertIn('--no-checksum-in-path', text)
+        self.assertEqual(self.generate('--path-prefix', 'dl.php?f=', '--no-checksum-in-path')[0], 0,
+                         'and the flag is a real way out')
 
     # --- paths ----------------------------------------------------------
 
@@ -135,18 +168,18 @@ class GeneratorTest(unittest.TestCase):
         code, text = self.generate(source=blob)
         self.assertEqual(code, 0, text)
         path = json.loads(self.out.read_text('utf-8'))['builds'][0]['parts'][0]['path']
-        self.assertEqual(path, '../bin/other.bin')
+        self.assertEqual(path, ref('../bin/other.bin', blob))
 
     def test_path_prefix_replaces_the_directory(self):
         code, text = self.generate('--path-prefix', '../../os/')
         self.assertEqual(code, 0, text)
         path = json.loads(self.out.read_text('utf-8'))['builds'][0]['parts'][0]['path']
-        self.assertEqual(path, '../../os/demo.bin')
+        self.assertEqual(path, ref('../../os/demo.bin', self.bin))
 
     def test_path_prefix_without_a_trailing_slash_still_separates(self):
         self.assertEqual(self.generate('--path-prefix', 'bin')[0], 0)
         path = json.loads(self.out.read_text('utf-8'))['builds'][0]['parts'][0]['path']
-        self.assertEqual(path, 'bin/demo.bin')
+        self.assertEqual(path, ref('bin/demo.bin', self.bin))
 
     # --- positive controls: the generator must refuse bad input ---------
 
@@ -224,7 +257,7 @@ class GeneratorTest(unittest.TestCase):
                               '--out', out)
         self.assertEqual(code, 0, text)
         self.assertEqual(json.loads(out.read_text('utf-8'))['builds'][0]['parts'][0]['path'],
-                         '../../firmware/demo.bin')
+                         ref('../../firmware/demo.bin', self.bin))
 
     def test_a_deep_climb_is_fine_once_a_prefix_says_how_the_site_serves_it(self):
         deep = self.root / 'a' / 'b' / 'c' / 'd'

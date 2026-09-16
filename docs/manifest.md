@@ -91,10 +91,39 @@ developer has to hand. Both work.
 
 | Field | Schema | Type | Meaning |
 |---|---|---|---|
-| `path` | 1 | string | Resolved against the manifest's own URL. |
+| `path` | 1 | string | Resolved against the manifest's own URL. May carry the checksum as a query — `firmware.bin?sha256=04db4a…` — which is how a release escapes a browser cache on a host whose configuration you cannot change. See below. |
 | `offset` | 1 | integer ≥ 0 | Where the file goes in flash. Must be a multiple of 4096 in a `preserve` manifest and on the own-file path, where the address is typed by hand; the chip erases whole 4 KiB sectors, so a part that starts mid-sector blanks whatever sits in front of it. A `factory` manifest may name any offset, because it is writing a whole layout and keeps nothing. |
 | `size` | 2 | integer > 0 | Exact byte count. Required by `preserve`. A length that is not a multiple of 4096 is normal and fine; what `preserve` refuses is a write whose erased sectors reach past the part into a declared region, another part or the end of the flash. |
 | `sha256` | 2 | 64 hex characters | Accepted in either case and compared lower-cased; the generator emits lowercase. Required by `preserve`. Without it the installer hashes the download anyway and writes the hash to the log, but nothing can compare it with anything, so `tools/check.py` reports a part without one as a FAIL (`--allow-unhashed` lowers that to a warning). |
+
+### The checksum in the address
+
+A part's path may end in `?sha256=` and the file's checksum:
+
+```json
+{ "path": "firmware.bin?sha256=04db4aca…", "offset": 4096, "size": 3801200, "sha256": "04db4aca…" }
+```
+
+Nothing on the server reads it. A static host answers with `firmware.bin` and
+ignores the query, and the page strips it off before it shows or logs a name, so
+the technical layer still says `firmware.bin`. What it changes is the browser,
+which keys its cache on the whole address: publish a new binary and the address
+is new, so a visitor who came last week cannot be handed last week's file.
+
+That is the one fix available to a publisher with no server configuration to
+change — GitHub Pages, most shared hosting, a NAS — where
+`Cache-Control: no-cache` is not an option. On a host that does send it, the
+query costs nothing and still helps: it turns a cache hit into a certainty rather
+than a matter of what the host was configured to do that month.
+
+`tools/manifest.py` writes it by default and `--no-checksum-in-path` leaves it
+off. `tools/check.py` holds it to the bytes that are actually served and to the
+`sha256` field of the same part, and fails a manifest where the two disagree; on
+a live site it warns about a part with no checksum in its address when the host
+also lets a browser keep the file without asking.
+
+A manifest with no query works exactly as it always did. The `sha256` field is
+what the page checks the download against; the query is only an address.
 
 ### `compatibility`, for the `preserve` profile
 
@@ -200,7 +229,7 @@ would silently replace it with a schema 2 one.
       "chipFamily": "ESP32",
       "parts": [
         {
-          "path": "demo.bin",
+          "path": "demo.bin?sha256=c939cfc0405acccaa7433d7c80e4a9481acf94bb3e5bd5d072b680ace1677b6a",
           "offset": 4096,
           "size": 4096,
           "sha256": "c939cfc0405acccaa7433d7c80e4a9481acf94bb3e5bd5d072b680ace1677b6a"
@@ -304,13 +333,13 @@ wrote demo-2-0-0.json: Demo firmware 2.0.0, 2 parts, 68608 bytes
       },
       "parts": [
         {
-          "path": "app.bin",
+          "path": "app.bin?sha256=7356b1ee6a4cffc72f6e5023c14f865cc101ea98f2a6945a34b707b919004267",
           "offset": 65536,
           "size": 65536,
           "sha256": "7356b1ee6a4cffc72f6e5023c14f865cc101ea98f2a6945a34b707b919004267"
         },
         {
-          "path": "partitions.bin",
+          "path": "partitions.bin?sha256=b192e2b7b285a4b8b4b9c56c9b7470fb4dc438f45dc7198dc3603cdab4ce73c5",
           "offset": 32768,
           "size": 3072,
           "sha256": "b192e2b7b285a4b8b4b9c56c9b7470fb4dc438f45dc7198dc3603cdab4ce73c5"

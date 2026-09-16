@@ -1204,3 +1204,81 @@ class StaleCacheTest(unittest.TestCase):
 
     def test_a_directory_has_no_headers_and_is_not_judged(self):
         self.assertIsNone(check.stale_cache_problem(None))
+
+
+class ChecksumInPathTest(SiteFixture):
+    """`firmware.bin?sha256=…`: the one cache fix a publisher can make with no server to configure.
+
+    The query is worth exactly as much as its truthfulness, so the checker holds it to the bytes
+    that are served and to the `sha256` the same part declares, and says so when it is missing on
+    a host that lets a browser keep the file without asking.
+    """
+
+    def rewrite_path(self, path):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['builds'][0]['parts'][0]['path'] = path
+        self.manifest_path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+
+    def test_a_generated_manifest_carries_it_and_the_file_is_still_found_on_disk(self):
+        part = json.loads(self.manifest_path.read_text('utf-8'))['builds'][0]['parts'][0]
+        self.assertEqual(part['path'], 'demo.bin?sha256=' + part['sha256'])
+        found = self.findings()
+        self.assertEqual(self.fails(found), [])
+        self.assertIn(check.OK, self.levels(found, 'cache'))
+
+    def test_a_query_naming_other_bytes_than_the_ones_served_is_a_fail(self):
+        self.rewrite_path('demo.bin?sha256=' + 'b' * 64)
+        fails = self.fails(self.findings())
+        self.assertTrue(any('address of demo.bin' in detail for _, detail in fails), fails)
+
+    def test_a_manifest_that_contradicts_itself_is_a_fail(self):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        part = data['builds'][0]['parts'][0]
+        # The address tells the truth about the bytes; the field does not. Both are checked.
+        part['sha256'] = 'c' * 64
+        self.manifest_path.write_text(json.dumps(data, indent=2) + '\n', encoding='utf-8')
+        fails = self.fails(self.findings())
+        self.assertTrue(any('manifest says' in detail or 'contradicts' in detail for _, detail in fails), fails)
+
+    def test_a_query_that_is_not_a_checksum_is_a_fail_and_names_the_file(self):
+        self.rewrite_path('demo.bin?sha256=nonsense')
+        fails = self.fails(self.findings())
+        self.assertTrue(any('demo.bin' in detail and 'hexadecimal' in detail for _, detail in fails), fails)
+
+    def test_another_query_is_not_a_checksum_claim_and_is_simply_carried(self):
+        self.rewrite_path('demo.bin?v=3')
+        self.assertEqual(self.fails(self.findings()), [])
+
+    def test_without_the_query_a_directory_says_nothing_because_it_sends_no_headers(self):
+        self.rewrite_path('demo.bin')
+        found = self.findings()
+        self.assertEqual(self.fails(found), [])
+        self.assertEqual([f for f in found if f.what == 'cache'], [], 'a directory cannot be judged on caching')
+
+    def test_without_the_query_a_host_that_lets_a_browser_keep_the_file_gets_a_warning(self):
+        digest = hashlib.sha256(self.bin.read_bytes()).hexdigest()
+        findings = check.checksum_in_path_findings(
+            'demo', 'demo.bin', None, digest, digest, {'cache-control': 'public, max-age=2592000'})
+        self.assertEqual([f.level for f in findings], [check.WARN])
+        self.assertIn('demo.bin?sha256=' + digest, findings[0].detail)
+
+    def test_without_the_query_a_host_that_revalidates_is_left_alone(self):
+        digest = hashlib.sha256(self.bin.read_bytes()).hexdigest()
+        self.assertEqual(check.checksum_in_path_findings(
+            'demo', 'demo.bin', None, digest, digest, {'cache-control': 'no-cache'}), [])
+
+
+class PathNameTest(unittest.TestCase):
+    def test_part_name_drops_the_query_and_the_fragment(self):
+        self.assertEqual(check.part_name('firmware.bin?sha256=' + 'a' * 64), 'firmware.bin')
+        self.assertEqual(check.part_name('../os/x/firmware.bin?sha256=aa#b'), '../os/x/firmware.bin')
+        self.assertEqual(check.part_name('firmware.bin'), 'firmware.bin')
+        self.assertEqual(check.part_name('?sha256=aa'), '?sha256=aa', 'nothing left is not a name')
+
+    def test_path_checksum_reads_only_a_real_one(self):
+        self.assertIsNone(check.path_checksum('firmware.bin'))
+        self.assertIsNone(check.path_checksum('firmware.bin?v=3'))
+        self.assertEqual(check.path_checksum('firmware.bin?sha256=' + 'A' * 64), 'a' * 64)
+        self.assertEqual(check.path_checksum('firmware.bin?v=3&sha256=' + 'a' * 64), 'a' * 64)
+        self.assertEqual(check.path_checksum('firmware.bin?sha256=short'), '')
+        self.assertEqual(check.path_checksum('firmware.bin?sha256='), '')

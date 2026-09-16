@@ -15,6 +15,13 @@ resolved by the browser against the manifest URL, so by default each part is
 recorded as the path from the manifest's directory to the binary; `--path-prefix`
 overrides that for sites that serve binaries from somewhere else.
 
+Each path also carries the checksum as a query, `firmware.bin?sha256=04db4a…`.
+A static host serves the file and ignores the query; the browser does not, and
+that is the point: the address changes with the bytes, so nobody who visited
+before the release can be handed yesterday's binary out of a cache. It is the
+only cache-busting move available to a publisher with no server configuration to
+change, which is most of them. `--no-checksum-in-path` leaves it off.
+
 Exit codes: 0 written, 1 the binaries did not validate, 2 the command was wrong.
 """
 
@@ -271,6 +278,7 @@ class Options:
     prompt_erase: bool = False
     improv: bool = False
     path_prefix: Optional[str] = None
+    checksum_in_path: bool = True
     compat_regions: List[Region] = field(default_factory=list)
     first_regions: List[Region] = field(default_factory=list)
     first_empty: List[Region] = field(default_factory=list)
@@ -328,6 +336,24 @@ def part_path(file: Path, out: Optional[Path], prefix: Optional[str]) -> str:
                          'that, so pass --path-prefix to say how it serves the file'
                          % (file.name, climb, relative))
     return file.name if relative == '.' else '%s/%s' % (relative, file.name)
+
+
+def part_reference(path: str, digest: str, include: bool) -> str:
+    """The path as the manifest records it: the file name, and the checksum as a query.
+
+    The query is what makes a release reach somebody who visited before it. Nothing serves it and
+    nothing reads it — a static host answers with the file, and the page strips it back off before
+    it shows or logs a name — but the browser's cache is keyed on the whole address, so a new
+    binary is a new address and yesterday's copy cannot be handed back. That is a fix a publisher
+    can make with no access to the server's configuration, which is what GitHub Pages and most
+    shared hosting amount to.
+    """
+    if not include:
+        return path
+    if '?' in path or '#' in path:
+        raise UsageError('%s already carries a query or a fragment, so the checksum cannot be '
+                         'added to it; pass --no-checksum-in-path' % path)
+    return '%s?sha256=%s' % (path, digest)
 
 
 def validate_options(opts: Options) -> None:
@@ -492,7 +518,8 @@ def build_manifest(parts: Sequence[Part], opts: Any) -> Dict[str, Any]:
     if compat is not None:
         build['compatibility'] = compat
     build['parts'] = [{
-        'path': part_path(m['file'], options.out, options.path_prefix),
+        'path': part_reference(part_path(m['file'], options.out, options.path_prefix),
+                               m['sha256'], options.checksum_in_path),
         'offset': m['offset'],
         'size': m['size'],
         'sha256': m['sha256'],
@@ -619,6 +646,10 @@ def make_parser() -> argparse.ArgumentParser:
                         help='the firmware takes Wi-Fi credentials over Improv Serial after the install')
     parser.add_argument('--path-prefix', metavar='PREFIX',
                         help='put this in front of each file name instead of the path from the manifest')
+    parser.add_argument('--no-checksum-in-path', dest='checksum_in_path', action='store_false',
+                        help='do not append ?sha256=... to each path; the address then stops changing '
+                             'with the bytes, and a visitor who came before the release can be served '
+                             'the old binary out of their browser cache')
     parser.add_argument('--compat-region', dest='compat_regions', action='append', default=[],
                         type=region_argument, metavar='OFFSET:SIZE:SHA256',
                         help='flash region that must match before a preserve install (repeatable)')
@@ -639,7 +670,8 @@ def options_from_args(args: argparse.Namespace) -> Options:
     return Options(
         chip=args.chip, name=args.name, version=args.version, board=args.board, board_key=args.board_key,
         flash_mb=args.flash_mb, usb_vendor_id=vendor, usb_product_id=product, profile=args.profile,
-        prompt_erase=args.prompt_erase, improv=args.improv, path_prefix=args.path_prefix, compat_regions=args.compat_regions,
+        prompt_erase=args.prompt_erase, improv=args.improv, path_prefix=args.path_prefix,
+        checksum_in_path=args.checksum_in_path, compat_regions=args.compat_regions,
         first_regions=args.first_regions, first_empty=args.first_empty, update_table=args.update_table,
         out=args.out)
 

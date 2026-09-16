@@ -67,11 +67,28 @@ function normalizeCompatibility(raw, boardKey, profile, parts) {
   return out;
 }
 
+/**
+ * The name of the file, which is the path with the query left off.
+ *
+ * A release may write its checksum into the address — `firmware.bin?sha256=04db4a…` — and that is
+ * the one cache-busting move a publisher can make without touching the server: the address changes
+ * with the bytes, so a browser that kept yesterday's copy cannot hand it back. It matters most
+ * exactly where a publisher has no configuration to change, GitHub Pages and shared hosting alike.
+ * The query is meaningless to a static host, which serves the file and ignores it.
+ *
+ * So the address keeps everything and only the name loses it: what the page shows, logs and
+ * reports is `firmware.bin`, and a manifest with no query is unchanged in every respect.
+ */
+export function partName(path) {
+  const text = String(path ?? '');
+  return text.split('#')[0].split('?')[0] || text;
+}
+
 function normalizePart(p, i, boardKey, base, allowOrigins, profile) {
   if (!isPlainObject(p)) fail('manifest.part', { boardKey, index: i + 1 });
   const url = resolveUrl(p.path, base, allowOrigins);
   if (!isInt(p.offset) || p.offset < 0) fail('manifest.offset', { boardKey, index: i + 1 });
-  const part = { path: p.path, url, offset: p.offset };
+  const part = { path: partName(p.path), url, offset: p.offset };
   if (p.size !== undefined) {
     if (!isInt(p.size) || p.size <= 0) fail('manifest.size', { boardKey, index: i + 1 });
     part.size = p.size;

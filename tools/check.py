@@ -142,6 +142,32 @@ def collect_headers(headers: Any) -> Dict[str, str]:
     return collected
 
 
+def part_name(path: str) -> str:
+    """The file name a path names, with the query and the fragment left off.
+
+    A part may record its checksum in the address — `firmware.bin?sha256=04db4a…` — so that the
+    address changes with the bytes and a browser cannot serve yesterday's binary out of its cache
+    to somebody who visited before the release. Nothing on the server side reads it: a static host
+    answers with the file, and `app/manifest.js` strips it back off before it shows a name.
+    """
+    text = str(path)
+    return text.split('#')[0].split('?')[0] or text
+
+
+def path_checksum(path: str) -> Optional[str]:
+    """The `sha256` in a path's query, lower-cased, or None when there is none.
+
+    A query that carries `sha256` with something other than 64 hexadecimal characters comes back
+    as the empty string, so the caller can tell "nothing claimed" from "a claim that is nonsense".
+    """
+    query = urllib.parse.urlsplit(str(path).split('#')[0]).query
+    values = urllib.parse.parse_qs(query, keep_blank_values=True).get('sha256')
+    if not values:
+        return None
+    value = values[-1].strip().lower()
+    return value if HEX64.fullmatch(value) else ''
+
+
 def origin(url: str) -> Tuple[str, str]:
     """Scheme and host:port, the part the browser compares."""
     parts = urllib.parse.urlsplit(url)
@@ -224,7 +250,9 @@ class DirSource:
         return self.base
 
     def join(self, ref: Path, relative: str) -> Path:
-        cleaned = relative.replace('\\', '/')
+        # A path may carry the checksum as a query (`firmware.bin?sha256=…`). A server ignores it;
+        # on disk it is not part of the name, so it comes off before anything is resolved.
+        cleaned = part_name(relative).replace('\\', '/')
         if urllib.parse.urlsplit(cleaned).scheme:
             raise BadPath('%s is an absolute URL; check the live site instead' % relative)
         if cleaned.startswith('/'):
@@ -559,6 +587,34 @@ def check_sums(source: Source, sums_path: str) -> List[Finding]:
     return findings
 
 
+def checksum_in_path_findings(board: str, name: str, in_path: Optional[str], digest: str,
+                              declared_sum: Any, headers: Optional[Dict[str, str]]) -> List[Finding]:
+    """What the checksum in a part's address is worth here, in one to two lines.
+
+    Present: it has to name the bytes that were served, and it has to agree with the `sha256` the
+    part declares — a manifest that contradicts itself is a manifest somebody edited by hand and
+    half-finished. Absent: the address never changes, so it is only worth saying so where the host
+    also lets a browser keep the file without asking, which is the case the query exists for. A
+    directory on disk sends no headers and is not judged on that.
+    """
+    if in_path is None:
+        problem = stale_cache_problem(headers)
+        if problem is None:
+            return []
+        return [Finding(WARN, 'cache', '%s: %s has no checksum in its address and %s Write the '
+                        'address as %s?sha256=%s and a new release reaches them whatever the host '
+                        'sends — tools/manifest.py does it by default'
+                        % (board, name, problem.split(';')[0] + ';', name, digest))]
+    if in_path != digest:
+        return [Finding(FAIL, 'sha256', '%s: the address of %s says sha256=%s, but what it serves '
+                        'is %s' % (board, name, in_path, digest))]
+    if isinstance(declared_sum, str) and HEX64.fullmatch(declared_sum.lower()) and declared_sum.lower() != in_path:
+        return [Finding(FAIL, 'sha256', '%s: %s declares sha256 %s and its address says %s; the '
+                        'manifest contradicts itself' % (board, name, declared_sum.lower(), in_path))]
+    return [Finding(OK, 'cache', '%s: the address of %s changes with its contents, so a release '
+                    'reaches somebody who visited before it' % (board, name))]
+
+
 def check_part(source: Source, manifest_ref: Any, part: Any, board: str,
                allow_unhashed: bool = False) -> Tuple[List[Finding], Dict[str, Any]]:
     """Fetch one part and compare it with what the manifest declares about it.
@@ -572,14 +628,19 @@ def check_part(source: Source, manifest_ref: Any, part: Any, board: str,
     if not isinstance(part, dict) or not isinstance(part.get('path'), str) or not part['path'].strip():
         return [Finding(FAIL, 'manifest', '%s: a part has no path' % board)], blank
     path = part['path']
+    name = part_name(path)
+    in_path = path_checksum(path)
+    if in_path == '':
+        return [Finding(FAIL, 'sha256', '%s: %s carries a sha256 in its address that is not 64 '
+                        'hexadecimal characters' % (board, name))], blank
     offset = part.get('offset')
     if not isinstance(offset, int) or isinstance(offset, bool) or offset < 0:
-        return [Finding(FAIL, 'manifest', '%s: %s has no usable offset' % (board, path))], blank
+        return [Finding(FAIL, 'manifest', '%s: %s has no usable offset' % (board, name))], blank
     try:
         ref = source.join(manifest_ref, path)
     except SourceError as exc:
         return [Finding(FAIL, exc.what, '%s: %s' % (board, exc))], blank
-    fetched, problems = read_or_report(source, ref, '%s: %s' % (board, path))
+    fetched, problems = read_or_report(source, ref, '%s: %s' % (board, name))
     if fetched is None:
         return problems, blank
 
@@ -588,32 +649,38 @@ def check_part(source: Source, manifest_ref: Any, part: Any, board: str,
     if isinstance(declared, int) and not isinstance(declared, bool):
         if fetched.declared_length is not None and fetched.declared_length != declared:
             findings.append(Finding(FAIL, 'size', '%s: %s is served as %d bytes, manifest says %d'
-                                    % (board, path, fetched.declared_length, declared)))
+                                    % (board, name, fetched.declared_length, declared)))
         elif size != declared:
             findings.append(Finding(FAIL, 'size', '%s: %s is %d bytes, manifest says %d'
-                                    % (board, path, size, declared)))
+                                    % (board, name, size, declared)))
         else:
-            findings.append(Finding(OK, 'size', '%s: %s is %d bytes' % (board, path, size)))
+            findings.append(Finding(OK, 'size', '%s: %s is %d bytes' % (board, name, size)))
     else:
-        findings.append(Finding(WARN, 'size', '%s: %s declares no size' % (board, path)))
+        findings.append(Finding(WARN, 'size', '%s: %s declares no size' % (board, name)))
 
     digest = hashlib.sha256(fetched.data).hexdigest()
     declared_sum = part.get('sha256')
     if isinstance(declared_sum, str) and HEX64.fullmatch(declared_sum.lower()):
         if digest != declared_sum.lower():
             findings.append(Finding(FAIL, 'sha256', '%s: %s is %s, manifest says %s'
-                                    % (board, path, digest, declared_sum.lower())))
+                                    % (board, name, digest, declared_sum.lower())))
         else:
-            findings.append(Finding(OK, 'sha256', '%s: %s' % (board, path)))
+            findings.append(Finding(OK, 'sha256', '%s: %s' % (board, name)))
     elif declared_sum is None:
         findings.append(Finding(WARN if allow_unhashed else FAIL, 'checksum',
                                 '%s: %s declares no sha256, so nothing can tell a damaged or swapped '
                                 'file from the real one; add one, or pass --allow-unhashed to accept it'
-                                % (board, path)))
+                                % (board, name)))
     else:
-        findings.append(Finding(FAIL, 'sha256', '%s: %s declares a malformed checksum' % (board, path)))
+        findings.append(Finding(FAIL, 'sha256', '%s: %s declares a malformed checksum' % (board, name)))
 
-    return findings, {'offset': offset, 'size': size, 'head': fetched.data[:HEAD_SAMPLE], 'path': path}
+    # The checksum in the address, if there is one. It is what makes a release reach a visitor who
+    # came before it — the address changes with the bytes, so their browser cannot answer from its
+    # cache — and it is worth nothing if it names other bytes than the ones served, or than the
+    # ones the manifest declares a few characters further on.
+    findings.extend(checksum_in_path_findings(board, name, in_path, digest, declared_sum, fetched.headers))
+
+    return findings, {'offset': offset, 'size': size, 'head': fetched.data[:HEAD_SAMPLE], 'path': name}
 
 
 def is_offset(value: Any) -> bool:

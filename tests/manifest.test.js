@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync } from 'node:fs';
-import { normalizeManifest, localManifest } from '../app/manifest.js';
+import { normalizeManifest, localManifest, partName } from '../app/manifest.js';
 import { sha256Hex } from '../app/verify.js';
 import { InstallError } from '../app/errors.js';
 
@@ -508,4 +508,41 @@ test('localManifest: a set that brings its own bootloader asks about erasing, ev
   assert.equal(noBoot.promptErase, false, 'the bootloader on the device stays');
   const c61 = await localManifest({ name: 'set', chipFamily: 'ESP32-C61', parts: [{ path: 'x.bin', offset: 0x2000, bytes: localImage(20) }] });
   assert.equal(c61.promptErase, false, 'no declared bootloader offset: only a part at 0 asks');
+});
+
+/* --- the checksum in the address ------------------------------------------- */
+
+test('partName is the file name with the query and the fragment taken off', () => {
+  assert.equal(partName('firmware.bin?sha256=' + 'a'.repeat(64)), 'firmware.bin');
+  assert.equal(partName('../os/radio/0.4.1/radio.bin?sha256=aa#frag'), '../os/radio/0.4.1/radio.bin');
+  assert.equal(partName('firmware.bin'), 'firmware.bin');
+  assert.equal(partName('?sha256=aa'), '?sha256=aa', 'nothing left is not a name; keep what was written');
+  assert.equal(partName(undefined), '');
+});
+
+test('a checksum in the address reaches the download and never the name', () => {
+  const digest = 'a'.repeat(64);
+  const m = normalizeManifest(
+    { name: 'x', version: '1', builds: [{ chipFamily: 'ESP32', parts: [{ path: 'demo.bin?sha256=' + digest, offset: 0x1000, sha256: digest }] }] },
+    'https://host.example/install/manifests/demo.json');
+  const part = m.builds[0].parts[0];
+  assert.equal(part.url, 'https://host.example/install/manifests/demo.bin?sha256=' + digest,
+    'the browser asks for the whole address, which is what makes it a new one after a release');
+  assert.equal(part.path, 'demo.bin', 'and nothing the page shows, logs or reports carries the query');
+  assert.equal(part.sha256, digest);
+});
+
+test('a manifest with no query is unchanged in every respect', () => {
+  const plain = { name: 'x', version: '1', builds: [{ chipFamily: 'ESP32', parts: [{ path: 'demo.bin', offset: 0x1000 }] }] };
+  const m = normalizeManifest(plain, 'https://host.example/install/demo.json');
+  assert.equal(m.builds[0].parts[0].url, 'https://host.example/install/demo.bin');
+  assert.equal(m.builds[0].parts[0].path, 'demo.bin');
+});
+
+test('the query travels with the address through a cross-origin allowance too', () => {
+  const m = normalizeManifest(
+    { name: 'x', version: '1', builds: [{ chipFamily: 'ESP32', parts: [{ path: 'https://files.example/demo.bin?sha256=' + 'b'.repeat(64), offset: 0 }] }] },
+    'https://host.example/install/demo.json', { allowOrigins: ['https://files.example'] });
+  assert.equal(m.builds[0].parts[0].url, 'https://files.example/demo.bin?sha256=' + 'b'.repeat(64));
+  assert.equal(m.builds[0].parts[0].path, 'https://files.example/demo.bin');
 });

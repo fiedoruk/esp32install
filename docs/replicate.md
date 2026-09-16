@@ -297,6 +297,15 @@ version numbers; it takes the first entry that matches. So:
    very first entry in the list whatever its channel.
 5. Run `check.py` against the live site.
 
+A binary keeps its name from one release to the next more often than not, and a
+browser that fetched it before will hand the old copy back. `tools/manifest.py`
+answers that by writing the checksum into the address —
+`firmware.bin?sha256=04db4a…` — so the address changes with the bytes and the
+cache cannot match. A static host serves the file and ignores the query; the page
+strips it off before it shows a name. This is the only way to reach an earlier
+visitor on a host whose headers you cannot set, which is what GitHub Pages and
+most shared hosting amount to. `--no-checksum-in-path` turns it off.
+
 ```
 python3 tools/check.py https://example.com/install/
 ```
@@ -476,6 +485,11 @@ header('Content-Type: application/octet-stream');
 header('Content-Length: ' . filesize($file));
 readfile($file);
 ```
+
+The path may still carry the checksum — `demo.php?sha256=04db4a…` — and the
+script above ignores it, which is the point: it decides what to send from the
+name written into its own source and reads nothing from the query. The query is
+there for the browser's cache, not for the server.
 
 One consequence to know before you run the checker: with `"path": "demo.php"` in
 the manifest, `python3 tools/check.py .` on a directory measures the PHP source
