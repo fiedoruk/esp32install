@@ -74,7 +74,7 @@ test('positive control: jargon in a simple key is caught, and the device-name ex
 /** Keys the page and the engine ask for by name. Dropping one breaks the UI silently. */
 const REQUIRED = [
   'app.title', 'app.titleVersion', 'app.subtitle', 'app.notDetected',
-  'app.stage', 'app.copyLog', 'app.showLog', 'app.hideLog', 'app.language',
+  'app.stage', 'app.copyLog', 'app.showLog', 'app.language',
   'door.title', 'door.first', 'door.firstHint', 'door.firstHintNew', 'door.update', 'door.updateHint', 'door.updateHintOwn',
   'gate.insecure', 'gate.noSerial', 'gate.altFirst',
   'action.connect', 'action.connecting', 'action.installing', 'action.retry',
@@ -91,7 +91,7 @@ const REQUIRED = [
   'simple.install.keepCable', 'simple.backup.save', 'simple.backup.saved', 'simple.done.title', 'simple.done.next', 'simple.done.again', 'simple.stopped.safe', 'simple.stopped.during',
   'tech.title', 'tech.chip', 'tech.flash', 'tech.board', 'tech.release', 'tech.checksum', 'tech.log', 'tech.file',
   'tech.layout', 'tech.settings', 'tech.layoutUnreadable',
-  'simple.own.title', 'simple.own.instead', 'simple.own.hint', 'simple.own.choose', 'simple.own.read', 'simple.own.address', 'simple.own.device',
+  'simple.own.title', 'simple.own.pageTitle', 'simple.own.instead', 'simple.own.hint', 'simple.own.choose', 'simple.own.read', 'simple.own.address', 'simple.own.device',
   'simple.own.pickDevice', 'simple.own.plan', 'simple.own.planMany', 'simple.own.unknownDevice', 'simple.own.badAddress', 'simple.own.needFile',
   'simple.own.url', 'simple.own.urlHint', 'simple.own.urlGo', 'simple.own.addFile', 'simple.own.part', 'simple.own.remove',
   'simple.own.overlap', 'simple.own.wrongDevice', 'simple.own.notAnImage',
@@ -275,4 +275,36 @@ test('positive control: Polish jargon in a simple key is caught', () => {
 test('every Polish error string says what happened and what to do', () => {
   const thin = Object.entries(readLocale('pl').error).filter(([, v]) => (v.match(/[.!?]/g) ?? []).length < 2);
   assert.deepEqual(thin, []);
+});
+
+/* --- one grammar for the three hatches, and a heading that asks the blocking question --- */
+
+test('every hatch is named after what is inside it, and none of them says whether it is open', () => {
+  // The chevron already says open or shut. A label that says it too changes under the finger,
+  // and it made one of the three hatches speak a different grammar from the other two.
+  const labels = { 'tech.title': en.tech.title, 'app.showLog': en.app.showLog, 'alt.title': en.alt.title };
+  for (const [key, text] of Object.entries(labels)) {
+    assert.doesNotMatch(text, /^(show|hide|open|close)\b/i, key + ' names the hatch, it does not command it');
+  }
+  assert.equal(en.app.showLog, en.tech.log, 'the log hatch and the log itself are called the same thing');
+  assert.equal(en.app.hideLog, undefined, 'and there is no second label to swap to');
+  const pl = JSON.parse(readFileSync(new URL('../locales/pl.json', import.meta.url), 'utf8'));
+  assert.equal(pl.app.hideLog, undefined);
+  assert.equal(pl.app.showLog, pl.tech.log);
+  const ui = readFileSync(new URL('../app/ui.js', import.meta.url), 'utf8');
+  assert.doesNotMatch(ui, /hideLog/, 'nothing swaps it any more');
+});
+
+test('the own-file path asks for the file, and does not lose the cable', () => {
+  const ui = readFileSync(new URL('../app/ui.js', import.meta.url), 'utf8');
+  // The button on that path waits for a file, so the largest words on the screen ask for a file.
+  assert.match(ui, /#screen-prepare h1'\)\.textContent = t\('simple\.own\.pageTitle'\)/);
+  assert.match(ui, /\.own-hint'\)\.textContent = t\('simple\.own\.hint'\) \+ ' ' \+ t\('simple\.prepare\.title'\)/,
+    'the cable sentence moves one line down, it does not go away');
+  const index = readFileSync(new URL('../index.html', import.meta.url), 'utf8');
+  assert.match(index, /<h1 data-i18n="simple\.prepare\.title">/, 'and the catalogue path keeps the heading it had');
+  for (const dict of [en, JSON.parse(readFileSync(new URL('../locales/pl.json', import.meta.url), 'utf8'))]) {
+    assert.ok(dict.simple.own.pageTitle.trim(), 'both languages have it');
+    assert.notEqual(dict.simple.own.pageTitle, dict.simple.prepare.title);
+  }
 });

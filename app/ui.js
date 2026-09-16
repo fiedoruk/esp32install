@@ -177,9 +177,6 @@ export function mountUi({ i18n, system }) {
   refreshFacts();
   refreshAlt();
   $('copy-log').disabled = true; // there is nothing to copy until the first line arrives
-  $('log-details').addEventListener('toggle', (e) => {
-    $('log-summary').textContent = t(e.target.open ? 'app.hideLog' : 'app.showLog');
-  });
   $('copy-log').addEventListener('click', async () => {
     try { await navigator.clipboard.writeText($('log').textContent); } catch { /* clipboard may be blocked */ }
   });
@@ -509,6 +506,11 @@ export function mountUi({ i18n, system }) {
      */
     showOwn(chips) {
       ownPath = true;
+      // The heading of screen 1 is written for the catalogue path, where the cable is the only
+      // thing missing. Here a file is missing too, and it is the file the button waits for, so
+      // the largest words ask for that and the cable sentence moves into the line below.
+      document.querySelector('#screen-prepare h1').textContent = t('simple.own.pageTitle');
+      $('own').querySelector('.own-hint').textContent = t('simple.own.hint') + ' ' + t('simple.prepare.title');
       $('title').textContent = t('simple.own.title');
       $('door-update-hint').textContent = t('door.updateHintOwn');
       $('fact-release-label').textContent = t('tech.file');

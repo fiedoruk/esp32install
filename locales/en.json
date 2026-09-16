@@ -5,8 +5,7 @@
     "notDetected": "Not detected yet",
     "stage": "Step",
     "copyLog": "Copy log",
-    "showLog": "Show technical log",
-    "hideLog": "Hide technical log",
+    "showLog": "Technical log",
     "language": "Language",
     "progress": "Progress",
     "titleVersion": "Install {system} {version}"
@@ -113,6 +112,7 @@
     },
     "own": {
       "title": "Install your own file",
+      "pageTitle": "Choose the file you want to put on the device.",
       "instead": "Install your own file instead",
       "hint": "Choose the file from this computer, or several if your build tool made more than one. Nothing is uploaded anywhere.",
       "choose": "Choose the file",

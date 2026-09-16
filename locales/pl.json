@@ -5,8 +5,7 @@
     "notDetected": "Jeszcze nie widzę urządzenia",
     "stage": "Krok",
     "copyLog": "Skopiuj zapis techniczny",
-    "showLog": "Pokaż zapis techniczny",
-    "hideLog": "Ukryj zapis techniczny",
+    "showLog": "Zapis techniczny",
     "language": "Język",
     "progress": "Postęp",
     "titleVersion": "Zainstaluj {system} {version}"
@@ -113,6 +112,7 @@
     },
     "own": {
       "title": "Zainstaluj własny plik",
+      "pageTitle": "Wybierz plik, który ma trafić na urządzenie.",
       "instead": "Albo zainstaluj własny plik",
       "hint": "Wskaż plik z tego komputera, albo kilka, jeśli narzędzie do budowania zrobiło ich więcej. Nic nigdzie nie jest wysyłane.",
       "choose": "Wybierz plik",
