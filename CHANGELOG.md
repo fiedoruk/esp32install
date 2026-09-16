@@ -4,6 +4,26 @@ What changed between released versions. The only supported way to update a copy
 is to replace the files with the current ones, so this page exists for the
 question "does the copy I am running have that fix?".
 
+## 0.3.1 — 2026-09-16
+
+**Replace 0.3.0 if you have it.** It refuses every classic ESP32.
+
+### A classic ESP32 was told it was locked when it was not
+Reported from a stock, unlocked M5Stack Core2 (ESP32-D0WDQ6-V3): the page stopped with
+*"This device is locked by its maker (secure boot or encrypted flash), so nothing was
+written."* and wrote nothing.
+
+`get_security_info` is defined from the ESP32-S2 onwards. The classic ESP32 has no such
+command, and its reply to it is not the ROM's invalid-command code we recognised — it is
+status 255. That was read as an unreadable answer, which 0.3.0 had deliberately made a
+hard stop so that a timeout could never be mistaken for a missing command. Both decisions
+were right on their own and wrong together.
+
+A family that cannot have the command is no longer asked for it, exactly as the ESP8266
+already was; the classic ESP32 goes straight to its efuses, where esptool looks too.
+Nothing about a locked device changes: efuses that say locked still refuse, and the
+ESP32-S2 and later path is untouched.
+
 ## 0.3.0 — 2026-09-16
 
 This release is about the copy on **your** server rather than about ours. Nothing
