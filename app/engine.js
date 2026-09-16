@@ -14,6 +14,7 @@ import { md5Hex } from './md5.js';
 import { runPreserve } from './preserve.js';
 import { checkSecurity } from './security.js';
 import { verifiedBackup, backupFilename } from './backup.js';
+import { readPartitionTable, entryLine } from './partitions.js';
 import { etaSeconds } from './progress.js';
 
 const BAUD = 460800;
@@ -150,6 +151,26 @@ export function createInstaller(deps) {
     return hw;
   }
 
+  /**
+   * Diagnostics, never a decision: the device's own partition table, read after the security
+   * check and reported to the page and to the log. Nothing downstream branches on the answer,
+   * and a table that cannot be read is a log line — never a stop, never a failed install.
+   */
+  async function readLayout() {
+    try {
+      const layout = await readPartitionTable(loader);
+      log(layout.entries.length
+        ? 'partitions: ' + layout.entries.map(entryLine).join('; ')
+        : 'partitions: none found at 0x' + layout.offset.toString(16));
+      emit({ type: 'layout', layout });
+      return layout;
+    } catch (e) {
+      log('partitions: could not be read (' + (e?.message ?? e) + ')');
+      emit({ type: 'layout', layout: null });
+      return null;
+    }
+  }
+
   async function pick(manifest, hw) {
     stage('matching', 10);
     const fits = compatibleBuilds(manifest.builds, hw);
@@ -233,6 +254,7 @@ export function createInstaller(deps) {
     // goes into the log.
     stage('checkingDevice', 11);
     await checkSecurity(loader, hw.chipFamily, log, { unknownIsLocked: false });
+    await readLayout();
     check();
     const parts = await download(build, hw);
     check();
@@ -287,7 +309,7 @@ export function createInstaller(deps) {
       try {
         const profile = job.manifest.profile;
         const result = profile === 'preserve'
-          ? await runPreserve({ job, connect, pick, download, loader: () => loader, stage, log, emit, check, deps, now, setWriting: () => { writing = true; changed = true; } })
+          ? await runPreserve({ job, connect, pick, download, loader: () => loader, readLayout, stage, log, emit, check, deps, now, setWriting: () => { writing = true; changed = true; } })
           : await runFactory(job);
         await cleanup();
         emit({ type: 'done', result });

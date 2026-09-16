@@ -37,7 +37,11 @@ test('happy path: connect, detect, verify, erase (confirmed), write with MD5, re
   assert.equal(fake.transports.length, 1);
   assert.deepEqual(fake.transports[0].args, [port, false, true]);
   const names = fake.calls.map((c) => c[0]);
-  assert.deepEqual(names, ['transport', 'main', 'readFlashId', 'command', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  // The one readFlash is the partition table, read after the security check for the record: it
+  // is between 'command' and 'eraseFlash' because nothing is read off a chip whose state is unknown.
+  assert.deepEqual(names, ['transport', 'main', 'readFlashId', 'command', 'readFlash', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.find((c) => c[0] === 'readFlash').slice(1), [0x8000, 0xc00]);
+  assert.ok(events.some((e) => e.type === 'layout'), 'and it is reported to the page');
   const w = fake.calls.find((c) => c[0] === 'writeFlash');
   assert.deepEqual(w[1], [[0, 0x3000]]); assert.equal(w[2], false); assert.equal(w[3], true);
   assert.ok(events.some((e) => e.type === 'hardware' && e.hw.flashSizeMB === 16));
@@ -421,12 +425,15 @@ test('factory with options.backup: true saves a verified whole-flash copy before
   assert.match(saved[0].name, /^Demo-backup-[0-9a-f]{8}\.bin$/);
   assert.equal(saved[0].name.slice(12, 20), (await sha256Hex(saved[0].bytes)).slice(0, 8));
   // Two read passes that had to agree: the page promises a copy that puts the device back.
-  assert.equal(fake.calls.filter((c) => c[0] === 'readFlash').length, 128);
+  // The table page is read too, once; it is the diagnostic read and belongs to neither pass.
+  const reads = fake.calls.filter((c) => c[0] === 'readFlash').map((c) => c.slice(1));
+  assert.deepEqual(reads.filter(([, n]) => n === 0xc00), [[0x8000, 0xc00]]);
+  assert.equal(reads.filter(([, n]) => n !== 0xc00).length, 128);
 
   const s2 = await setup();
   await s2.inst.run({ manifest: s2.manifest, mode: 'first', options: { backup: false } });
   assert.ok(!called(s2.fake, 'saveBackup'));
-  assert.ok(!called(s2.fake, 'readFlash'));
+  assert.deepEqual(s2.fake.calls.filter((c) => c[0] === 'readFlash').map((c) => c.slice(1)), [[0x8000, 0xc00]], 'without a copy, the table page is the only thing read');
   const s3 = await setup();
   await s3.inst.run({ manifest: s3.manifest, mode: 'first', options: {} });
   assert.ok(!called(s3.fake, 'saveBackup'));
@@ -498,7 +505,7 @@ test('own file: installs from memory with no fetch at all, the full check chain,
   assert.equal(r.verified, true);
   assert.equal(r.build, 'local');
   assert.deepEqual(fetches, [], 'nothing was fetched');
-  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'readFlash', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
   const w = fake.calls.find((c) => c[0] === 'writeFlash');
   assert.deepEqual(w[1], [[0, 0x3000]]);
   assert.equal(w[2], false, 'erase is its own step, never eraseAll');
@@ -599,7 +606,7 @@ test('own file by address: a relative same-origin address is fetched once, then 
     chooseBuild: async (b) => b[0], confirmErase: async () => true, saveBackup: async () => {} });
   const r = await inst.run({ manifest, mode: 'first', options: {} });
   assert.equal(r.verified, true);
-  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'readFlash', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
   assert.ok(fake.flash.subarray(0, img.length).every((b, i) => b === img[i]));
 });
 
@@ -697,7 +704,7 @@ test('own files: two parts (partition table + application) are written in one ca
   assert.equal(manifest.promptErase, false, 'nothing covers the bootloader: the one on the device stays');
   const r = await inst.run({ manifest, mode: 'first', options: {} });
   assert.equal(r.verified, true);
-  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'readFlash', 'writeFlash', 'after', 'disconnect']);
   assert.deepEqual(fake.calls.find((c) => c[0] === 'writeFlash')[1], [[0x8000, 0xc00], [0x10000, 0x200]]);
   assert.ok(fake.flash.subarray(0x8000, 0x8c00).every((b, i) => b === table[i]));
   assert.ok(fake.flash.subarray(0x10000, 0x10200).every((b, i) => b === app[i]));
@@ -711,7 +718,7 @@ test('own files: three parts with the bootloader at 0 on an S3 ask about erasing
   assert.equal(manifest.promptErase, true);
   const r = await inst.run({ manifest, mode: 'first', options: {} });
   assert.equal(r.verified, true);
-  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'readFlash', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
   assert.deepEqual(fake.calls.find((c) => c[0] === 'writeFlash')[1], [[0x0, 0x5000], [0x8000, 0xc00], [0x10000, 0x200]]);
   assert.ok(fake.flash.subarray(0, 0x5000).every((b, i) => b === boot[i]));
 });
