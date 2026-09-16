@@ -10,5 +10,5 @@ labels: ''
 each one goes to.
 
 **Why the existing manifest cannot say it.** The fields are listed in
-[docs/manifest.md](../docs/manifest.md); say which one is missing or wrong rather
-than which code should change.
+`docs/manifest.md`; say which one is missing or wrong rather than which code
+should change.

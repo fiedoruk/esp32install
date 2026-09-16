@@ -21,4 +21,4 @@ carries the stop code, the chip and the offsets, which is what turns a report
 into a diagnosis.
 
 Never attach a flash backup: those contain Wi-Fi passwords and whatever else the
-firmware stored. See [SECURITY.md](../SECURITY.md).
+firmware stored. `SECURITY.md` in this repository says why.
