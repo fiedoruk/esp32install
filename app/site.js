@@ -7,6 +7,10 @@
  * this page will not follow — in every one of those cases the page keeps the one-line footer that
  * ships in `index.html` and nothing else changes. An installer that cannot install because its
  * footer failed to load would be an absurd thing to build.
+ *
+ * One address does live here, and only one: `PROJECT_URL`, the repository this installer is a
+ * copy of. That is not a site that publishes a copy — it is what the copy is made of — and it is
+ * the whole of what we ask in return. See `mark()` for the line that removes it.
  */
 import { safeHref } from './catalog.js';
 
@@ -53,9 +57,27 @@ const link = ({ text: label, href }) => {
   return node;
 };
 
-/** The product's own mark again, small: the same signet and the same word as the header. */
+/**
+ * Where this installer comes from. The only address in `app/`, and the one exception to the rule
+ * above: it names the project's repository, never a site that publishes a copy. It is here because
+ * the mark in the footer is the whole of what we ask for a copy, and a mark nobody can follow is
+ * not a thank-you, it is a dead word.
+ */
+export const PROJECT_URL = 'https://github.com/fiedoruk/esp32install';
+
+/**
+ * The product's own mark again, small: the same signet and the same word as the header, and a
+ * link to the project behind them. `brand` alongside `foot-mark` is what takes the underline off
+ * and keeps the size the footer already set; both classes are in the stylesheet already.
+ *
+ * ⛔ If you do not want to link back, delete the one line marked below. Everything else stays:
+ * the signet, the word and the version still say which installer this page is, which is what
+ * somebody reporting a problem to you needs to tell you. This is a request, not a licence term.
+ */
 function mark(doc) {
-  const row = el('p', 'foot-mark');
+  const row = el('a', 'foot-mark brand');
+  row.href = PROJECT_URL; // ← delete this line to drop the link back to the project
+  row.rel = 'noopener';
   for (const sel of ['.brand .signet', '.brand .word']) {
     const found = doc.querySelector(sel);
     if (found) row.append(found.cloneNode(true));

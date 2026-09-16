@@ -407,9 +407,24 @@ Two rules the page applies to what you write there:
 * **Nothing is built from markup.** The text you write is text; a `<b>` in it will
   appear as `<b>`.
 
-The bottom row of the footer carries the installer's own sign and version. That
-part is the product's, not yours: it says which installer this page is, which is
-what someone reporting a problem needs to tell you.
+The bottom row of the footer carries the installer's own sign and version, and
+the sign links to the project this page is a copy of. That part is the product's,
+not yours: it says which installer this page is, which is what someone reporting
+a problem needs to tell you, and the link is where they go to report it.
+
+**It is also the whole of what the project asks in return, and it is a request,
+not a licence term.** The MIT licence requires the copyright notice in
+`LICENSE`, and nothing else; this mark is a thank-you. If you would rather your
+footer said nothing about where the installer came from, delete one line in
+`app/site.js`:
+
+```js
+  row.href = PROJECT_URL; // ← delete this line to drop the link back to the project
+```
+
+The signet, the word and the version stay; they simply stop being clickable.
+Nothing else in the page changes, no check fails, and no update will put the
+line back without your saying so.
 
 ⛔ **The product itself names no site.** Nothing in `app/`, `style.css`,
 `theme.css`, `locales/` or `index.html` may carry a domain, a brand or an address

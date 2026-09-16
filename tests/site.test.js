@@ -13,7 +13,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { normalizeSite, renderFooter, VERSION } from '../app/site.js';
+import { normalizeSite, renderFooter, VERSION, PROJECT_URL } from '../app/site.js';
 
 const read = (p) => readFileSync(new URL('../' + p, import.meta.url), 'utf8');
 
@@ -113,7 +113,14 @@ function fakeDoc() {
     };
     return node;
   };
-  return { createElement: make, querySelector: () => null, baseURI: 'https://example.com/install/' };
+  const brand = { '.brand .signet': make('svg'), '.brand .word': make('span') };
+  brand['.brand .word'].textContent = 'esp32install';
+  return {
+    createElement: make,
+    querySelector: (sel) => brand[sel] ?? null,
+    baseURI: 'https://example.com/install/',
+    documentElement: { lang: 'en' },
+  };
 }
 
 const walk = (node, out = []) => { out.push(node); for (const c of node.children) walk(c, out); return out; };
@@ -167,3 +174,46 @@ test('main.js loads it through its own JSON reader and never lets it stop the pa
 test('index.html keeps the one line the page falls back to', () => {
   assert.match(read('index.html'), /<footer class="foot">.*<\/footer>/);
 });
+
+/* --- the mark, and the one line that removes it ---------------------------- */
+
+test('the mark in the footer is a link to the project, whatever site.json says', () => {
+  const doc = fakeDoc();
+  global.document = doc;
+  for (const raw of [{ brand: 'Acme' }, { bottom: [{ text: 'MIT', href: 'https://acme.example/l' }] }]) {
+    const foot = doc.createElement('footer');
+    renderFooter(foot, normalizeSite(raw), doc);
+    const linked = walk(foot).filter((n) => n.attrs.href === PROJECT_URL);
+    assert.equal(linked.length, 1, JSON.stringify(raw) + ': exactly one mark, and it is followable');
+    assert.equal(linked[0].tagName, 'A');
+    assert.match(linked[0].className, /\bfoot-mark\b/);
+    assert.match(linked[0].className, /\bbrand\b/, 'brand is what takes the underline off, and it is already in the stylesheet');
+    assert.equal(linked[0].attrs.rel, 'noopener');
+    assert.equal(linked[0].textContent, 'esp32install', 'the header signet and word, cloned');
+  }
+  delete global.document;
+});
+
+test('the link is one line, named in the docs, and it points at the project and nowhere else', () => {
+  const src = read('app/site.js');
+  const lines = src.split('\n').filter((l) => l.includes('PROJECT_URL') && !l.trim().startsWith('*'));
+  assert.equal(lines.length, 2, 'the constant and the one assignment; nothing else uses it');
+  assert.match(src, /row\.href = PROJECT_URL; \/\/ ← delete this line/, 'the line says so itself');
+  assert.match(PROJECT_URL, /^https:\/\/github\.com\/[\w.-]+\/esp32install$/, 'the project, not a site of ours');
+  assert.ok(!OURS.test(PROJECT_URL), 'a repository is not a deployment');
+  assert.match(read('docs/replicate.md'), /row\.href = PROJECT_URL/, 'and the reader is told where to find it');
+});
+
+test('the stylesheet already has both classes the mark wears, and neither underlines it', () => {
+  const style = read('style.css');
+  assert.match(style, /\.brand \{[^}]*text-decoration: none;/s, 'brand is why the mark has no underline');
+  assert.match(style, /\.foot-mark \{/);
+  // The footer rules come after the header ones, so the small sizes win without !important.
+  assert.ok(style.indexOf('.foot-mark .signet') > style.indexOf('.brand .signet'), 'the small signet wins on order');
+  assert.ok(style.indexOf('.foot-mark .word') > style.indexOf('.brand .word'), 'the small word wins on order');
+});
+
+test('index.html falls back to the same link, so the mark is followable with no site.json at all', () => {
+  assert.match(read('index.html'), new RegExp('<footer class="foot">.*href="' + PROJECT_URL + '"'));
+});
+
