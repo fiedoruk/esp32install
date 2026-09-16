@@ -38,7 +38,18 @@ const read = (p) => readFileSync(new URL('../' + p, import.meta.url), 'utf8');
  * erase key became filled amber with a hover of its own so the heavy answer in that dialog no
  * longer weighs the same as the harmless one. Reason for the round: docs/qc/2026-09-16-design-qc-2.md.
  */
-const CEILING = { 'style.css': 36500, 'theme.css': 5200 };
+/*
+ * Raised once more 2026-09-16, 36 500 to 37 500 (style stood at 36 118 B before this round). The
+ * round that closed the five lighter findings of the first design-QC spent it on four rules and
+ * the reasoning beside them: one axis on the plate (the note and the quiet link stop being
+ * centred), a button that is off becoming a well with the plate's quiet ink instead of the accent
+ * faded to 2.57:1, the kicker leaving the done screen because "install this" has by then been
+ * carried out, and a stable scrollbar gutter so the page cannot change width while the browser's
+ * port window is open. Two of the four are one declaration each; the weight is mostly the note
+ * that says why, which is the house rule here. Reason for the round:
+ * docs/qc/2026-09-16-design-qc.md (F7, F10, F13).
+ */
+const CEILING = { 'style.css': 37500, 'theme.css': 5200 };
 
 test('neither stylesheet has grown past its ceiling', () => {
   const over = Object.entries(CEILING)

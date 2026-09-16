@@ -611,3 +611,41 @@ test('nothing renders an empty box: the emptied note, the empty log, the table o
   assert.match(ui, /\$\('alt-files-label'\)\.hidden = !hasFiles;/, 'a heading with no list under it does not render');
   assert.ok(en.tech.nothingYet && !/\{/.test(en.tech.nothingYet));
 });
+
+/* --- the round after design-qc (2026-09-16): one axis, and a page a phone can hold --- */
+
+test('one axis on the plate: notes and quiet links read down the same edge as everything else', () => {
+  // Three axes on one plate was the finding: kicker, heading, lead, doors and hatches to the
+  // left, and the note under the button, "Choose a file first." and the quiet link centred.
+  // Centring is left to the instruments — the ring, the mark, the strip of lamps.
+  assert.match(style, /\.note \{[^}]*text-align:\s*left/, 'the note under the button reads from the same edge');
+  assert.doesNotMatch(style, /\.note \{[^}]*text-align:\s*center/);
+  assert.match(style, /\.quiet \{[^}]*align-self:\s*flex-start/, 'and so does the quiet way out');
+  for (const centred of [/\.ring-wrap \{[^}]*align-self:\s*center/, /\.lamps \{[^}]*align-self:\s*center/]) {
+    assert.match(style, centred, 'the instruments stay centred: ' + centred);
+  }
+});
+
+test('a button that is off is readable: a well and the quiet ink, never the action faded out', () => {
+  const off = style.match(/\.cta:disabled \{([^}]*)\}/);
+  assert.ok(off, '.cta:disabled');
+  // The accent at 55 % composited to #81A2DF under white text: 2.57:1, under the 3:1 that a
+  // 20px bold line needs. axe never saw it, because axe does not measure disabled controls.
+  assert.doesNotMatch(off[1], /opacity/, 'fading the accent is what made the largest object the least readable');
+  assert.match(off[1], /background:\s*var\(--well\)/);
+  assert.match(off[1], /color:\s*var\(--dim\)/);
+  assert.match(off[1], /cursor:\s*default/, 'off is not busy');
+});
+
+test('the kicker is an instruction, so it goes when the install is done and stays when it stopped', () => {
+  assert.match(style, /\.plate:has\(#screen-done:not\(\.is-error\):not\(\[hidden\]\)\) \.kicker \{ display: none; \}/);
+  // The sentence under the mark carries the name and the version, so nothing is lost with it.
+  assert.match(read('app/ui.js'), /done\.classList\.add\('is-error'\)/, 'the stopped screen marks itself, and keeps its kicker');
+});
+
+test('the page never changes width between screens', () => {
+  // Reaching the install screen takes the document from 1340 to 1011 CSS px of content. Where a
+  // scrollbar occupies layout, that step would slide the whole page sideways while the browser's
+  // port window is open.
+  assert.match(style, /html \{[^}]*scrollbar-gutter:\s*stable/);
+});

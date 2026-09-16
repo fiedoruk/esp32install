@@ -8,7 +8,10 @@
 *, *::before, *::after { box-sizing: border-box; }
 [hidden] { display: none !important; }
 
-html { height: 100%; }
+/* Reaching the install screen takes the page from 1340 to 1011 CSS px of content. Where the
+   scrollbar sits in the layout rather than over it, that step would take the bar away and slide
+   the page sideways at the one moment nobody is looking at it. The gutter is always there. */
+html { height: 100%; scrollbar-gutter: stable; }
 body {
   margin: 0;
   min-height: 100%;
@@ -165,6 +168,9 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
   color: var(--accent);
 }
 .kicker:empty { display: none; }
+/* "INSTALL RADBOX 1.0.0" is an instruction. After the install it has been carried out and the
+   sentence under the mark names the system and the version; after a stop it has not. */
+.plate:has(#screen-done:not(.is-error):not([hidden])) .kicker { display: none; }
 /* A test release wears a small amber tag: caution, not stop. One tag, two places — under the
    kicker on the install screen, and in the row of the list that offers it, so the warning arrives
    before the choice and not after it. */
@@ -370,10 +376,15 @@ p { margin: 0; }
 .cta:hover:not(:disabled) { background: var(--accent-2); }
 .cta:active:not(:disabled) { box-shadow: inset 0 2px 4px rgb(0 0 0 / 0.18); }
 /* Off is the ordinary state on the own-file path, before a file is chosen: the pointer may not
-   claim something is running. Only the busy button does that. */
-.cta:disabled { opacity: 0.55; cursor: default; }
+   claim something is running. Only the busy button does that. And off is not the action faded:
+   the accent at 55% put white on #81A2DF, 2.57:1, under the 3:1 a 20px bold line needs. A well
+   with a rule round it and the plate's quiet ink reads 6.2:1 light, 7.7:1 dark. */
+.cta:disabled { background: var(--well); color: var(--dim); box-shadow: inset 0 0 0 1px var(--line-2); cursor: default; }
 .cta.is-busy { cursor: progress; }
-.note { margin-top: var(--s3); color: var(--dim); font-size: var(--t-small); text-align: center; }
+/* Notes and quiet links read down the same edge as the kicker, the heading and the hatches:
+   centred they were a third axis, and they were paying for the one broken rhythm that earns its
+   place — the pictogram pulled left. Centred stays for instruments: ring, mark, lamp strip. */
+.note { margin-top: var(--s3); color: var(--dim); font-size: var(--t-small); text-align: left; }
 /* One blocking message, one component: a well with a rule down its edge, in the colour of the
    state. The three places a person is stopped used to be three different objects, and the third
    — the line that says two files would land on the same address — was a grey centred whisper
@@ -393,7 +404,7 @@ p { margin: 0; }
 #connect-why:not([hidden]) + .cta { margin-top: var(--s2); }
 .cta svg { width: 20px; height: 20px; stroke-width: 2.2; }
 .quiet {
-  align-self: center;
+  align-self: flex-start;
   margin-top: var(--s3);
   color: var(--dim);
   font-size: var(--t-small);
