@@ -29,10 +29,11 @@ already on the device. `preserve` cannot be chosen for it: there is no
    same security check `preserve` makes (see step 2 there): a board with secure
    boot or flash encryption is refused with `device.secured` before the erase,
    because the plaintext this installer writes would leave it unable to start.
-   The one difference is what an unreadable state means. `factory` writes a whole
-   layout to a device it makes no promise about, so a chip that cannot answer is
-   installed to anyway and the reason goes into the technical log; `preserve`
-   refuses.
+   The one difference is what an unknown state means. `factory` writes a whole
+   layout to a device it makes no promise about, so a chip whose state nothing can
+   read — in practice a classic ESP32 whose efuses would not come back — is installed
+   to anyway and the reason goes into the technical log; `preserve` refuses. A chip
+   that does not answer at all is not `unknown` but a failure, and stops both.
 3. **Match.** Builds are filtered by chip family, `flashSizeMB`, USB ids,
    `chipDescriptionIncludes` and `featuresAll`. One survivor is used directly.
    Several survivors open a board chooser. None stops the install.
@@ -106,16 +107,31 @@ never calls `eraseFlash`.
    read. All four flag bytes and the flash-encryption counter must be zero. A
    device with secure boot or encrypted flash is refused with `device.secured`.
 
-   That command exists on ESP32-S3 and newer. On a classic ESP32 — a Core2, say —
-   the ROM does not have it, and the two block-0 efuses esptool reads are consulted
-   instead: `FLASH_CRYPT_CNT` (seven bits at bit 20 of word 0, encryption on when an
-   odd number of them are blown) and `ABS_DONE_0`/`ABS_DONE_1` (bits 4 and 5 of word
-   6, secure boot v1 and v2). ESP8266 has neither feature and passes. Anything else
-   that neither answers the command nor has efuses this page knows how to read is
-   treated as locked by `preserve`, which never writes on a guess. The efuse path is
-   read from the chip's own registers through esptool-js and is **not measured on
-   locked hardware**: it has been exercised against the fakes, not against a board
-   with the fuses actually blown.
+   That command exists on ESP32-S2 and everything newer, and the answer comes in two
+   lengths: 12 bytes from an ESP32-S2, 20 from an ESP32-S3, C2, C3, C5, C6, C61, H2
+   and P4. Both carry the flags word and the encryption counter in their first five
+   bytes, so both are read; a reply shorter than 12 bytes is not an answer and stops
+   the install on either profile.
+
+   **ESP8266** has neither feature, and its ROM predates the command: it is answered
+   without being asked. **The classic ESP32** is the one family whose ROM has no such
+   command and whose state can still be read, so it is the only family the efuse
+   fallback covers: the two block-0 efuses esptool reads at `EFUSE_RD_REG_BASE`
+   `0x3FF5A000` — `FLASH_CRYPT_CNT` (seven bits at bit 20 of word 0, encryption on
+   when an odd number of them are blown) and `ABS_DONE_0`/`ABS_DONE_1` (bits 4 and 5
+   of word 6, secure boot v1 and v2). Every later family puts something else at that
+   address, which is why esptool-js declares `readEfuse` on the classic ESP32 alone.
+   A classic ESP32 whose efuses cannot be read is therefore the only `unknown` left:
+   `factory` installs and logs the reason, `preserve` refuses, because it never
+   writes on a guess.
+
+   A chip that does not answer at all — a timeout, a serial error — is **not** a chip
+   without the command. Both profiles stop with `device.secured` in that case; a retry
+   costs a minute, and the alternative is writing plaintext over an encrypted board.
+
+   Neither path is **measured on locked hardware**: both have been exercised against
+   the fakes, not against a board with the fuses actually blown, and the 12-byte shape
+   is read out of esptool's own branch rather than off an ESP32-S2.
 3. **Note the identity.** The MAC address is read and kept, then re-read before
    the backup and again before the first write. A different MAC means someone
    swapped the device mid-install.

@@ -111,12 +111,12 @@ test('first install on a matching device: security ok, header ok, backup require
   const names = fake.calls.map((c) => c[0]);
   // Every check precedes the first write; the write follows the user's re-selected backup.
   const idx = (n) => names.indexOf(n);
-  assert.ok(idx('checkCommand') < idx('readFlash'), 'security state before any flash read');
+  assert.ok(idx('command') < idx('readFlash'), 'security state before any flash read');
   assert.ok(idx('saveBackup') > idx('readFlash') && idx('requestBackupFile') > idx('saveBackup'));
   assert.ok(idx('writeFlash') > idx('requestBackupFile'), 'nothing is written before the backup is on disk');
   assert.equal(names.at(-2), 'after'); assert.equal(names.at(-1), 'disconnect');
-  const sec = fake.calls.find((c) => c[0] === 'checkCommand');
-  assert.deepEqual(sec.slice(1), ['security info', 0x14, 20, 5000]);
+  const sec = fake.calls.find((c) => c[0] === 'command');
+  assert.deepEqual(sec.slice(1), [0x14, 5000], 'the ROM is asked for its security info, and the reply is read at whatever length it comes');
   // Parts go in manifest order, one writeFlash each, eraseAll false, each MD5-checked on the chip.
   const writes = fake.calls.filter((c) => c[0] === 'writeFlash');
   assert.deepEqual(writes.map((w) => w[1]), [[[0x20000, APP.length]], [[0x8000, TABLE.length]]]);
@@ -202,6 +202,31 @@ test('classic ESP32: no security-info command, so the efuses decide whether pres
       assert.ok(!called(fake, 'readFlash')); assert.ok(!called(fake, 'writeFlash'));
     } else {
       assert.equal((await run).verified, true, 'an unlocked classic ESP32 is no longer refused outright');
+      assert.ok(called(fake, 'writeFlash'));
+    }
+  }
+});
+
+/**
+ * The strict profile believes a short answer. An ESP32-S2 tells the truth about secure boot and
+ * flash encryption in 12 bytes; before this round every such reply was an exception, and on
+ * `preserve` — which refuses to guess — the whole family was refused whatever its real state.
+ * NOT MEASURED on hardware.
+ */
+test('preserve: a 12-byte security answer is an answer, and a locked one still refuses', async () => {
+  for (const { info, locked } of [
+    { info: new Uint8Array(12), locked: false },
+    { info: Uint8Array.from([0, 0, 0, 0, 1, 0, 0, 0, 0, 0, 0, 0]), locked: true },
+  ]) {
+    const img = deviceImage();
+    const manifest = await manifestFor(img);
+    const { inst, fake } = await setup({ img, manifest, fakeOptions: { chipName: 'ESP32-S3', securityInfo: info } });
+    const run = inst.run({ manifest, mode: 'first', options: {} });
+    if (locked) {
+      await assert.rejects(run, (e) => e.code === 'device.secured');
+      assert.ok(!called(fake, 'readFlash')); assert.ok(!called(fake, 'writeFlash'));
+    } else {
+      assert.equal((await run).verified, true);
       assert.ok(called(fake, 'writeFlash'));
     }
   }

@@ -3,6 +3,9 @@ import assert from 'node:assert/strict';
 import { createInstaller, mapSerialError, flashSizeFromId, fetchOwnFile } from '../app/engine.js';
 import { normalizeManifest, localManifest } from '../app/manifest.js';
 import { makeFakeEsptool } from './helpers/fakeEsptool.js';
+
+/** One bare loader, for the tests that drive a single command instead of a whole install. */
+const ESPLoaderFor = class { constructor(o) { return new (makeFakeEsptool(o).ESPLoader)({}); } };
 import { sha256Hex } from '../app/verify.js';
 
 function image(chipId) { const d = new Uint8Array(0x3000).fill(0xff); d[0x1000] = 0xe9; d[0x1000 + 12] = chipId; d[0x1000 + 13] = 0; return d; }
@@ -34,7 +37,7 @@ test('happy path: connect, detect, verify, erase (confirmed), write with MD5, re
   assert.equal(fake.transports.length, 1);
   assert.deepEqual(fake.transports[0].args, [port, false, true]);
   const names = fake.calls.map((c) => c[0]);
-  assert.deepEqual(names, ['transport', 'main', 'readFlashId', 'checkCommand', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(names, ['transport', 'main', 'readFlashId', 'command', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
   const w = fake.calls.find((c) => c[0] === 'writeFlash');
   assert.deepEqual(w[1], [[0, 0x3000]]); assert.equal(w[2], false); assert.equal(w[3], true);
   assert.ok(events.some((e) => e.type === 'hardware' && e.hw.flashSizeMB === 16));
@@ -188,6 +191,89 @@ test('classic ESP32: the efuses answer when the command does not, and a locked o
     }
     assert.deepEqual(fake.calls.filter((c) => c[0] === 'readEfuse').map((c) => c[1]), [0, 6], 'the two block-0 words esptool reads');
   }
+});
+
+/**
+ * The shape of the answer, not just its contents. An ESP32-S2 replies to command 0x14 with 12
+ * bytes where an ESP32-S3 replies with 20, and the gate used to demand 20 through the vendored
+ * `checkCommand` — whose exception it then read as "this ROM has no such command". An S2 with
+ * flash encryption on therefore fell through to an efuse path that only understands the classic
+ * ESP32, ended at `unknown`, and `factory` wrote plaintext over an encrypted layout.
+ * NOT MEASURED on hardware: there is no ESP32-S2 here.
+ */
+test('ESP32-S2: the 12-byte security answer is read, and an encrypted board stops the factory install', async () => {
+  const s2 = { chipFamily: 'ESP32-S2', parts: [{ path: 'demo.bin', offset: 0, size: 0x3000 }] };
+  const cases = [
+    { byte: 4, value: 1, locked: true, why: 'flash encryption on' },
+    { byte: 0, value: 1, locked: true, why: 'a secure-boot flag in the flags word' },
+    { byte: 0, value: 0, locked: false, why: 'a blank S2 installs as before' },
+  ];
+  for (const { byte, value, locked, why } of cases) {
+    const info = new Uint8Array(12); info[byte] = value;
+    const fake = makeFakeEsptool({ chipName: 'ESP32-S2', securityInfo: info });
+    const { inst, manifest } = await setup({ fake, img: image(2), over: { builds: [s2] } });
+    const run = inst.run({ manifest, mode: 'first', options: {} });
+    if (locked) {
+      await assert.rejects(run, (e) => e.code === 'device.secured', why);
+      assert.ok(!called(fake, 'eraseFlash'), why);
+      assert.ok(!called(fake, 'writeFlash'), why);
+    } else {
+      assert.equal((await run).verified, true, why);
+      assert.ok(called(fake, 'writeFlash'), why);
+    }
+    assert.ok(!called(fake, 'readEfuse'), 'the ROM answered, so the efuses are not consulted');
+  }
+});
+
+test('a reply too short to carry the two fields is a hard stop, not a shrug', async () => {
+  const fake = makeFakeEsptool({ securityInfo: new Uint8Array(11) });
+  const { inst, manifest } = await setup({ fake });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }),
+    (e) => e.code === 'device.secured' && e.params.reason === 'malformed');
+  assert.ok(!called(fake, 'writeFlash'));
+});
+
+test('a timeout or a serial error on 0x14 is not an absent command: the install stops on both profiles', async () => {
+  for (const message of ['Timed out waiting for packet header', 'invalid response', 'The device has been lost.']) {
+    const fake = makeFakeEsptool({ chipName: 'ESP32-S3', securityFails: message, efuse: { 0: 0, 6: 0 } });
+    const s3 = { chipFamily: 'ESP32-S3', parts: [{ path: 'demo.bin', offset: 0, size: 0x3000 }] };
+    const { inst, manifest } = await setup({ fake, img: image(9), over: { builds: [s3] } });
+    await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }),
+      (e) => e.code === 'device.secured' && e.params.reason === 'unreadable', message);
+    assert.ok(!called(fake, 'eraseFlash'), message);
+    assert.ok(!called(fake, 'writeFlash'), message);
+  }
+});
+
+test('ESP8266 is answered without asking: the command it has no answer for is never sent', async () => {
+  const fake = makeFakeEsptool({ chipName: 'ESP8266' });
+  const boot = new Uint8Array(0x3000).fill(0xff); boot[0] = 0xe9;
+  const { inst, manifest, events } = await setup({
+    fake, img: boot,
+    over: { builds: [{ chipFamily: 'ESP8266', parts: [{ path: 'demo.bin', offset: 0, size: 0x3000 }] }] },
+  });
+  assert.equal((await inst.run({ manifest, mode: 'first', options: {} })).verified, true);
+  assert.ok(!called(fake, 'command'), 'no five-second timeout to wait out');
+  const log = events.filter((e) => e.type === 'log').map((e) => e.line).join('\n');
+  assert.match(log, /neither secure boot nor flash encryption/);
+});
+
+/**
+ * Why the gate stopped using the vendored helper. This drives `checkCommand` directly, so the
+ * reason is pinned to the library's own rule rather than to a sentence in a comment: a 12-byte
+ * answer cannot satisfy `resplen 20`, and `resplen 12` would read the status bytes out of the
+ * middle of a 20-byte answer.
+ */
+test('the vendored checkCommand cannot ask this question at either length', async () => {
+  const s2 = new ESPLoaderFor({ securityInfo: new Uint8Array(12) });
+  await assert.rejects(() => s2.checkCommand('security info', 0x14, new Uint8Array(0), 0, 20, 5000),
+    /Only got 14 bytes of data/, 'the old call, against an ESP32-S2');
+  assert.equal((await s2.checkCommand('security info', 0x14, new Uint8Array(0), 0, 12, 5000)).length, 12);
+  const s3info = new Uint8Array(20); s3info[12] = 9; // the chip id an ESP32-S3 puts there
+  const s3 = new ESPLoaderFor({ securityInfo: s3info });
+  await assert.rejects(() => s3.checkCommand('security info', 0x14, new Uint8Array(0), 0, 12, 5000),
+    /failed with status 9,0/, 'asking for 12 reads the chip id as a failure status');
+  assert.equal((await s3.checkCommand('security info', 0x14, new Uint8Array(0), 0, 20, 5000)).length, 20);
 });
 
 /* --- a build that always erases still asks, and tells the truth --------------- */
@@ -412,7 +498,7 @@ test('own file: installs from memory with no fetch at all, the full check chain,
   assert.equal(r.verified, true);
   assert.equal(r.build, 'local');
   assert.deepEqual(fetches, [], 'nothing was fetched');
-  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'checkCommand', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
   const w = fake.calls.find((c) => c[0] === 'writeFlash');
   assert.deepEqual(w[1], [[0, 0x3000]]);
   assert.equal(w[2], false, 'erase is its own step, never eraseAll');
@@ -513,7 +599,7 @@ test('own file by address: a relative same-origin address is fetched once, then 
     chooseBuild: async (b) => b[0], confirmErase: async () => true, saveBackup: async () => {} });
   const r = await inst.run({ manifest, mode: 'first', options: {} });
   assert.equal(r.verified, true);
-  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'checkCommand', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
   assert.ok(fake.flash.subarray(0, img.length).every((b, i) => b === img[i]));
 });
 
@@ -611,7 +697,7 @@ test('own files: two parts (partition table + application) are written in one ca
   assert.equal(manifest.promptErase, false, 'nothing covers the bootloader: the one on the device stays');
   const r = await inst.run({ manifest, mode: 'first', options: {} });
   assert.equal(r.verified, true);
-  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'checkCommand', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'writeFlash', 'after', 'disconnect']);
   assert.deepEqual(fake.calls.find((c) => c[0] === 'writeFlash')[1], [[0x8000, 0xc00], [0x10000, 0x200]]);
   assert.ok(fake.flash.subarray(0x8000, 0x8c00).every((b, i) => b === table[i]));
   assert.ok(fake.flash.subarray(0x10000, 0x10200).every((b, i) => b === app[i]));
@@ -625,7 +711,7 @@ test('own files: three parts with the bootloader at 0 on an S3 ask about erasing
   assert.equal(manifest.promptErase, true);
   const r = await inst.run({ manifest, mode: 'first', options: {} });
   assert.equal(r.verified, true);
-  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'checkCommand', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'command', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
   assert.deepEqual(fake.calls.find((c) => c[0] === 'writeFlash')[1], [[0x0, 0x5000], [0x8000, 0xc00], [0x10000, 0x200]]);
   assert.ok(fake.flash.subarray(0, 0x5000).every((b, i) => b === boot[i]));
 });

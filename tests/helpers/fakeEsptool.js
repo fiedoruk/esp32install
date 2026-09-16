@@ -14,8 +14,9 @@ export function makeFakeEsptool({
   flashBytes = 16 * 1024 * 1024,
   mac = 'aa:bb:cc:dd:ee:ff',
   macSequence = null,       // e.g. ['a', 'a', 'b']: readMac answers in turn, then repeats the last
-  securityInfo = null,      // Uint8Array returned by checkCommand('security info', ...)
+  securityInfo = null,      // payload the ROM answers command 0x14 with: 12 bytes on an ESP32-S2, 20 on an ESP32-S3
   securityRejects = false,  // chip that does not know the security-info command
+  securityFails = null,     // message: the command throws instead of answering (a timeout, a serial error)
   efuse = null,             // { 0: word0, 6: word6 }: block-0 efuses a classic ESP32 would report
   tamperRead = null,        // (addr, n, index, data) => void — may mutate the bytes returned by readFlash
   corruptAt = null,         // flash address bumped after every writeFlash (models a bad write)
@@ -57,10 +58,40 @@ export function makeFakeEsptool({
       return 'desc';
     }
     async readFlashId() { calls.push(['readFlashId']); return flashId; }
-    async checkCommand(desc, op, data, chk, len, timeout) {
-      calls.push(['checkCommand', desc, op, len, timeout]);
-      if (securityRejects) throw new Error(`Failed to ${desc} failed with status 5,0`);
-      return securityInfo ?? new Uint8Array(20);
+    /**
+     * esptool-js `command(op, data, chk, waitResponse, timeout)` → `[value, data]`, where `data`
+     * is the payload with the two status bytes on the end. The length of that payload is the
+     * whole of the security gate's old blind spot, so it is modelled here: an ESP32-S2 answers
+     * command 0x14 with 12 bytes and an ESP32-S3 with 20, and a ROM without the command answers
+     * with the error status alone.
+     */
+    async command(op, data, chk, waitResponse = true, timeout) {
+      calls.push(['command', op, timeout]);
+      if (op !== 0x14) throw new Error(`fake esptool: no command 0x${op.toString(16)}`);
+      if (securityFails) throw new Error(securityFails);
+      if (securityRejects) return [0, Uint8Array.from([1, 5])]; // ROM_INVALID_RECV_MSG
+      const payload = securityInfo ?? new Uint8Array(20);
+      const out = new Uint8Array(payload.length + 2);
+      out.set(payload, 0);
+      return [0, out];
+    }
+    /**
+     * The vendored helper, rule for rule (esptool-js 0.6.1 `checkCommand`), including the length
+     * test that makes it throw on a reply shorter than `resplen + 2` and the status bytes it
+     * reads at a fixed place. Nothing in `app/` calls it any more — this is the model that says
+     * why, and a test drives it directly so the reason cannot quietly stop being true.
+     */
+    async checkCommand(desc, op, data, chk, resplen = 0, timeout) {
+      const [value, out] = await this.command(op, data, chk, true, timeout);
+      if (out && out.length < resplen + 2) {
+        const s = out.slice(0, 2);
+        throw new Error(s[0] !== 0
+          ? `Failed to ${desc} failed with status ${s}`
+          : `Failed to ${desc}.\n Only got ${out.length} bytes of data.`);
+      }
+      const status = out.slice(resplen, resplen + 2);
+      if (status[0] !== 0) throw new Error(`Failed to ${desc} failed with status ${status}`);
+      return resplen > 0 ? out.slice(0, resplen) : value;
     }
     async readFlash(addr, n) {
       calls.push(['readFlash', addr, n]);
