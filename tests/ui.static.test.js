@@ -649,3 +649,32 @@ test('the page never changes width between screens', () => {
   // port window is open.
   assert.match(style, /html \{[^}]*scrollbar-gutter:\s*stable/);
 });
+
+test('a phone gets the bar in the colour of the field, an icon that was drawn, and an honest manifest', () => {
+  const themeColor = [...html.matchAll(/<meta name="theme-color" content="(#[0-9A-F]{6})" media="\(prefers-color-scheme: (light|dark)\)">/g)];
+  assert.equal(themeColor.length, 2, 'one for each theme, chosen by the phone');
+  const byScheme = Object.fromEntries(themeColor.map((m) => [m[2], m[1]]));
+  // The bar has to be the field the plate sits on, in whichever theme, and the value may not
+  // drift away from the token: --bg in the light block and in the dark one.
+  const lightBg = /:root \{[\s\S]*?--bg:\s*(#[0-9A-F]{6});/.exec(theme)[1];
+  const darkBg = /:root\[data-theme="dark"\] \{[\s\S]*?--bg:\s*(#[0-9A-F]{6});/.exec(theme)[1];
+  assert.equal(byScheme.light, lightBg);
+  assert.equal(byScheme.dark, darkBg);
+
+  assert.match(html, /<link rel="apple-touch-icon" href="apple-touch-icon\.png">/);
+  const png = readFileSync(new URL('../apple-touch-icon.png', import.meta.url));
+  assert.equal(png.subarray(0, 8).toString('hex'), '89504e470d0a1a0a', 'a real PNG');
+  assert.equal(png.readUInt32BE(16), 180, 'the size iOS asks for');
+  assert.equal(png.readUInt32BE(20), 180);
+  assert.equal(png[25], 2, 'colour type 2: opaque RGB, because iOS composites transparency on black');
+
+  assert.match(html, /<link rel="manifest" href="site\.webmanifest">/);
+  const manifest = JSON.parse(read('site.webmanifest'));
+  assert.equal(manifest.name, 'esp32install');
+  assert.equal(manifest.theme_color, lightBg);
+  // This is a page you open once with a cable in your hand. A manifest that asks to be installed
+  // on a home screen would be a claim about the product that is not true.
+  assert.ok(!('display' in manifest), 'no display: this is not an application');
+  assert.deepEqual(manifest.icons.map((i) => i.src), ['favicon.svg', 'apple-touch-icon.png']);
+  for (const i of manifest.icons) assert.ok(read(i.src).length > 0, i.src + ' exists');
+});

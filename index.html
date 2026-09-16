@@ -8,7 +8,18 @@
   <meta name="color-scheme" content="light dark">
   <meta name="referrer" content="no-referrer">
   <title>esp32install</title>
+  <!-- The browser bar takes the colour of the field the plate sits on, in whichever theme the
+       phone is set to. The two switches in the header move the page, not the bar: a <meta> is
+       read once at load, so a theme chosen by hand leaves the bar where the phone put it. -->
+  <meta name="theme-color" content="#ECEAF2" media="(prefers-color-scheme: light)">
+  <meta name="theme-color" content="#0E1B2E" media="(prefers-color-scheme: dark)">
   <link rel="icon" href="favicon.svg">
+  <!-- Drawn from the signet, not a scaled screenshot of the page, which is what iOS puts on the
+       home screen when this is missing. Generator and reasoning: docs/qc/2026-09-16-wizual/. -->
+  <link rel="apple-touch-icon" href="apple-touch-icon.png">
+  <!-- A name and an icon for whoever bookmarks this. Deliberately no "display": this is a page
+       you visit once with a cable in your hand, not an application to keep on a home screen. -->
+  <link rel="manifest" href="site.webmanifest">
   <link rel="stylesheet" href="theme.css">
   <link rel="stylesheet" href="style.css">
   <script src="theme-init.js"></script>

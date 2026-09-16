@@ -1,0 +1,14 @@
+{
+  "name": "esp32install",
+  "short_name": "esp32install",
+  "description": "Install firmware on an ESP32 device from your browser, over a USB cable. Checked before and after writing.",
+  "lang": "en",
+  "start_url": "./",
+  "scope": "./",
+  "background_color": "#ECEAF2",
+  "theme_color": "#ECEAF2",
+  "icons": [
+    { "src": "favicon.svg", "type": "image/svg+xml", "sizes": "any" },
+    { "src": "apple-touch-icon.png", "type": "image/png", "sizes": "180x180" }
+  ]
+}
