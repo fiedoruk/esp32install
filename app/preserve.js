@@ -3,7 +3,8 @@
  * bootloader, partition table and data. Every check is a hard stop before the first
  * write, and there is no erase path: this module never calls `eraseFlash`.
  *
- * Order: connect → match → security state → identity (MAC) → header read + layout
+ * Order: connect → match → security state → the device's own partition table, read for the
+ * record and for nothing else → identity (MAC) → header read + layout
  * checks → download + verify → mandatory verified backup, saved where the user chooses and
  * read back from disk (or, without a save picker, downloaded and re-selected by the user)
  * → identity + header re-check → write part by part with an MD5 read-back →
@@ -16,6 +17,7 @@ import { sha256Hex } from './verify.js';
 import { md5Hex } from './md5.js';
 import { readRange, verifiedBackup, matchesBackup, backupFilename, readBackHandle } from './backup.js';
 import { checkSecurity } from './security.js';
+import { layoutParams } from './partitions.js';
 import { etaSeconds } from './progress.js';
 
 const PAGE = 0x1000;
@@ -50,19 +52,24 @@ function headerSizeOf(compat, tablePage) {
   return ranges.reduce((n, r) => Math.max(n, r.offset + r.size), 0);
 }
 
-async function checkHeader(header, build, mode, tablePage) {
+/**
+ * `found` is `layoutParams` over the table read off the device: it rides along on every
+ * `device.layout` stop so the page can say what the device actually has. It changes no
+ * comparison and no outcome here — the checks below are the ones they always were.
+ */
+async function checkHeader(header, build, mode, tablePage, found = {}) {
   const compat = build.compatibility;
   const region = async (r) => {
     // A region without a checksum makes a claim this installer cannot check: fail closed.
     if (!r.sha256) fail('manifest.compatibility', { boardKey: build.boardKey });
-    if ((await sha256Hex(header.subarray(r.offset, r.offset + r.size))) !== r.sha256) fail('device.layout', { offset: hex(r.offset), size: r.size });
+    if ((await sha256Hex(header.subarray(r.offset, r.offset + r.size))) !== r.sha256) fail('device.layout', { offset: hex(r.offset), size: r.size, ...found });
   };
   for (const r of compat.regions) await region(r);
   if (mode === 'update') {
     const { offset, size, part } = tablePage;
     const page = header.subarray(offset, offset + size);
-    if ((await sha256Hex(page.subarray(0, part.size))) !== part.sha256) fail('device.layout', { offset: hex(offset), size: part.size });
-    if (page.subarray(part.size).some((b) => b !== 0xff)) fail('device.layout', { offset: hex(offset), size });
+    if ((await sha256Hex(page.subarray(0, part.size))) !== part.sha256) fail('device.layout', { offset: hex(offset), size: part.size, ...found });
+    if (page.subarray(part.size).some((b) => b !== 0xff)) fail('device.layout', { offset: hex(offset), size, ...found });
     return;
   }
   for (const r of compat.firstInstall.regions) await region(r);
@@ -126,6 +133,9 @@ export async function runPreserve(ctx) {
   // A state this profile cannot read is treated as locked: it writes into a device it promises
   // to keep working, and it has no erase to fall back on.
   await checkSecurity(loader(), hw.chipFamily, log, { unknownIsLocked: true });
+  // Read, not trusted: what the table says never decides anything below. It only lets a refusal
+  // name what is on the device instead of an offset the person cannot place.
+  const found = ctx.readLayout ? layoutParams(await ctx.readLayout()) : {};
   const mac = String(await loader().chip.readMac(loader()));
   const sameDevice = async () => {
     const now = String(await loader().chip.readMac(loader()));
@@ -134,9 +144,9 @@ export async function runPreserve(ctx) {
   check();
   const tablePage = tablePageOf(build);
   const headerSize = headerSizeOf(build.compatibility, tablePage);
-  if (headerSize > flashBytes) fail('device.layout', { offset: hex(headerSize), flashBytes });
+  if (headerSize > flashBytes) fail('device.layout', { offset: hex(headerSize), flashBytes, ...found });
   const header = await readRange(loader(), 0, headerSize);
-  await checkHeader(header, build, mode, tablePage);
+  await checkHeader(header, build, mode, tablePage, found);
   log(`device ${mac}: the first ${headerSize} bytes match the release (${mode})`);
   check();
 

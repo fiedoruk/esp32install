@@ -155,6 +155,7 @@ function makeInstaller({ esptool, ui, fw, guide, nameOf }) {
       if (e.type === 'stage') { stage = e.stage; ui.setStage(e); }
       else if (e.type === 'hardware') { chip = e.hw.chipFamily; ui.setHardware(e.hw); }
       else if (e.type === 'build') { build = e.build; ui.setBuild(e.build); }
+      else if (e.type === 'layout') ui.setLayout(e.layout);
       else if (e.type === 'log') ui.appendLog(e.line);
       else if (e.type === 'done') {
         ui.setResult({ system: nameOf(), version: e.result.version, next: guide, checksum: e.result.parts?.map((p) => p.sha256).filter(Boolean).join(', ') });

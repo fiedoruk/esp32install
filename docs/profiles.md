@@ -261,6 +261,37 @@ device is opened. The page has to, because it is the only one of the three a
 hand-written manifest is guaranteed to meet: the publisher runs the checker, the
 visitor does not. The rising-offset warning applies to `factory` only.
 
+## What the installer reads from the device
+
+Besides the chip's own answers, both profiles read one page of flash that has
+nothing to do with what they write: the **partition table** at `0x8000`. It is
+read once, right after the security check of step 2, by `app/partitions.js`.
+
+ESP-IDF writes that page as a run of 32-byte entries, each starting with the
+magic `0xAA 0x50` and carrying a type, a subtype, an offset, a size and a
+16-byte label. The reader walks them in order and stops at the first entry that
+does not carry the magic — the `0xff` of a page nothing was written to, or the
+`0xEB 0xEB` of the MD5 entry ESP-IDF appends after the last real one. A page
+with no valid entry at all is *unreadable*, which is a fact about the device and
+not a failure.
+
+**Nothing is decided on what comes back.** No check consults it, no part moves
+because of it, and a read that throws is a line in the technical log and no more:
+a device whose table cannot be read installs exactly as it would have. It is
+there for two purposes only.
+
+- **The Details hatch** gains the device's real layout after connecting: every
+  entry with its offset, size and label, and the data/NVS entry — where ESP-IDF
+  keeps Wi-Fi credentials and settings — marked as the settings one.
+- **`device.layout` says what is actually there.** When `preserve` refuses
+  because the device does not match the checksums the release pinned, the stopped
+  screen names the device's own settings partition (`device.layoutFound`), or
+  says the table could not be read (`device.layoutUnreadable`). A table that was
+  read but holds no NVS entry adds nothing, and the original sentence stands: an
+  offset is thin, but it beats a reason nobody measured. The refusal itself is
+  unchanged in every case — this is what the person is told, not what the
+  installer does.
+
 ## Stop conditions
 
 Every one of these leaves the device unwritten, unless the table says otherwise.
@@ -356,10 +387,14 @@ no network. An HTTP error for a typed address stays `manifest.fetch`.
 | `device.changed` | A different device is connected now. Start again with the device you want to install on. |
 | `device.secured` | This device is locked by its maker (secure boot or encrypted flash), so nothing was written. Use the tools from the device's maker instead. |
 | `device.layout` | This device's memory is arranged differently from the one this release was tested on. Nothing was written. Tell whoever published this release. |
+| `device.layoutFound` | This device keeps its settings at {settings} ({settingsSize}), which is not where this release expects them. Nothing was written. Tell whoever published this release. |
+| `device.layoutUnreadable` | The installer could not read how this device's memory is divided up, so it cannot say how it differs from what this release expects. Nothing was written. Tell whoever published this release. |
 | `device.notEmpty` | The area this release needs is already in use. Nothing was written. Choose First installation to clear the device and start fresh. |
 
 `device.layout`, `device.notEmpty` and `device.changed` belong to the `preserve`
-profile. `device.secured` belongs to both: `factory` asks the chip the same
+profile. `device.layoutFound` and `device.layoutUnreadable` are the same
+`device.layout` stop, worded from the table read off the device; see *What the
+installer reads from the device* above. `device.secured` belongs to both: `factory` asks the chip the same
 question before it erases or writes, and the two profiles differ only in what an
 unreadable answer means (step 2 of each).
 

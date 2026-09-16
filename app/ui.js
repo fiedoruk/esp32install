@@ -119,6 +119,21 @@ const OWN_PROBLEM_KEY = {
  *      help more than a vague one;
  *   4. otherwise the own-file sentence that says what is true: these files, this device.
  */
+/**
+ * The stopped screen for `device.layout`. The refusal is decided before this is reached and is
+ * the same either way; all that is chosen here is which sentence says what was actually found on
+ * the device — where its settings are, that the table could not be read, or, when the reader has
+ * nothing to add, the sentence the page has always shown. It never invents a third possibility.
+ */
+export function layoutStop(code, params = {}) {
+  if (code !== 'device.layout') return { code, params };
+  if (typeof params.settingsOffset === 'number' && typeof params.settingsSize === 'number') {
+    return { code: 'device.layoutFound', params: { ...params, settings: '0x' + params.settingsOffset.toString(16), settingsSize: formatSize(params.settingsSize) } };
+  }
+  if (params.layout === 'unreadable') return { code: 'device.layoutUnreadable', params };
+  return { code, params };
+}
+
 export function ownErrorText(t, code, params = {}) {
   const own = 'simple.own.stopped.' + code;
   const written = t(own, params);
@@ -608,6 +623,30 @@ export function mountUi({ i18n, system }) {
       const minutes = backupMinutes(hw);
       $('backup-label').textContent = minutes === null ? t('action.backupUnknown') : t('action.backup', { minutes });
     },
+    /**
+     * The device's real layout in the technical layer: every entry the table gave, the settings
+     * one marked. This is the hatch a beginner never opens, so it may use the words a partition
+     * table uses. Nothing was decided on any of it.
+     */
+    setLayout(layout) {
+      const dd = $('fact-layout');
+      clear(dd);
+      const entries = layout?.entries ?? [];
+      if (entries.length === 0) {
+        dd.textContent = t('tech.layoutUnreadable');
+      } else {
+        const at = entries.map((e) => '0x' + e.offset.toString(16));
+        const size = entries.map((e) => formatSize(e.size));
+        const widest = (list) => Math.max(...list.map((x) => x.length));
+        const [wAt, wSize] = [widest(at), widest(size)];
+        const pre = document.createElement('pre');
+        pre.textContent = entries
+          .map((e, i) => `${at[i].padEnd(wAt)}  ${size[i].padStart(wSize)}  ${e.label || '-'} ${e.type}/${e.subtype}${e === layout.settings ? '  ' + t('tech.settings') : ''}`)
+          .join('\n');
+        dd.append(pre);
+      }
+      refreshFacts();
+    },
     setBuild(b) {
       $('fact-board').textContent = b.board;
       refreshFacts();
@@ -656,12 +695,11 @@ export function mountUi({ i18n, system }) {
      * an erase or a write has begun; before that the device really is untouched.
      */
     setError(error, { changed = false } = {}) {
-      const code = error?.code ?? 'engine.unexpected';
+      const { code, params } = layoutStop(error?.code ?? 'engine.unexpected', safeParams(error?.params));
       const done = $('screen-done');
       done.classList.add('is-error');
       $('done-title').textContent = t(changed ? 'simple.stopped.during' : 'simple.stopped.safe');
       $('done-unplug').hidden = true;
-      const params = safeParams(error?.params);
       $('done-text').textContent = ownPath ? ownErrorText(t, code, params) : t('error.' + code, params);
       $('wifi').hidden = true;
       $('done-next').hidden = true;

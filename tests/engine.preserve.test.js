@@ -6,6 +6,7 @@ import { normalizeManifest } from '../app/manifest.js';
 import { makeFakeEsptool } from './helpers/fakeEsptool.js';
 import { sha256Hex } from '../app/verify.js';
 import { saveBackupWithHandle } from '../app/backup.js';
+import { table, DEFAULT_ENTRIES } from './helpers/partitionTable.js';
 
 const MiB = 1024 * 1024;
 const FLASH = 16 * MiB;
@@ -80,8 +81,8 @@ function afterWrite(img, parts) {
 const fileOf = (bytes) => ({ size: bytes.length, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) });
 
 /** Wires the installer with a device image; the saved backup is what `requestBackupFile` hands back unless overridden. */
-async function setup({ img = deviceImage(), fakeOptions = {}, manifest, backupFile, app = APP, now, saveBackup } = {}) {
-  const fake = makeFakeEsptool({ chipName: 'ESP32-S3', flashImage: img, ...fakeOptions });
+async function setup({ img = deviceImage(), fakeOptions = {}, fake, manifest, backupFile, app = APP, now, saveBackup } = {}) {
+  fake ??= makeFakeEsptool({ chipName: 'ESP32-S3', flashImage: img, ...fakeOptions });
   fakes.push(fake);
   manifest ??= await manifestFor(img, { app });
   const events = [];
@@ -248,6 +249,69 @@ test('header mismatch (different bootloader) → device.layout, no backup, no wr
   await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'device.layout');
   assert.ok(fake.calls.filter((c) => c[0] === 'readFlash').every((c) => c[1] + c[2] <= HEADER), 'only the header was read');
   assert.ok(!called(fake, 'saveBackup')); assert.ok(!called(fake, 'requestBackupFile')); assert.ok(!called(fake, 'writeFlash'));
+});
+
+test('an unreadable table makes the stop say so, and never invents a layout it did not see', async () => {
+  // The device in these tests carries no partition table at 0x8000, only a page of pattern bytes.
+  const known = deviceImage();
+  const manifest = await manifestFor(known);
+  const { inst } = await setup({ img: deviceImage({ bootloader: pattern(0x8000, 29) }), manifest });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => {
+    assert.equal(e.code, 'device.layout');
+    assert.equal(e.params.layout, 'unreadable');
+    assert.equal(e.params.settingsOffset, undefined);
+    return true;
+  });
+});
+
+test('a device with a real table refuses just the same, and the stop names where its settings are', async () => {
+  // Same refusal as above — a bootloader that is not the one the release pinned — but this
+  // device has an ESP-IDF table on it, so the person can be told what it actually has.
+  const known = deviceImage();
+  const manifest = await manifestFor(known);
+  const img = deviceImage({ bootloader: pattern(0x8000, 29) });
+  img.set(table(DEFAULT_ENTRIES), 0x8000);
+  const { inst, fake, events } = await setup({ img, manifest });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => {
+    assert.equal(e.code, 'device.layout');
+    assert.equal(e.params.settingsOffset, 0x9000);
+    assert.equal(e.params.settingsSize, 0x6000);
+    return true;
+  });
+  assert.ok(!called(fake, 'saveBackup'), 'the refusal is the one it always was');
+  assert.ok(!called(fake, 'writeFlash'));
+  const layout = events.find((e) => e.type === 'layout');
+  assert.deepEqual(layout.layout.entries.map((e) => e.label), ['nvs', 'phy_init', 'app0', 'app1']);
+});
+
+test('the table is read once, after the security check, and a device that answers it still installs', async () => {
+  const { inst, manifest, fake, events } = await setup({ img: (() => { const i = deviceImage(); i.set(table(DEFAULT_ENTRIES), 0x8000); return i; })() });
+  // The table page sits where firstInstall pins the factory table, so this device is refused —
+  // what matters here is the order and the count of the diagnostic read itself.
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'device.layout');
+  const names = fake.calls.map((c) => c[0]);
+  assert.ok(names.indexOf('command') < names.indexOf('readFlash'), 'security state before any flash read, still');
+  const tableReads = fake.calls.filter((c) => c[0] === 'readFlash' && c[1] === 0x8000 && c[2] === 0xc00);
+  assert.equal(tableReads.length, 1, 'read once, not once per check');
+  assert.equal(events.filter((e) => e.type === 'layout').length, 1);
+});
+
+test('a table the chip will not give up is logged and changes nothing: the install runs to the end', async () => {
+  const img = deviceImage();
+  const fake = makeFakeEsptool({ chipName: 'ESP32-S3', flashImage: img });
+  const Base = fake.ESPLoader;
+  // Only the table page fails; every other read is the fake's own, so the backup still works.
+  fake.ESPLoader = class extends Base {
+    async readFlash(addr, n) {
+      if (addr === 0x8000 && n === 0xc00) { fake.calls.push(['readFlash', addr, n]); throw new Error('timed out waiting for packet header'); }
+      return super.readFlash(addr, n);
+    }
+  };
+  const { inst, manifest, events } = await setup({ img, fake });
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true, 'a failed diagnostic read must never turn a working install into a failed one');
+  assert.deepEqual(events.filter((e) => e.type === 'layout').map((e) => e.layout), [null]);
+  assert.ok(events.some((e) => e.type === 'log' && /partitions: could not be read/.test(e.line)));
 });
 
 test('settings area not empty in first mode → device.notEmpty, nothing read beyond the header, nothing written', async () => {

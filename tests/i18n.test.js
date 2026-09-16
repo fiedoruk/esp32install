@@ -2,7 +2,7 @@ import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
 import { detectLang, createI18n, langLinkHref } from '../app/i18n.js';
-import { ownErrorText, CATALOGUE_VOICE } from '../app/ui.js';
+import { ownErrorText, CATALOGUE_VOICE, layoutStop } from '../app/ui.js';
 
 const en = JSON.parse(readFileSync(new URL('../locales/en.json', import.meta.url), 'utf8'));
 
@@ -90,6 +90,7 @@ const REQUIRED = [
   'simple.prepare.title', 'simple.prepare.hintCable', 'simple.prepare.hintDoor', 'simple.prepare.hintBackup', 'simple.prepare.backupFirst', 'simple.preRelease',
   'simple.install.keepCable', 'simple.backup.save', 'simple.backup.saved', 'simple.done.title', 'simple.done.next', 'simple.done.again', 'simple.stopped.safe', 'simple.stopped.during',
   'tech.title', 'tech.chip', 'tech.flash', 'tech.board', 'tech.release', 'tech.checksum', 'tech.log', 'tech.file',
+  'tech.layout', 'tech.settings', 'tech.layoutUnreadable',
   'simple.own.title', 'simple.own.instead', 'simple.own.hint', 'simple.own.choose', 'simple.own.read', 'simple.own.address', 'simple.own.device',
   'simple.own.pickDevice', 'simple.own.plan', 'simple.own.planMany', 'simple.own.unknownDevice', 'simple.own.badAddress', 'simple.own.needFile',
   'simple.own.url', 'simple.own.urlHint', 'simple.own.urlGo', 'simple.own.addFile', 'simple.own.part', 'simple.own.remove',
@@ -162,6 +163,39 @@ test('no dead error strings: every error.* key in en.json is thrown somewhere in
   }
   const dead = Object.keys(en.error).filter((c) => !thrown.has(c));
   assert.deepEqual(dead, []);
+});
+
+/* --- device.layout says what is on the device ---------------------------- */
+
+/**
+ * The refusal is decided in `preserve` and is the same in all three cases below; what changes is
+ * only the sentence the person reads. These pin which one is chosen, and that nothing is chosen
+ * from thin air.
+ */
+test('layoutStop touches nothing but device.layout', () => {
+  for (const code of ['device.notEmpty', 'device.secured', 'flash.verify', 'engine.unexpected']) {
+    assert.deepEqual(layoutStop(code, { settingsOffset: 0x9000, settingsSize: 0x6000 }), { code, params: { settingsOffset: 0x9000, settingsSize: 0x6000 } });
+  }
+});
+
+test('a settings partition that was read becomes the sentence that names it, in both locales', () => {
+  const { code, params } = layoutStop('device.layout', { offset: '0x0', size: 0x8000, settingsOffset: 0x9000, settingsSize: 0x6000 });
+  assert.equal(code, 'device.layoutFound');
+  assert.equal(params.settings, '0x9000');
+  assert.equal(params.settingsSize, '24 KB');
+  for (const lang of ['en', 'pl']) {
+    const { t } = createI18n(lang === 'en' ? { en } : { en, pl: readLocale('pl') }, lang);
+    const sentence = t('error.' + code, params);
+    assert.match(sentence, /0x9000/, lang);
+    assert.match(sentence, /24 KB/, lang);
+    assert.doesNotMatch(sentence, /\{/, lang);
+  }
+});
+
+test('a table that could not be read says that, and a table without settings falls back to the old sentence', () => {
+  assert.equal(layoutStop('device.layout', { offset: '0x0', layout: 'unreadable' }).code, 'device.layoutUnreadable');
+  assert.equal(layoutStop('device.layout', { offset: '0x0' }).code, 'device.layout', 'nothing read about the device, nothing invented');
+  assert.equal(layoutStop('device.layout', { settingsOffset: 0x9000 }).code, 'device.layout', 'half an answer is no answer');
 });
 
 /* --- the own-file path speaks its own voice, whatever stops it ------------ */

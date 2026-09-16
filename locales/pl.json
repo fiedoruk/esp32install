@@ -185,6 +185,9 @@
     "board": "Płytka",
     "release": "Wydanie",
     "checksum": "Suma kontrolna",
+    "layout": "Partycje",
+    "settings": "ustawienia",
+    "layoutUnreadable": "Nie udało się odczytać tablicy partycji.",
     "log": "Zapis techniczny",
     "file": "Plik",
     "nothingYet": "Dopóki urządzenie nie jest podłączone, nic o nim nie wiadomo."
@@ -257,6 +260,8 @@
     "device.changed": "Teraz podłączone jest inne urządzenie. Zacznij jeszcze raz z tym, na którym chcesz instalować.",
     "device.secured": "To urządzenie jest zablokowane przez producenta (bezpieczny rozruch albo zaszyfrowana pamięć), więc nic nie zostało zapisane. Użyj narzędzi producenta tego urządzenia.",
     "device.layout": "Pamięć tego urządzenia jest ułożona inaczej niż w tym, na którym wydanie było sprawdzane. Nic nie zostało zapisane. Powiedz o tym osobie, która je opublikowała.",
+    "device.layoutFound": "To urządzenie trzyma ustawienia pod adresem {settings} ({settingsSize}), a to wydanie spodziewa się ich w innym miejscu. Nic nie zostało zapisane. Powiedz o tym osobie, która opublikowała to wydanie.",
+    "device.layoutUnreadable": "Instalator nie zdołał odczytać, jak podzielona jest pamięć tego urządzenia, więc nie umie powiedzieć, czym różni się ona od tego, czego spodziewa się to wydanie. Nic nie zostało zapisane. Powiedz o tym osobie, która opublikowała to wydanie.",
     "device.notEmpty": "Miejsce, którego potrzebuje to wydanie, jest już zajęte. Nic nie zostało zapisane. Wybierz „Pierwsza instalacja”, żeby wyczyścić urządzenie i zacząć od nowa.",
     "backup.mismatch": "Kopię odczytano dwa razy i odczyty się różnią. Nic nie zostało zapisane. Spróbuj jeszcze raz, najlepiej z krótszym kablem.",
     "backup.file": "Wybrany plik nie jest kopią tego urządzenia. Wskaż kopię zapisaną z tego urządzenia albo zacznij jeszcze raz bez kopii.",
