@@ -146,6 +146,17 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
   color: var(--accent);
 }
 .kicker:empty { display: none; }
+/* A test release wears a small amber tag under the kicker: caution, not stop. */
+.pre-label {
+  align-self: flex-start;
+  margin: var(--s2) 0 0;
+  padding: 4px 10px;
+  border-radius: 999px;
+  background: var(--well);
+  color: var(--warn);
+  font: 700 var(--t-micro)/1.3 var(--font-display);
+  letter-spacing: 0.04em;
+}
 
 h1, h2, h3 {
   font-family: var(--font-display);
@@ -159,7 +170,11 @@ h2 { font-size: var(--t-h2); font-weight: 600; }
 h3 { font-size: 17px; margin-top: 8px; }
 p { margin: 0; }
 .lead { font-size: var(--t-lead); }
-.gate { margin-bottom: var(--s5); }
+/* The gate: one sentence, and when there is a way out, one button or one quiet link under it. */
+.gate { display: flex; flex-direction: column; margin-bottom: var(--s5); }
+.gate:last-child { margin-bottom: 0; }
+#copy-link { margin-top: var(--s5); }
+#gate-link { margin-top: var(--s4); }
 
 /* ---- screens ------------------------------------------------------------ */
 
@@ -256,6 +271,8 @@ p { margin: 0; }
   .door { flex-direction: row; align-items: center; padding-right: 46px; }
 }
 
+/* Before the copy option on a first install: why it starts with a copy, said once, in the quiet voice. */
+#backup-first { margin-top: var(--s3); font-size: var(--t-body); color: var(--dim); }
 .opt-row { display: flex; align-items: flex-start; gap: 10px; margin-top: var(--s3); }
 .opt { flex: 1; display: flex; gap: 10px; align-items: flex-start; color: var(--dim); cursor: pointer; }
 .opt input { width: 20px; height: 20px; margin: 4px 0 0; accent-color: var(--accent); flex: none; }
@@ -284,6 +301,9 @@ p { margin: 0; }
 .cta:active:not(:disabled) { box-shadow: inset 0 2px 4px rgb(0 0 0 / 0.18); }
 .cta:disabled { opacity: 0.55; cursor: progress; }
 .note { margin-top: var(--s3); color: var(--dim); font-size: var(--t-small); text-align: center; }
+/* Why the button is off sits right above it, in the button's own gap. */
+#connect-why { margin-top: var(--s6); }
+#connect-why:not([hidden]) + .cta { margin-top: var(--s2); }
 .cta svg { width: 20px; height: 20px; stroke-width: 2.2; }
 .quiet {
   align-self: center;
@@ -395,6 +415,7 @@ p { margin: 0; }
   border-radius: var(--radius-in);
   box-shadow: inset 0 1px 0 var(--shade-1);
 }
+.hatches:not(:has(details:not([hidden]))) { display: none; } /* the gate hides every hatch; the chamber goes with them */
 details { border-top: 1px solid var(--line); padding: 0; }
 .hatches details:first-child { border-top: 0; }
 summary {
@@ -498,6 +519,22 @@ details[open] pre, details[open] code { font-family: var(--font-mono); }
 .own, .own-read { display: flex; flex-direction: column; gap: var(--gap); }
 .own { margin-top: var(--s5); }
 .own-read .doors { margin-top: 0; }
+/* One row per file, each a well on the plate: label, picker, address and what was read, and a way to drop it. */
+.own-parts { display: grid; gap: var(--s3); margin: 0; }
+.own-part {
+  display: flex;
+  flex-direction: column;
+  gap: var(--s3);
+  padding: var(--s4);
+  border-radius: var(--radius-in);
+  background: var(--well);
+}
+.own-part-title { font: 700 var(--t-micro)/1.3 var(--font-display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+.own-part .file { margin-top: 0; }
+.own-part .fields { align-items: start; }
+.own-part .own-hint { font-size: var(--t-small); align-self: end; padding-bottom: 10px; }
+.own-part .small { align-self: flex-start; margin-top: 0; }
+#own-add { align-self: flex-start; margin-top: 0; }
 .own-hint { color: var(--dim); }
 .own-url { display: flex; gap: 10px; align-items: flex-end; }
 .own-url .field { flex: 1; }
