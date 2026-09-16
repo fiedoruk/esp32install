@@ -121,20 +121,39 @@ export function renderFooter(foot, site, doc = document) {
   foot.append(end);
 }
 
+/** A language code we are willing to put in a file name: two or three letters, one optional tag. */
+const LANG = /^[a-z]{2,3}(-[a-z0-9]{1,8})?$/;
+
 /**
- * Fetches `site.json` next to this page and draws it. `load` is main.js's own JSON reader, so the
- * file goes through the same size cap and the same same-origin path as the catalog. Returns
- * whether the footer changed; every failure is a quiet `false`.
+ * The files to try, in order. A copy under `/pl/install/` shares its `<base>` with the English
+ * one, so both ask the same directory for the same `site.json` and the Polish page ends up with
+ * an English footer. `site.pl.json` is how a publisher answers that, and `site.json` is what
+ * every copy falls back to. The language file is tried for English too, so `site.en.json` is
+ * available to a publisher whose default file is written in another language.
  */
-export async function mountFooter(load, doc = document) {
+export function siteFiles(lang) {
+  const code = String(lang ?? '').trim().toLowerCase();
+  return LANG.test(code) ? [`site.${code}.json`, 'site.json'] : ['site.json'];
+}
+
+/**
+ * Fetches the footer file next to this page and draws it. `load` is main.js's own JSON reader, so
+ * the file goes through the same size cap and the same same-origin path as the catalog. Returns
+ * whether the footer changed; every failure is a quiet `false`, and a language file that is not
+ * there is not a failure — it is the ordinary case of a copy with one footer.
+ */
+export async function mountFooter(load, doc = document, lang = '') {
   const foot = doc.querySelector('footer.foot');
   if (!foot) return false;
-  try {
-    const site = normalizeSite(await load(new URL('site.json', doc.baseURI).href));
-    if (!site) return false;
-    renderFooter(foot, site, doc);
-    return true;
-  } catch {
-    return false; // no site.json, a broken one, or one too big: the one-line footer stays
+  for (const name of siteFiles(lang)) {
+    try {
+      const site = normalizeSite(await load(new URL(name, doc.baseURI).href));
+      if (!site) continue; // a file that says nothing is not a footer: fall through to the next
+      renderFooter(foot, site, doc);
+      return true;
+    } catch {
+      // not there, broken, or too big: try the next name, then keep the one-line footer
+    }
   }
+  return false;
 }

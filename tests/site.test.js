@@ -13,7 +13,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { normalizeSite, renderFooter, VERSION, PROJECT_URL } from '../app/site.js';
+import { normalizeSite, renderFooter, mountFooter, siteFiles, VERSION, PROJECT_URL } from '../app/site.js';
 
 const read = (p) => readFileSync(new URL('../' + p, import.meta.url), 'utf8');
 
@@ -165,8 +165,8 @@ test('the version the footer prints is the version in package.json', () => {
 test('main.js loads it through its own JSON reader and never lets it stop the page', () => {
   const main = read('app/main.js');
   assert.match(main, /import \{ mountFooter \} from '\.\/site\.js';/);
-  assert.match(main, /mountFooter\(loadJson\)\.catch\(\(\) => \{\}\);/, 'a footer that fails to load is not an error');
-  assert.match(read('app/site.js'), /new URL\('site\.json', doc\.baseURI\)/, 'same origin, and under <base> on a copy that has one');
+  assert.match(main, /mountFooter\(loadJson, document, lang\)\.catch\(\(\) => \{\}\);/, 'a footer that fails to load is not an error');
+  assert.match(read('app/site.js'), /new URL\(name, doc\.baseURI\)/, 'same origin, and under <base> on a copy that has one');
   assert.match(read('app/site.js'), /import \{ safeHref \} from '\.\/catalog\.js';/);
   assert.doesNotMatch(read('app/site.js'), /innerHTML|insertAdjacentHTML/);
 });
@@ -217,3 +217,72 @@ test('index.html falls back to the same link, so the mark is followable with no 
   assert.match(read('index.html'), new RegExp('<footer class="foot">.*href="' + PROJECT_URL + '"'));
 });
 
+/* --- one footer per language ---------------------------------------------- */
+
+test('siteFiles asks for the language first and always ends at site.json', () => {
+  assert.deepEqual(siteFiles('pl'), ['site.pl.json', 'site.json']);
+  assert.deepEqual(siteFiles('EN'), ['site.en.json', 'site.json'], 'the code is lower-cased');
+  assert.deepEqual(siteFiles('pt-br'), ['site.pt-br.json', 'site.json']);
+  for (const junk of ['', null, undefined, '../evil', 'p', 'toolongalanguage', 'pl/../x', 'a b']) {
+    assert.deepEqual(siteFiles(junk), ['site.json'], JSON.stringify(junk) + ' names no file of its own');
+  }
+});
+
+/** A `load` that answers for the names listed and throws a 404 for anything else, recording both. */
+const fakeLoad = (files) => {
+  const asked = [];
+  return [asked, async (url) => {
+    const name = url.split('/').pop();
+    asked.push(name);
+    if (!(name in files)) throw new Error('404 ' + name);
+    return files[name];
+  }];
+};
+
+test('mountFooter draws the language file when it is there', async () => {
+  const doc = fakeDoc();
+  global.document = doc;
+  const foot = doc.createElement('footer');
+  doc.querySelector = (sel) => (sel === 'footer.foot' ? foot : null);
+  const [asked, load] = fakeLoad({ 'site.pl.json': { brand: 'Akme' }, 'site.json': { brand: 'Acme' } });
+  assert.equal(await mountFooter(load, doc, 'pl'), true);
+  assert.deepEqual(asked, ['site.pl.json'], 'the fallback is not even fetched');
+  assert.ok(walk(foot).some((n) => n.textContent === 'Akme'));
+  delete global.document;
+});
+
+test('mountFooter falls back to site.json, and an empty language file does not win', async () => {
+  for (const files of [{ 'site.json': { brand: 'Acme' } }, { 'site.pl.json': {}, 'site.json': { brand: 'Acme' } }]) {
+    const doc = fakeDoc();
+    global.document = doc;
+    const foot = doc.createElement('footer');
+    doc.querySelector = (sel) => (sel === 'footer.foot' ? foot : null);
+    const [asked, load] = fakeLoad(files);
+    assert.equal(await mountFooter(load, doc, 'pl'), true, JSON.stringify(files));
+    assert.deepEqual(asked, ['site.pl.json', 'site.json']);
+    assert.ok(walk(foot).some((n) => n.textContent === 'Acme'));
+    delete global.document;
+  }
+});
+
+test('with neither file the one-line footer stays and nothing is thrown', async () => {
+  const doc = fakeDoc();
+  global.document = doc;
+  const foot = doc.createElement('footer');
+  const was = doc.createElement('a');
+  foot.append(was);
+  doc.querySelector = (sel) => (sel === 'footer.foot' ? foot : null);
+  const [asked, load] = fakeLoad({});
+  assert.equal(await mountFooter(load, doc, 'pl'), false);
+  assert.deepEqual(asked, ['site.pl.json', 'site.json']);
+  assert.deepEqual(foot.children, [was], 'untouched');
+  delete global.document;
+});
+
+test('a page with no footer element asks for nothing at all', async () => {
+  const doc = fakeDoc();
+  doc.querySelector = () => null;
+  const [asked, load] = fakeLoad({ 'site.json': { brand: 'Acme' } });
+  assert.equal(await mountFooter(load, doc, 'pl'), false);
+  assert.deepEqual(asked, []);
+});

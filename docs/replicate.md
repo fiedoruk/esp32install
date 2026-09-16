@@ -397,6 +397,20 @@ Every field is optional and so is the whole file. If it is missing, unreachable 
 malformed the page keeps the one line that ships in `index.html` and installs
 exactly as before — a footer is never allowed to stop an installer.
 
+### One footer per language
+
+A copy under `/pl/install/` usually shares its `<base>` with the English one, so
+both ask the same directory for the same file and the translated page ends up
+with an English footer. The page therefore looks for `site.<language>.json`
+first — `site.pl.json`, `site.de.json` — and falls back to `site.json` when that
+one is not there. The language is the one the page settled on, which is what
+`?lang=` and `<html lang>` decide; `site.en.json` works the same way, for a
+publisher whose default file is written in something other than English.
+
+Nothing is required. One `site.json` serves every language, exactly as before;
+the extra file is there for the publisher who wants the tagline and the column
+headings to read properly in each one.
+
 Two rules the page applies to what you write there:
 
 * **Every `href` is filtered** the same way a `guide` link from the catalog is:

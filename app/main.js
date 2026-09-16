@@ -286,7 +286,7 @@ async function boot() {
   setupLangLinks(lang);
   translateDom(i18n.t, { system: '' }, document.querySelector('header.top')); // named even when the catalog fails
   // Whoever publishes this copy: their own file, their own links, and never a reason to stop.
-  mountFooter(loadJson).catch(() => {});
+  mountFooter(loadJson, document, lang).catch(() => {});
 
   if (q.get('own') === '1') return startOwn(lang);
 
