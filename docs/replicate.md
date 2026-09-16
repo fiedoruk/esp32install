@@ -338,6 +338,47 @@ choice is kept in the browser's `localStorage` under the key `theme` and put on
 because the policy allows no inline script. With no stored choice the page
 follows the system setting, and `theme.css` already has both variants.
 
+## The footer, and everything that says who you are
+
+`site.json` sits next to `catalog.json` and belongs to you in the same way. The
+product ships one describing itself; replace it, and the footer becomes yours.
+
+```json
+{
+  "brand": "Acme Robotics",
+  "tagline": "Firmware for the Acme 9000.",
+  "columns": [
+    { "title": "Devices", "links": [ { "text": "Acme 9000", "href": "https://acme.example/9000" } ] },
+    { "title": "Project", "links": [ { "text": "Source code", "href": "https://github.com/acme/firmware" } ] }
+  ],
+  "bottom": [ { "text": "MIT licence", "href": "https://acme.example/licence" } ]
+}
+```
+
+Every field is optional and so is the whole file. If it is missing, unreachable or
+malformed the page keeps the one line that ships in `index.html` and installs
+exactly as before — a footer is never allowed to stop an installer.
+
+Two rules the page applies to what you write there:
+
+* **Every `href` is filtered** the same way a `guide` link from the catalog is:
+  `https:` and paths of your own site are kept, everything else is dropped. A
+  dropped address costs the link, not the line — the words still show, without
+  anything to click. So `javascript:`, `data:`, plain `http:` and `//other.host`
+  will not render as links, and that is not a bug to work around.
+* **Nothing is built from markup.** The text you write is text; a `<b>` in it will
+  appear as `<b>`.
+
+The bottom row of the footer carries the installer's own sign and version. That
+part is the product's, not yours: it says which installer this page is, which is
+what someone reporting a problem needs to tell you.
+
+⛔ **The product itself names no site.** Nothing in `app/`, `style.css`,
+`theme.css`, `locales/` or `index.html` may carry a domain, a brand or an address
+of whoever publishes a copy, and `tests/site.test.js` fails the build if one
+appears. That is what makes a copy of this repository yours rather than an
+advertisement for someone else's.
+
 ## Counting downloads
 
 The product deliberately has no telemetry and no counter. If a publisher needs

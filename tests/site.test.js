@@ -1,0 +1,168 @@
+/**
+ * `site.json`: who is publishing this copy. Two things are being protected here.
+ *
+ * One, the red line. This installer is put on other people's servers. Nothing in `app/`, the
+ * stylesheets, the dictionaries or `index.html` may name the site that publishes it, or a replica
+ * would quietly advertise someone else's network. Everything of that kind lives in `site.json`,
+ * which belongs to the deployment.
+ *
+ * Two, that a footer can never take the page down with it. A missing file, a broken one, a link
+ * this page will not follow — each of those has to end in the one-line footer from index.html and
+ * an installer that still installs.
+ */
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import { readFileSync, readdirSync } from 'node:fs';
+import { normalizeSite, renderFooter, VERSION } from '../app/site.js';
+
+const read = (p) => readFileSync(new URL('../' + p, import.meta.url), 'utf8');
+
+/* --- the red line --------------------------------------------------------- */
+
+// The sites this workshop publishes from. A replica must not carry one single mention of them.
+const OURS = /esp32ai\.me|emini\.ink|404\.tf/i;
+
+test('the product names no site of the workshop that publishes it', () => {
+  const files = ['index.html', 'style.css', 'theme.css', 'theme-init.js', 'site.json']
+    .concat(readdirSync(new URL('../app/', import.meta.url)).map((f) => 'app/' + f))
+    .concat(readdirSync(new URL('../locales/', import.meta.url)).map((f) => 'locales/' + f));
+  const hits = files.filter((f) => OURS.test(read(f)));
+  assert.deepEqual(hits, [], 'these belong in the deployment\'s own site.json, not in the product');
+});
+
+test('positive control: the grep would catch one', () => {
+  assert.ok(OURS.test('<a href="https://esp32ai.me/">'));
+  assert.ok(OURS.test('emini.ink'));
+});
+
+test('the shipped site.json is a valid one, and its links are all ones the page would follow', () => {
+  const site = normalizeSite(JSON.parse(read('site.json')));
+  assert.ok(site, 'the file the product ships renders');
+  assert.ok(site.columns.length >= 2);
+  const all = [...site.columns.flatMap((c) => c.links), ...site.bottom];
+  assert.ok(all.length >= 4);
+  for (const l of all) assert.match(l.href, /^https:/, l.text + ' survived safeHref');
+  for (const c of site.columns) assert.ok(c.title, 'every column is titled');
+});
+
+/* --- the contract --------------------------------------------------------- */
+
+test('a missing, empty or malformed file is not a site', () => {
+  for (const raw of [null, undefined, '', 0, [], 'nope', {}, { columns: [] }, { columns: 'x', bottom: 7 }]) {
+    assert.equal(normalizeSite(raw), null, JSON.stringify(raw) ?? String(raw));
+  }
+  assert.equal(normalizeSite({ columns: [{ title: 'Empty', links: [] }] }), null, 'a column with nothing in it is not a footer');
+});
+
+test('every href goes through safeHref, and a rejected one costs the link but not the line', () => {
+  const site = normalizeSite({
+    columns: [{
+      title: 'Mixed',
+      links: [
+        { text: 'https link', href: 'https://example.com/a' },
+        { text: 'own path', href: 'docs/replicate.md' },
+        { text: 'script', href: 'javascript:alert(1)' },
+        { text: 'data', href: 'data:text/html,<script>' },
+        { text: 'downgrade', href: 'http://example.com/a' },
+        { text: 'another host', href: '//evil.example/a' },
+        { text: 'backslashes', href: '\\\\evil.example/a' },
+        { text: 'no href at all' },
+      ],
+    }],
+  });
+  assert.deepEqual(site.columns[0].links.map((l) => [l.text, l.href]), [
+    ['https link', 'https://example.com/a'],
+    ['own path', 'docs/replicate.md'],
+    ['script', ''],
+    ['data', ''],
+    ['downgrade', ''],
+    ['another host', ''],
+    ['backslashes', ''],
+    ['no href at all', ''],
+  ]);
+});
+
+test('an entry with no words is dropped; whitespace is not a name', () => {
+  const site = normalizeSite({ brand: '  Acme  ', bottom: [{ text: '   ', href: 'https://a.example' }, { text: 'MIT' }] });
+  assert.equal(site.brand, 'Acme');
+  assert.deepEqual(site.bottom.map((l) => l.text), ['MIT']);
+});
+
+test('brand or tagline alone is enough to draw a footer', () => {
+  assert.ok(normalizeSite({ brand: 'Acme' }));
+  assert.ok(normalizeSite({ tagline: 'Firmware for the Acme 9000.' }));
+});
+
+/* --- what reaches the DOM -------------------------------------------------- */
+
+/** The smallest stand-in for a document that renderFooter needs; no browser and no jsdom here. */
+function fakeDoc() {
+  const make = (tag) => {
+    const node = {
+      tagName: tag.toUpperCase(), children: [], attrs: {}, className: '', _text: '',
+      classList: { add(c) { node.className = (node.className + ' ' + c).trim(); } },
+      set textContent(v) { node._text = v; },
+      get textContent() { return node._text + node.children.map((c) => c.textContent).join(''); },
+      get firstChild() { return node.children[0] ?? null; },
+      removeChild(c) { node.children.splice(node.children.indexOf(c), 1); },
+      append(...kids) { node.children.push(...kids); },
+      cloneNode() { const copy = make(tag); copy.className = node.className; copy._text = node._text; return copy; },
+      set href(v) { node.attrs.href = v; },
+      set rel(v) { node.attrs.rel = v; },
+    };
+    return node;
+  };
+  return { createElement: make, querySelector: () => null, baseURI: 'https://example.com/install/' };
+}
+
+const walk = (node, out = []) => { out.push(node); for (const c of node.children) walk(c, out); return out; };
+
+test('renderFooter replaces the one-line footer, builds nodes and never markup, and carries the version', () => {
+  const doc = fakeDoc();
+  global.document = doc; // renderFooter creates its <li> through the global, as ui.js does
+  const foot = doc.createElement('footer');
+  foot.append(doc.createElement('a'));
+  renderFooter(foot, normalizeSite({
+    brand: 'Acme', tagline: 'Firmware for the Acme 9000.',
+    columns: [{ title: 'Devices', links: [{ text: 'Acme 9000', href: 'https://acme.example/9000' }] }],
+    bottom: [{ text: 'MIT', href: 'https://acme.example/licence' }],
+  }), doc);
+  const nodes = walk(foot);
+  assert.match(foot.className, /is-site/);
+  assert.equal(foot.children.length, 4, 'brand, tagline, columns, end row');
+  assert.ok(nodes.some((n) => n.className === 'foot-brand' && n.textContent === 'Acme'));
+  assert.ok(nodes.some((n) => n.tagName === 'H2' && n.textContent === 'Devices'));
+  assert.ok(nodes.some((n) => n.attrs.href === 'https://acme.example/9000' && n.attrs.rel === 'noopener'));
+  assert.ok(nodes.some((n) => n.className === 'foot-version' && n.textContent === VERSION));
+  delete global.document;
+});
+
+test('a link the page will not follow is drawn as words, with no href to click', () => {
+  const doc = fakeDoc();
+  global.document = doc;
+  const foot = doc.createElement('footer');
+  renderFooter(foot, normalizeSite({ bottom: [{ text: 'Somewhere', href: 'javascript:alert(1)' }] }), doc);
+  const nodes = walk(foot);
+  const shown = nodes.filter((n) => n.textContent === 'Somewhere').pop(); // the innermost, past the list around it
+  assert.ok(shown, 'the words are still there');
+  assert.equal(shown.tagName, 'SPAN', 'but not as a link');
+  assert.equal(shown.attrs.href, undefined);
+  delete global.document;
+});
+
+test('the version the footer prints is the version in package.json', () => {
+  assert.equal(VERSION, JSON.parse(read('package.json')).version);
+});
+
+test('main.js loads it through its own JSON reader and never lets it stop the page', () => {
+  const main = read('app/main.js');
+  assert.match(main, /import \{ mountFooter \} from '\.\/site\.js';/);
+  assert.match(main, /mountFooter\(loadJson\)\.catch\(\(\) => \{\}\);/, 'a footer that fails to load is not an error');
+  assert.match(read('app/site.js'), /new URL\('site\.json', doc\.baseURI\)/, 'same origin, and under <base> on a copy that has one');
+  assert.match(read('app/site.js'), /import \{ safeHref \} from '\.\/catalog\.js';/);
+  assert.doesNotMatch(read('app/site.js'), /innerHTML|insertAdjacentHTML/);
+});
+
+test('index.html keeps the one line the page falls back to', () => {
+  assert.match(read('index.html'), /<footer class="foot">.*<\/footer>/);
+});

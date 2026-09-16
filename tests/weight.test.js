@@ -14,12 +14,13 @@ const read = (p) => readFileSync(new URL('../' + p, import.meta.url), 'utf8');
  * a little above what the sheets weigh today and they are meant to be raised deliberately, with a
  * reason, not drifted past.
  *
- * Raised 2026-09-16 from 27 000 to 29 000: the identity round added a mark, a real class for the
- * secondary buttons (which replaced three half-classes, so most of it came back), rows in the
- * system list that carry a version and an address, and the footer the deployment fills in. Style
- * stood at 25 541 B before it and at 27 8xx after; theme did not move.
+ * Raised 2026-09-16 from 27 000 to 30 500: the identity round added a mark, a real class for the
+ * secondary buttons (which replaced three half-classes, so most of that came back), rows in the
+ * system list that carry a version and an address to copy, and the footer the deployment fills in
+ * from site.json. Style stood at 25 541 B before the round and at 29 495 B after; theme did not
+ * move. Gzipped that is roughly 7.4 KB, still one small request.
  */
-const CEILING = { 'style.css': 29000, 'theme.css': 5200 };
+const CEILING = { 'style.css': 30500, 'theme.css': 5200 };
 
 test('neither stylesheet has grown past its ceiling', () => {
   const over = Object.entries(CEILING)

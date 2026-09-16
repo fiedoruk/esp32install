@@ -52,10 +52,12 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
   color: var(--ink);
   text-decoration: none;
 }
-.brand .signet { width: 32px; height: 32px; flex: none; fill: currentColor; stroke: none; }
-.brand .signet-dot { fill: var(--accent); }
-.brand .word { font-family: var(--font-display); font-weight: 400; font-size: var(--t-h2); letter-spacing: -0.02em; }
-.brand .word b { font-weight: 800; }
+.signet { flex: none; fill: currentColor; stroke: none; }
+.signet-dot { fill: var(--accent); }
+.word { font-family: var(--font-display); font-weight: 400; letter-spacing: -0.02em; }
+.word b { font-weight: 800; }
+.brand .signet { width: 32px; height: 32px; }
+.brand .word { font-size: var(--t-h2); }
 /* Theme and language share one segmented switch sunk into the field; the pressed segment sits on the plate colour. */
 .switches {
   display: inline-flex;
@@ -108,6 +110,21 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
 }
 .foot a { color: var(--dim); text-decoration-color: var(--line-2); }
 .foot a:hover { text-decoration-color: currentColor; }
+/* The full footer, drawn from site.json. Without that file none of this exists and the line above
+   is the whole footer, which is why nothing here is load-bearing for the install. */
+.foot.is-site { display: block; text-align: left; }
+.foot-brand { font: 700 var(--t-lead)/1.2 var(--font-display); letter-spacing: -0.01em; color: var(--ink); }
+.foot-cols { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: var(--s5) var(--s4); margin-top: var(--s5); }
+/* A column title is panel lettering, the same as a hatch label, not a heading on the page. */
+.foot-col h2 { margin: 0; font: 700 var(--t-micro) var(--font-display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--dim); }
+.foot-col ul { list-style: none; margin: var(--s2) 0 0; padding: 0; display: grid; gap: var(--s1); }
+.foot-col li { font-size: var(--t-small); }
+.foot-end { display: flex; align-items: center; flex-wrap: wrap; gap: var(--s2) var(--s4); margin-top: var(--s5); padding-top: var(--s4); border-top: 1px solid var(--line); }
+.foot-mark { display: inline-flex; align-items: center; gap: 8px; color: var(--ink); }
+.foot-mark .signet { width: 20px; height: 20px; }
+.foot-mark .word { font-size: var(--t-small); }
+.foot-version { font-variant-numeric: tabular-nums; }
+.foot-bottom { list-style: none; display: flex; flex-wrap: wrap; gap: var(--s3); margin: 0 0 0 auto; padding: 0; }
 
 /* ---- the plate ---------------------------------------------------------- */
 
@@ -653,6 +670,8 @@ dialog p { margin-top: 8px; }
   .facts { grid-template-columns: 1fr; gap: 2px 0; }
   .sys { grid-template-columns: 1fr auto; }
   .sys-copy { grid-column: 2; grid-row: 2; justify-self: end; }
+  .foot-cols { grid-template-columns: 1fr; gap: var(--s4); }
+  .foot-bottom { margin-left: 0; } /* the licence line wraps under the mark instead of off the edge */
   .facts dt { margin-top: 6px; }
   .foot { justify-content: center; }
 }

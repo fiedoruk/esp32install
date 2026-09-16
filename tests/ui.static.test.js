@@ -455,11 +455,11 @@ test('the signet is drawn in fills on a 2px grid, and the favicon is the same dr
   // Fills, not strokes: a 1.5px line disappears at 16px, which is what the old sign did.
   assert.doesNotMatch(icon, /stroke/, 'no strokes in the favicon');
   assert.match(html, /fill-rule="evenodd"/, 'the screen is a hole in the body, not a second outline');
-  assert.match(style, /\.brand \.signet \{[^}]*fill:\s*currentColor[^}]*stroke:\s*none/);
-  assert.match(style, /\.brand \.signet-dot \{ fill: var\(--accent\); \}/, 'the one spot of accent');
+  assert.match(style, /\.signet \{[^}]*fill:\s*currentColor[^}]*stroke:\s*none/);
+  assert.match(style, /\.signet-dot \{ fill: var\(--accent\); \}/, 'the one spot of accent');
   // The logotype: one word, two weights of the display face, and no second colour.
-  assert.match(style, /\.brand \.word \{[^}]*font-weight:\s*400[^}]*letter-spacing:\s*-0\.02em/);
-  assert.match(style, /\.brand \.word b \{ font-weight: 800; \}/);
+  assert.match(style, /\.word \{[^}]*font-weight:\s*400[^}]*letter-spacing:\s*-0\.02em/);
+  assert.match(style, /\.word b \{ font-weight: 800; \}/);
   assert.doesNotMatch(style, /\.brand[^{]*\{[^}]*text-shadow|\.brand[^{]*\{[^}]*gradient/);
 });
 

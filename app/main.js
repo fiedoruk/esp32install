@@ -14,6 +14,7 @@ import { describePart, ownProblem } from './own.js';
 import { saveBlob, saveBackupWithHandle } from './backup.js';
 import { mountUi, translateDom, fileNameOf, hideHatches } from './ui.js';
 import { mountThemeToggle } from './theme.js';
+import { mountFooter } from './site.js';
 import { createImprovSession } from './improv.js';
 import { createConsole } from './console.js';
 import { InstallError } from './errors.js';
@@ -275,6 +276,8 @@ async function boot() {
   document.documentElement.lang = lang;
   setupLangLinks(lang);
   translateDom(i18n.t, { system: '' }, document.querySelector('header.top')); // named even when the catalog fails
+  // Whoever publishes this copy: their own file, their own links, and never a reason to stop.
+  mountFooter(loadJson).catch(() => {});
 
   if (q.get('own') === '1') return startOwn(lang);
 

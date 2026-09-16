@@ -1,0 +1,32 @@
+{
+  "brand": "esp32install",
+  "tagline": "Install ESP32 firmware from a browser, over a USB cable.",
+  "columns": [
+    {
+      "title": "Project",
+      "links": [
+        { "text": "Source code", "href": "https://github.com/fiedoruk/esp32install" },
+        { "text": "Report a problem", "href": "https://github.com/fiedoruk/esp32install/issues" }
+      ]
+    },
+    {
+      "title": "Documentation",
+      "links": [
+        { "text": "Put this on your own server", "href": "https://github.com/fiedoruk/esp32install/blob/main/docs/replicate.md" },
+        { "text": "Writing a manifest", "href": "https://github.com/fiedoruk/esp32install/blob/main/docs/manifest.md" },
+        { "text": "What it does to a device", "href": "https://github.com/fiedoruk/esp32install/blob/main/docs/profiles.md" }
+      ]
+    },
+    {
+      "title": "Built on",
+      "links": [
+        { "text": "esptool-js", "href": "https://github.com/espressif/esptool-js" },
+        { "text": "Improv Wi-Fi", "href": "https://www.improv-wifi.com/" }
+      ]
+    }
+  ],
+  "bottom": [
+    { "text": "MIT licence", "href": "https://github.com/fiedoruk/esp32install/blob/main/LICENSE" },
+    { "text": "Security", "href": "https://github.com/fiedoruk/esp32install/blob/main/SECURITY.md" }
+  ]
+}
