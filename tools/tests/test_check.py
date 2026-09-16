@@ -932,6 +932,20 @@ class FramingTest(SiteFixture):
                 found = check.check_index(self.http_source(headers))
                 self.assertEqual([f.level for f in found if f.what == 'framing'], [check.OK])
 
+    def test_an_x_frame_options_no_browser_acts_on_is_not_protection(self):
+        """ALLOWALL and the dropped ALLOW-FROM are ignored by every current browser."""
+        for value in ('ALLOWALL', 'ALLOW-FROM https://example.test', 'allow-from https://example.test',
+                      'deny, sameorigin', 'sameorigin; deny'):
+            with self.subTest(value=value):
+                found = check.check_index(self.http_source({'X-Frame-Options': value}))
+                self.assertEqual([f.level for f in found if f.what == 'framing'], [check.WARN])
+                self.assertTrue(any(value in f.detail for f in found if f.what == 'framing'))
+
+    def test_the_two_values_browsers_act_on_are_accepted_in_any_case(self):
+        for value in ('DENY', 'deny', ' SameOrigin '):
+            with self.subTest(value=value):
+                self.assertIsNone(check.framing_problem({'x-frame-options': value}))
+
     def test_a_policy_without_frame_ancestors_is_not_mistaken_for_one(self):
         found = check.check_index(self.http_source({'Content-Security-Policy': "default-src 'self'; script-src 'self'"}))
         self.assertEqual([f.level for f in found if f.what == 'framing'], [check.WARN])

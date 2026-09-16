@@ -411,11 +411,19 @@ def framing_problem(headers: Optional[Dict[str, str]]) -> Optional[str]:
     with `frame-ancestors`. Neither can come from the page itself — `frame-ancestors` is ignored
     in a `<meta>` policy — so this is the one check that only a live site can answer. A directory
     has no headers and is not judged.
+
+    Only `DENY` and `SAMEORIGIN` count. Those are the two values browsers still act on: the old
+    `ALLOW-FROM` was dropped everywhere, and anything else — `ALLOWALL`, a typo, a hostname — is
+    ignored by the browser, so accepting it would mean vouching for protection nobody applies.
     """
     if headers is None:
         return None
-    if headers.get('x-frame-options', '').strip():
+    xfo = headers.get('x-frame-options', '').strip()
+    if xfo.upper() in ('DENY', 'SAMEORIGIN'):
         return None
+    if xfo:
+        return ('X-Frame-Options says %r, which no current browser acts on: only DENY and '
+                'SAMEORIGIN stop another site framing the page' % xfo)
     # A response may carry several policies, separated by commas; look in all of them.
     policy = headers.get('content-security-policy', '').replace(',', ';')
     if 'frame-ancestors' in csp_directives(policy):

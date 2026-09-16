@@ -414,7 +414,8 @@ SUMMARY 12 OK, 1 WARN, 1 FAIL
 
 Checks it runs: the Content-Security-Policy meta tag in `index.html`, against
 the origins the catalog lists in `allowOrigins` and those passed as
-`--allow-origin`; for a live URL, whether the host sends `X-Frame-Options` or a
+`--allow-origin`; for a live URL, whether the host sends `X-Frame-Options` (as
+`DENY` or `SAMEORIGIN`, the only two values browsers act on) or a
 `Content-Security-Policy` response header with `frame-ancestors`, which the page
 cannot set for itself; the checksum of the vendored esptool-js bundle against
 `vendor/esptool-js/SHA256SUMS`; that the catalog lists systems and each system
