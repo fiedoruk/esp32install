@@ -12,7 +12,7 @@
 </p>
 
 [![Tests](https://github.com/fiedoruk/esp32install/actions/workflows/tests.yml/badge.svg)](https://github.com/fiedoruk/esp32install/actions/workflows/tests.yml)
-&nbsp;MIT licence &nbsp;·&nbsp; no dependencies, no build step
+&nbsp;MIT licence &nbsp;·&nbsp; no dependencies, no build step &nbsp;·&nbsp; [changelog](CHANGELOG.md)
 
 **Install ESP32 firmware from a web page, over a USB cable.** One directory of
 static files. Copy it to any server that serves HTTPS and it works — no build

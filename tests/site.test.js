@@ -19,7 +19,8 @@ const read = (p) => readFileSync(new URL('../' + p, import.meta.url), 'utf8');
 
 /* --- the red line --------------------------------------------------------- */
 
-// The sites this workshop publishes from. A replica must not carry one single mention of them.
+// Addresses the demo deployment happens to use. None may appear in the files below: a replica
+// that carried one would quietly advertise a site its own visitors never chose.
 const OURS = /esp32ai\.me|emini\.ink|404\.tf/i;
 
 test('the product names no site of the workshop that publishes it', () => {
