@@ -4,7 +4,7 @@
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
-import { systemTheme, storedTheme, currentTheme, applyTheme, mountThemeToggle } from '../app/theme.js';
+import { systemTheme, storedTheme, currentTheme, applyTheme, mountThemeToggle, paintBar } from '../app/theme.js';
 
 function fakeDoc(initial) {
   const attrs = new Map(initial ? [['data-theme', initial]] : []);
@@ -118,4 +118,72 @@ test('a window whose localStorage throws on access (blocked site data) still tog
   dark.click();
   assert.equal(doc.attrs.get('data-theme'), 'dark');
   assert.equal(dark.getAttribute('aria-pressed'), 'true');
+});
+
+/* --- the browser's own bar ------------------------------------------------- */
+
+/** A head that records where a tag was put: first or last decides which theme-color wins. */
+function fakeHead() {
+  const tags = [];
+  return { tags, prepend: (t) => tags.unshift(t), append: (t) => tags.push(t) };
+}
+function fakeTag() {
+  const attrs = new Map();
+  return { attrs, setAttribute: (k, v) => attrs.set(k, v), getAttribute: (k) => attrs.get(k) ?? null };
+}
+function fakeThemedDoc(initial) {
+  const doc = fakeDoc(initial);
+  doc.head = fakeHead();
+  doc.createElement = () => fakeTag();
+  doc.querySelector = () => doc.head.tags.find((t) => t.getAttribute('data-live') !== null) ?? null;
+  return doc;
+}
+
+test('paintBar writes the colour of the field into a tag of its own, and puts it first', () => {
+  const doc = fakeThemedDoc('dark');
+  const win = { getComputedStyle: () => ({ getPropertyValue: () => ' #0E1B2E ' }) };
+  assert.equal(paintBar(doc, win), '#0E1B2E', 'trimmed, as the stylesheet gave it');
+  assert.equal(doc.head.tags.length, 1);
+  assert.equal(doc.head.tags[0].getAttribute('content'), '#0E1B2E');
+  assert.equal(doc.head.tags[0].getAttribute('name'), 'theme-color');
+  // The browser takes the first theme-color whose media matches; the shipped pair is the fallback
+  // for a page whose scripts never ran, so this one has to go in front of it.
+  assert.equal(doc.head.tags[0].getAttribute('data-live'), '');
+});
+
+test('painting again updates the one tag instead of piling up more', () => {
+  const doc = fakeThemedDoc('light');
+  let colour = '#ECEAF2';
+  const win = { getComputedStyle: () => ({ getPropertyValue: () => colour }) };
+  paintBar(doc, win);
+  colour = '#0E1B2E';
+  paintBar(doc, win);
+  assert.equal(doc.head.tags.length, 1);
+  assert.equal(doc.head.tags[0].getAttribute('content'), '#0E1B2E');
+});
+
+test('a document that cannot be painted is simply not painted', () => {
+  assert.equal(paintBar(fakeThemedDoc(), {}), null, 'no getComputedStyle');
+  assert.equal(paintBar(fakeThemedDoc(), { getComputedStyle: () => ({ getPropertyValue: () => '' }) }), null, 'no --bg');
+  assert.equal(paintBar(fakeDoc(), { getComputedStyle: () => ({ getPropertyValue: () => '#fff' }) }), null, 'no head');
+  assert.equal(paintBar(fakeThemedDoc(), { getComputedStyle: () => { throw new Error('detached'); } }), null);
+});
+
+test('pressing a theme button repaints the bar, and so does the system changing its mind', () => {
+  const doc = fakeThemedDoc();
+  const buttons = { light: fakeButton(), dark: fakeButton() };
+  const { win, mq } = fakeWin({ dark: false });
+  // The stylesheet would answer with the colour for whatever the page is showing; model that.
+  win.getComputedStyle = () => ({ getPropertyValue: () => (currentTheme(doc, win) === 'dark' ? '#0E1B2E' : '#ECEAF2') });
+  mountThemeToggle({ buttons, doc, win, storage: null });
+  assert.equal(doc.head.tags[0].getAttribute('content'), '#ECEAF2', 'on mount, from the system setting');
+  buttons.dark.click();
+  assert.equal(doc.head.tags[0].getAttribute('content'), '#0E1B2E', 'and the bar follows the button, which a media query cannot');
+  assert.equal(doc.head.tags.length, 1);
+  const light = fakeThemedDoc();
+  const w2 = fakeWin({ dark: false });
+  w2.win.getComputedStyle = () => ({ getPropertyValue: () => (currentTheme(light, w2.win) === 'dark' ? '#0E1B2E' : '#ECEAF2') });
+  mountThemeToggle({ buttons: { light: fakeButton(), dark: fakeButton() }, doc: light, win: w2.win, storage: null });
+  w2.win.flip();
+  assert.equal(light.head.tags[0].getAttribute('content'), '#0E1B2E', 'nothing chosen: the bar follows the phone');
 });
