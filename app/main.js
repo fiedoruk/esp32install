@@ -326,6 +326,13 @@ boot().catch((e) => {
   const el = document.getElementById('gate');
   el.hidden = false;
   document.getElementById('gate-text').textContent = i18n ? i18n.t('error.' + err.code, err.params) : err.code;
+  if (err.code.startsWith('catalog.unknown')) {
+    // A typo in the address, most likely: the sentence points at the list, and so does this link.
+    const link = document.getElementById('gate-link');
+    link.href = location.pathname;
+    link.textContent = i18n.t('pick.title');
+    link.hidden = false;
+  }
   hideHatches(); // nothing to show without a system
   console.error(err);
 });

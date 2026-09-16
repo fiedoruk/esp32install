@@ -97,6 +97,14 @@ export function mountUi({ i18n, system }) {
   $('copy-log').addEventListener('click', async () => {
     try { await navigator.clipboard.writeText($('log').textContent); } catch { /* clipboard may be blocked */ }
   });
+  // The link for a computer: a phone shares it to itself (mail, notes, a chat), anything else copies it.
+  $('copy-link').addEventListener('click', async () => {
+    try {
+      if (navigator.share) { await navigator.share({ url: location.href, title: document.title }); return; }
+      await navigator.clipboard.writeText(location.href);
+      $('copy-link').textContent = t('action.linkCopied');
+    } catch { /* the person closed the share sheet, or the clipboard is blocked */ }
+  });
 
   const screens = ['prepare', 'install', 'done'];
   const showScreen = (name) => {
@@ -261,11 +269,24 @@ export function mountUi({ i18n, system }) {
   const ui = {
     showScreen,
     hideHatches,
+    /**
+     * The two gates. Without a secure context the person is on a computer and the esptool route is
+     * the next thing to read, so it opens. Without Web Serial they are most likely on a phone: the
+     * empty Details and log hatches go, the terminal command folds away, and one button offers the
+     * link for a computer instead.
+     */
     showGate(kind) {
       $('gate').hidden = false;
       $('gate-text').textContent = t('gate.' + kind);
       for (const s of screens) { $('screen-' + s).hidden = true; $('screen-' + s).classList.remove('is-active'); }
-      $('alt-wrap').open = true;
+      if (kind === 'noSerial') {
+        $('tech').hidden = true;
+        $('log-details').hidden = true;
+        $('alt-wrap').open = false;
+        $('copy-link').hidden = false;
+      } else {
+        $('alt-wrap').open = true;
+      }
     },
     showInstaller({ title, release, preRelease = false }) {
       $('title').textContent = title;

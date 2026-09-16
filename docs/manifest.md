@@ -420,4 +420,9 @@ Warnings, not failures: a part with no declared `size`, a part with no declared
 `sha256`, parts not listed by rising offset, and releases listed out of order.
 Those are all things the page tolerates but a publisher probably did not mean.
 
+A directory is checked as if it were the site's root. When the installer is a
+subdirectory of the site and a manifest names a file outside it (`../../os/…`),
+pass `--site-root` with the directory the site's root URL corresponds to; see
+[replicate.md](replicate.md#local-testing).
+
 Exit codes: `0` nothing failed, `1` at least one FAIL, `2` the command was wrong.

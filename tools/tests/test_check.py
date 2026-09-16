@@ -354,6 +354,50 @@ class SiteTest(SiteFixture):
         self.write_raw_manifest(data)
         self.assertIn(check.FAIL, self.levels(self.findings(), 'path'))
 
+    def test_site_root_lets_a_portal_layout_reach_its_binaries(self):
+        """The installer under site/install/ names ../../os/x.bin: outside its own directory, inside the site."""
+        tmp = tempfile.TemporaryDirectory()
+        self.addCleanup(tmp.cleanup)
+        site = Path(tmp.name)
+        shutil.copytree(self.site, site / 'install')
+        (site / 'os').mkdir()
+        blob = self.bin.read_bytes()
+        (site / 'os' / 'x.bin').write_bytes(blob)
+        data = json.loads((site / 'install' / 'firmware' / 'demo-1-0-0.json').read_text('utf-8'))
+        data['builds'][0]['parts'][0]['path'] = '../../os/x.bin'
+        (site / 'install' / 'firmware' / 'demo-1-0-0.json').write_text(json.dumps(data), encoding='utf-8')
+        # Without the flag the installer directory is the whole site, and the path escapes it.
+        self.assertIn(check.FAIL, self.levels(check.check_site(str(site / 'install')), 'path'))
+        # With it, the path is inside the site and the bytes are checked.
+        found = check.check_site(str(site / 'install'), [], str(site))
+        self.assertEqual(self.fails(found), [])
+        self.assertEqual(self.levels(found, 'sha256'), [check.OK])
+        self.assertTrue(any('x.bin' in f.detail for f in found if f.what == 'sha256'))
+        # An absolute path is from the site's root URL, as in the browser.
+        data['builds'][0]['parts'][0]['path'] = '/os/x.bin'
+        (site / 'install' / 'firmware' / 'demo-1-0-0.json').write_text(json.dumps(data), encoding='utf-8')
+        self.assertEqual(self.fails(check.check_site(str(site / 'install'), [], str(site))), [])
+        # Above the site root is still refused.
+        data['builds'][0]['parts'][0]['path'] = '../../../elsewhere.bin'
+        (site / 'install' / 'firmware' / 'demo-1-0-0.json').write_text(json.dumps(data), encoding='utf-8')
+        self.assertIn(check.FAIL, self.levels(check.check_site(str(site / 'install'), [], str(site)), 'path'))
+        # The command line.
+        code, text = self.cli(site / 'install', '--site-root', site)
+        self.assertEqual(code, 1, text)  # elsewhere.bin is still in the manifest
+        self.assertIn('FAIL path', text)
+
+    def test_site_root_must_contain_the_installer_and_never_applies_to_a_url(self):
+        with self.assertRaises(check.UsageError):
+            check.check_site(str(self.site), [], str(self.site / 'firmware'))
+        with self.assertRaises(check.UsageError):
+            check.check_site('https://example.com/install/', [], str(self.site))
+        with self.assertRaises(check.UsageError):
+            check.check_site(str(self.site), [], str(self.site / 'nope'))
+        code, text = self.cli('https://example.com/install/', '--site-root', self.site)
+        self.assertEqual(code, 2, text)
+        # The installer directory as its own site root is the default, spelled out or not.
+        self.assertEqual(self.fails(check.check_site(str(self.site), [], str(self.site))), [])
+
     def test_a_manifest_without_builds_fails(self):
         self.write_raw_manifest({'name': 'D', 'version': '1', 'builds': []})
         self.assertIn(check.FAIL, self.levels(self.findings(), 'manifest'))

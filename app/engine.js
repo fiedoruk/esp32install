@@ -18,6 +18,15 @@ import { etaSeconds } from './progress.js';
 const BAUD = 460800;
 const PART_MAX = 32 * 1024 * 1024;
 
+/** An error's parameters for the technical log: offsets in hex, objects as JSON, bytes left out. */
+function paramText(params) {
+  const hexKeys = new Set(['offset', 'a', 'b', 'end', 'flashBytes', 'max']);
+  const pairs = Object.entries(params ?? {})
+    .filter(([, v]) => v !== undefined && !(v instanceof Uint8Array))
+    .map(([k, v]) => `${k}=${typeof v === 'number' && hexKeys.has(k) ? '0x' + v.toString(16) : typeof v === 'object' ? JSON.stringify(v) : String(v)}`);
+  return pairs.length ? ' (' + pairs.join(' ') + ')' : '';
+}
+
 /**
  * Turns whatever Web Serial or esptool-js throws into an InstallError with a known code.
  * An unrecognised error becomes `flash.write` only once a write has started; before that
@@ -266,7 +275,7 @@ export function createInstaller(deps) {
         return result;
       } catch (err) {
         const error = mapSerialError(err, { writing });
-        log('ERROR ' + error.code + (error.cause?.message ? ': ' + error.cause.message : ''));
+        log('ERROR ' + error.code + paramText(error.params) + (error.cause?.message ? ': ' + error.cause.message : ''));
         await cleanup();
         emit({ type: 'error', error, changed });
         throw error;

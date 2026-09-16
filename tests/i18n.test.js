@@ -56,11 +56,17 @@ test('a key that lands on a namespace is missing, not [object Object]', () => {
 
 const SIMPLE = ['simple', 'door', 'stage', 'result', 'gate', 'action'];
 const JARGON = /\b(firmware|flash(ing|ed)?|offset|bootloader|md5|sha-?256|serial|baud|esptool|manifest|chip|partition|erase-all|binary|\.bin)\b/i;
+// The names Chrome itself prints in its port picker; the page has to say them so a beginner can recognise the entry.
+const DEVICE_NAMES = /USB Serial|CP210x|CH9102|Unnamed device/g;
 const flat = (o, p = '') => Object.entries(o).flatMap(([k, v]) => typeof v === 'object' ? flat(v, p + k + '.') : [[p + k, v]]);
 
-test('simple-layer strings carry no jargon', () => { const bad = flat(en).filter(([k, v]) => SIMPLE.includes(k.split('.')[0]) && JARGON.test(v)); assert.deepEqual(bad, []); });
+test('simple-layer strings carry no jargon', () => { const bad = flat(en).filter(([k, v]) => SIMPLE.includes(k.split('.')[0]) && JARGON.test(v.replace(DEVICE_NAMES, ''))); assert.deepEqual(bad, []); });
 
-test('positive control: jargon in a simple key is caught', () => { assert.ok(JARGON.test('Flashing the firmware now')); });
+test('positive control: jargon in a simple key is caught, and the device-name exemption is exact', () => {
+  assert.ok(JARGON.test('Flashing the firmware now'));
+  assert.ok(JARGON.test('open the serial port'.replace(DEVICE_NAMES, '')), 'a bare "serial" is still jargon');
+  assert.ok(!JARGON.test('called USB Serial'.replace(DEVICE_NAMES, '')));
+});
 
 /** Keys the page and the engine ask for by name. Dropping one breaks the UI silently. */
 const REQUIRED = [
@@ -70,7 +76,7 @@ const REQUIRED = [
   'gate.insecure', 'gate.noSerial', 'gate.altFirst',
   'action.connect', 'action.connecting', 'action.installing', 'action.retry',
   'action.cancel', 'action.backup', 'action.backupUnknown', 'action.saveBackup', 'action.chooseBackup', 'action.chooseBackupTitle', 'action.chooseBackupHint', 'action.erase',
-  'action.theme', 'action.themeLight', 'action.themeDark',
+  'action.theme', 'action.themeLight', 'action.themeDark', 'action.copyLink', 'action.linkCopied',
   'stage.idle', 'stage.connecting', 'stage.detecting', 'stage.matching', 'stage.downloading',
   'stage.verifying', 'stage.checkingDevice', 'stage.backup', 'stage.erasing', 'stage.writing',
   'stage.md5', 'stage.done', 'stage.error', 'stage.local',
@@ -181,7 +187,7 @@ test('every Polish string keeps the placeholders of its English original', () =>
 });
 
 test('Polish simple-layer strings carry no jargon', () => {
-  const bad = flat(readLocale('pl')).filter(([k, v]) => SIMPLE.includes(k.split('.')[0]) && JARGON_PL.test(v));
+  const bad = flat(readLocale('pl')).filter(([k, v]) => SIMPLE.includes(k.split('.')[0]) && JARGON_PL.test(v.replace(DEVICE_NAMES, '')));
   assert.deepEqual(bad, []);
 });
 

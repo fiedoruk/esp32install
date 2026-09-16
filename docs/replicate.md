@@ -43,6 +43,19 @@ python3 -m http.server 8731
 python3 tools/check.py http://127.0.0.1:8731/
 ```
 
+If the installer is a subdirectory of a larger site and its manifests reach
+outside it, a portal that keeps binaries under `/os/` next to `/install/` say,
+tell the checker where the site's root is, so `../../os/x.bin` and `/os/x.bin`
+resolve as the browser will resolve them:
+
+```
+python3 tools/check.py /var/www/site/install --site-root /var/www/site
+```
+
+Without the flag the installer directory is the whole site, and a path that
+leaves it is a FAIL. With it, a path may go anywhere under the site root and
+still nowhere above it. A live URL never needs the flag.
+
 `localhost` and `127.0.0.1` are treated as secure contexts by every browser
 that has Web Serial (Chrome, Edge, Opera, Firefox 151 and newer), so the install
 button works there and you can rehearse a release against real hardware before

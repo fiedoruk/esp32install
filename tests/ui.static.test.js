@@ -284,3 +284,28 @@ test('the backup checkbox estimates from the detected flash, and says "a few min
   assert.doesNotMatch(en.action.backupUnknown, /\d/);
   assert.match(en.action.backup, /\{minutes\}/);
 });
+
+test('a phone gets a copy-the-link control and no empty hatches; a typo in ?fw= gets a way to the list', () => {
+  assert.match(html, /<section class="gate" id="gate" hidden aria-live="polite">\s*<p id="gate-text"><\/p>\s*<button class="cta" id="copy-link" type="button" hidden data-i18n="action\.copyLink"><\/button>\s*<a class="quiet" id="gate-link" hidden><\/a>\s*<\/section>/);
+  const ui = read('app/ui.js');
+  assert.match(ui, /if \(kind === 'noSerial'\) \{[\s\S]*?\$\('tech'\)\.hidden = true;\s*\$\('log-details'\)\.hidden = true;\s*\$\('alt-wrap'\)\.open = false;\s*\$\('copy-link'\)\.hidden = false;/, 'no Details, no log, esptool folded away, the link first');
+  assert.match(ui, /navigator\.share\(\{ url: location\.href/, 'a phone shares the link to itself');
+  assert.match(ui, /navigator\.clipboard\.writeText\(location\.href\)/, 'a desktop without Web Serial copies it');
+  assert.match(ui, /t\('action\.linkCopied'\)/);
+  const main = read('app/main.js');
+  assert.match(main, /if \(err\.code\.startsWith\('catalog\.unknown'\)\) \{[\s\S]*?link\.href = location\.pathname;[\s\S]*?link\.textContent = i18n\.t\('pick\.title'\)/, 'the sentence points at the list, and the link goes there');
+  assert.doesNotMatch(en.error['catalog.unknownSystem'], /published/, 'a typo in the address is not the publisher\'s fault');
+  assert.match(en.error['catalog.unknownSystem'], /list of systems/);
+});
+
+test('beginner copy: the port picker names what the browser shows, the busy port does not lead with the Arduino IDE, and no hex reaches the first layer', () => {
+  assert.match(en.simple.prepare.picker, /USB Serial, CP210x, CH9102 or just Unnamed device/);
+  assert.match(en.simple.prepare.picker, /If the list is empty/);
+  assert.match(en.error['serial.busy'], /^Another program is using this device\./);
+  const pl = JSON.parse(read('locales/pl.json'));
+  assert.match(pl.error['serial.busy'], /^Inny program korzysta z tego urządzenia\./);
+  assert.match(pl.simple.prepare.picker, /USB Serial, CP210x, CH9102/);
+  for (const [k, v] of Object.entries(en.error)) assert.doesNotMatch(v, /0x\{|\(id |\(\{schema\}\)/, k);
+  for (const [k, v] of Object.entries(pl.error)) assert.doesNotMatch(v, /0x\{|\(kod |\(\{schema\}\)/, k);
+  assert.match(read('app/engine.js'), /log\('ERROR ' \+ error\.code \+ paramText\(error\.params\)/, 'the offsets, ids and schema go to the technical log instead');
+});

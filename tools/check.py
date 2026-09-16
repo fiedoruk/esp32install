@@ -182,12 +182,24 @@ class HttpSource:
 
 
 class DirSource:
-    """A directory on disk, read as the browser would read the site rooted there."""
+    """A directory on disk, read as the browser would read the site rooted there.
 
-    def __init__(self, base: Path) -> None:
+    `base` is the installer directory (where index.html and catalog.json live). `site_root` is
+    the directory the site's root URL corresponds to; it defaults to `base`, and is given
+    separately when the installer sits in a subdirectory of the site and its manifests reach
+    outside it, the way a portal keeps binaries under `/os/` next to `/install/`. A path may
+    resolve anywhere under the site root and nowhere above it.
+    """
+
+    def __init__(self, base: Path, site_root: Optional[Path] = None) -> None:
         self.base = Path(base).resolve()
         if not self.base.is_dir():
             raise UsageError('%s is not a directory' % base)
+        self.site_root = Path(site_root).resolve() if site_root is not None else self.base
+        if not self.site_root.is_dir():
+            raise UsageError('--site-root %s is not a directory' % site_root)
+        if self.site_root != self.base and self.site_root not in self.base.parents:
+            raise UsageError('--site-root %s does not contain %s' % (site_root, base))
 
     def root(self) -> Path:
         return self.base
@@ -196,20 +208,25 @@ class DirSource:
         cleaned = relative.replace('\\', '/')
         if urllib.parse.urlsplit(cleaned).scheme:
             raise BadPath('%s is an absolute URL; check the live site instead' % relative)
-        if cleaned.startswith('/') or Path(ref) == self.base:
-            start = self.base  # the site root is a directory, everything else is a file
+        if cleaned.startswith('/'):
+            start = self.site_root  # an absolute path is from the site's root URL
+        elif Path(ref) == self.base:
+            start = self.base  # the installer root is a directory, everything else is a file
         else:
             start = Path(ref).parent
         target = (start / cleaned.lstrip('/')).resolve()
-        if target != self.base and self.base not in target.parents:
+        if target != self.site_root and self.site_root not in target.parents:
             raise BadPath('%s resolves outside the site root' % relative)
         return target
 
     def label(self, ref: Path) -> str:
-        try:
-            return Path(ref).resolve().relative_to(self.base).as_posix()
-        except ValueError:
-            return str(ref)
+        resolved = Path(ref).resolve()
+        for root in (self.base, self.site_root):
+            try:
+                return resolved.relative_to(root).as_posix()
+            except ValueError:
+                continue
+        return str(ref)
 
     def read(self, ref: Path) -> Fetched:
         try:
@@ -225,11 +242,13 @@ class DirSource:
 Source = Any  # HttpSource or DirSource
 
 
-def make_source(base: str) -> Source:
+def make_source(base: str, site_root: Optional[str] = None) -> Source:
     text = str(base)
     if re.match(r'^https?://', text, re.IGNORECASE):
+        if site_root is not None:
+            raise UsageError('--site-root applies to a directory; a live site already knows its root')
         return HttpSource(text)
-    return DirSource(Path(text))
+    return DirSource(Path(text), Path(site_root) if site_root is not None else None)
 
 
 # --------------------------------------------------------------------------- #
@@ -758,12 +777,13 @@ def check_catalog(source: Source, catalog: Any) -> List[Finding]:
     return findings
 
 
-def check_site(base: str, extra_origins: Sequence[str] = ()) -> List[Finding]:
+def check_site(base: str, extra_origins: Sequence[str] = (), site_root: Optional[str] = None) -> List[Finding]:
     """Every check, in the order a reader wants to see them.
 
     `extra_origins` are the --allow-origin values: origins the host has deliberately let into
     script-src, script-src-elem and connect-src, for its own analytics. The catalog is read first
-    because its allowOrigins decide what connect-src may name.
+    because its allowOrigins decide what connect-src may name. `site_root` is the --site-root
+    directory for a checkout whose installer is a subdirectory of the site.
 
     Raises UsageError when the base itself cannot be checked, for example a directory that is
     not there: that is a mistake in the command, not a finding about a site.
@@ -771,7 +791,7 @@ def check_site(base: str, extra_origins: Sequence[str] = ()) -> List[Finding]:
     for origin_ in extra_origins:
         if not is_origin(origin_):
             raise UsageError('--allow-origin %r is not an origin (scheme://host[:port], no path)' % (origin_,))
-    source = make_source(base)
+    source = make_source(base, site_root)
     catalog, catalog_problems = read_catalog(source)
     catalog_origins, origin_problems = allow_origins(catalog)
     findings: List[Finding] = []
@@ -801,9 +821,14 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
     parser.add_argument('--allow-origin', dest='allow_origins', action='append', default=[], metavar='ORIGIN',
                         help='an origin the page policy may also name in script-src, script-src-elem and '
                              'connect-src, for example the host of your own analytics script (repeatable)')
+    parser.add_argument('--site-root', dest='site_root', default=None, metavar='DIRECTORY',
+                        help='for a directory: the directory the site\'s root URL corresponds to, when the '
+                             'installer is a subdirectory of it and its manifests reach outside (a portal that '
+                             'keeps binaries under /os/ next to /install/, say); paths may then resolve anywhere '
+                             'under that root and nowhere above it')
     args = parser.parse_args(argv)
     try:
-        findings = check_site(args.base, args.allow_origins)
+        findings = check_site(args.base, args.allow_origins, args.site_root)
     except UsageError as exc:
         print('check.py: %s' % exc, file=sys.stderr)
         return EXIT_USAGE
