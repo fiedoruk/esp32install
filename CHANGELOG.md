@@ -4,6 +4,53 @@ What changed between released versions. The only supported way to update a copy
 is to replace the files with the current ones, so this page exists for the
 question "does the copy I am running have that fix?".
 
+## 0.3.0 — 2026-09-16
+
+This release is about the copy on **your** server rather than about ours. Nothing
+here changes what the installer writes to a device.
+
+### Your copy stops serving yesterday's files
+A part's path may now carry its own checksum — `firmware.bin?sha256=<hex>`. The
+address changes whenever the contents change, so a browser, a proxy or a CDN
+cannot hand out the previous build. This works on a host whose cache headers you
+cannot configure, which is most of them. `tools/manifest.py` writes these paths by
+default; `--no-checksum-in-path` opts out, and a manifest with bare paths keeps
+working exactly as before.
+
+### The chip is asked to confirm the write against the release
+A part may declare `md5`, and after writing the installer asks the chip for the
+MD5 of what is actually in that region and compares it with the value the
+publisher declared. This sits beside the existing check against the bytes that
+were sent, so a bad write now fails two independent tests instead of one.
+
+### The release decides how it is written
+`flashMode`, `flashFreq` and `baudRate` belong in the manifest. They are
+properties of an image, not of the page that installs it. Defaults are unchanged
+when a manifest says nothing.
+
+### Large files survive a bad connection
+Parts are fetched in ranges and a broken download resumes instead of starting
+over. A server that does not support ranges still works, in one request, as before.
+
+### The installer can read the device's own layout
+It reads the partition table from the device, shows it in the technical layer, and
+when the `preserve` profile refuses because the layout is not the one the release
+expects, it now says **what the device actually has** rather than only an offset.
+
+### Smaller things
+A footer in your own language through `site.<lang>.json`. A browser bar that takes
+the colour of the page on a phone, an icon for the home screen, and a web manifest
+that does not pretend the page is an app. The disabled install button is readable
+again: it was white on pale blue at 2.6:1, which is a contrast failure that
+automated checking misses because it skips disabled controls. On the own-file path
+the heading now answers the question the button is waiting on. Hatch labels use one
+grammar, and the log hatch no longer changes its own label under your finger.
+
+### The footer credits the project
+The mark in the footer is now a link to the repository. It is the only thing this
+project asks for and it is deliberately one line to delete — `docs/replicate.md`
+says which one.
+
 ## 0.2.0 — 2026-09-16
 
 Everything below landed after 0.1.0 was tagged. Two of the changes are reasons to

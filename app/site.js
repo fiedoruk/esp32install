@@ -15,7 +15,7 @@
 import { safeHref } from './catalog.js';
 
 /** The installer's own version. Kept in step with package.json by tests/ui.static.test.js. */
-export const VERSION = '0.2.0';
+export const VERSION = '0.3.0';
 
 const text = (v) => (typeof v === 'string' ? v.trim() : '');
 const list = (v) => (Array.isArray(v) ? v : []);
