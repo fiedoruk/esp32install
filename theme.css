@@ -45,22 +45,44 @@
   --accent-ink: #FFFFFF;
   --warn: #8A5300;
   --stop: #B42318;
-  --done: #1B7F3B;
+  --done: #156A31;
   --backdrop: rgb(20 32 43 / 0.55);
+  /* Second layer: wells sunk into the plate, tints under a chosen or finished state, light and shade. */
+  --well: #F3F2F7;
+  --line-2: #9FA4B8;
+  --track: #DCDAE6;
+  --lamp-off: #C9CBD8;
+  --accent-tint: #EAF0FB;
+  --accent-2: #0E3F98;
+  --done-tint: #E6F4EA;
+  --stop-tint: #FBECEA;
+  --edge-hi: rgb(255 255 255 / 1);
+  --field-hi: #F3F1F8;
+  --shade-1: rgb(20 32 43 / 0.06);
+  --shade-2: rgb(20 32 43 / 0.18);
+  --grain: 0.018;
+  --grain-blend: multiply;
   --font-display: "Figtree", system-ui, sans-serif;
   --font-body: "Source Sans 3", system-ui, sans-serif;
   --font-mono: "Recursive Mono Casual", ui-monospace, "SF Mono", Menlo, monospace;
-  --ring-width: 10px;
+  --ring-width: 12px;
   --radius: 14px;
+  --radius-plate: 20px;
+  --radius-in: 10px;
   --gap: 16px;
   --maxw: 720px;
+  /* Type scale (~1.2) and spacing scale: three levels of text, four sizes of distance. */
+  --t-micro: 13px; --t-small: 15px; --t-body: 18px; --t-lead: 20px; --t-h2: 22px;
+  --t-h1: clamp(30px, 2.2vw + 22px, 40px); --t-hero: 24px;
+  --s1: 4px; --s2: 8px; --s3: 12px; --s4: 16px; --s5: 24px; --s6: 32px; --s7: 48px;
+  --motion-fast: 150ms; --motion-base: 240ms; --ease: cubic-bezier(.2, .7, .2, 1);
   color-scheme: light;
 }
 
 @media (prefers-color-scheme: dark) {
   :root:not([data-theme="light"]) {
     --bg: #0E1B2E;
-    --bg-2: #162740;
+    --bg-2: #182B46;
     --ink: #EEF3F8;
     --dim: #A7B4C2;
     --line: #2F4460;
@@ -70,6 +92,20 @@
     --stop: #FF8C82;
     --done: #6FD08C;
     --backdrop: rgb(3 9 18 / 0.7);
+    --well: #10203A;
+    --line-2: #3E5677;
+    --track: #24395A;
+    --lamp-off: #34496A;
+    --accent-tint: #1B3355;
+    --accent-2: #A9CBFF;
+    --done-tint: #17362A;
+    --stop-tint: #3A1F22;
+    --edge-hi: rgb(255 255 255 / 0.06);
+    --field-hi: #13233C;
+    --shade-1: rgb(0 0 0 / 0.35);
+    --shade-2: rgb(0 0 0 / 0.6);
+    --grain: 0.03;
+    --grain-blend: screen;
     color-scheme: dark;
   }
   /* Legacy browsers do not inherit tokens into ::backdrop; set it on the pseudo-element too. */
@@ -78,7 +114,7 @@
 
 :root[data-theme="dark"] {
   --bg: #0E1B2E;
-  --bg-2: #162740;
+  --bg-2: #182B46;
   --ink: #EEF3F8;
   --dim: #A7B4C2;
   --line: #2F4460;
@@ -88,6 +124,20 @@
   --stop: #FF8C82;
   --done: #6FD08C;
   --backdrop: rgb(3 9 18 / 0.7);
+  --well: #10203A;
+  --line-2: #3E5677;
+  --track: #24395A;
+  --lamp-off: #34496A;
+  --accent-tint: #1B3355;
+  --accent-2: #A9CBFF;
+  --done-tint: #17362A;
+  --stop-tint: #3A1F22;
+  --edge-hi: rgb(255 255 255 / 0.06);
+  --field-hi: #13233C;
+  --shade-1: rgb(0 0 0 / 0.35);
+  --shade-2: rgb(0 0 0 / 0.6);
+  --grain: 0.03;
+  --grain-blend: screen;
   color-scheme: dark;
 }
 :root[data-theme="dark"] dialog::backdrop { --backdrop: rgb(3 9 18 / 0.7); }
@@ -102,7 +152,21 @@
   --accent-ink: #FFFFFF;
   --warn: #8A5300;
   --stop: #B42318;
-  --done: #1B7F3B;
+  --done: #156A31;
   --backdrop: rgb(20 32 43 / 0.55);
+  --well: #F3F2F7;
+  --line-2: #9FA4B8;
+  --track: #DCDAE6;
+  --lamp-off: #C9CBD8;
+  --accent-tint: #EAF0FB;
+  --accent-2: #0E3F98;
+  --done-tint: #E6F4EA;
+  --stop-tint: #FBECEA;
+  --edge-hi: rgb(255 255 255 / 1);
+  --field-hi: #F3F1F8;
+  --shade-1: rgb(20 32 43 / 0.06);
+  --shade-2: rgb(20 32 43 / 0.18);
+  --grain: 0.018;
+  --grain-blend: multiply;
   color-scheme: light;
 }

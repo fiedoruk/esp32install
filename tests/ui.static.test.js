@@ -121,24 +121,64 @@ test('theme.css vendors Figtree and Source Sans 3 locally and never reaches the 
   assert.match(theme, /@font-face\s*\{[^}]*font-family:\s*"Source Sans 3"/);
   assert.match(theme, /@font-face\s*\{[^}]*font-family:\s*"Recursive Mono Casual"/);
   assert.doesNotMatch(theme, /https?:/);
-  assert.doesNotMatch(style, /https?:/);
+  assert.doesNotMatch(style, /url\(\s*["']?https?:/, 'no url() may point at the network');
+  // The only http in style.css is the SVG namespace inside the grain texture's data: URI, which never leaves the page.
+  assert.deepEqual([...style.matchAll(/https?:[^'")\s]*/g)].map((m) => m[0]), ['http://www.w3.org/2000/svg']);
   assert.doesNotMatch(theme, /@import/);
   assert.doesNotMatch(style, /@import/);
 });
 
+test('the grain texture is one small inline SVG, under the plate content, and nothing else is a data: URI', () => {
+  const uris = [...style.matchAll(/url\("(data:[^"]+)"\)/g)].map((m) => m[1]);
+  assert.equal(uris.length, 1, 'one texture, on .plate::before');
+  assert.ok(uris[0].length < 400, 'the texture stays under a few hundred bytes: ' + uris[0].length);
+  assert.match(uris[0], /^data:image\/svg\+xml,/);
+  assert.match(style, /\.plate::before\s*\{[^}]*z-index:\s*-1/, 'the grain sits under the text');
+  assert.match(style, /\.plate\s*\{[^}]*isolation:\s*isolate/, 'and stays inside the plate');
+});
+
 test('theme tokens contract: every token style.css relies on is defined for light and dark', () => {
-  for (const tok of ['--bg', '--bg-2', '--ink', '--dim', '--line', '--accent', '--accent-ink', '--warn', '--stop', '--done', '--font-display', '--font-body', '--font-mono', '--radius', '--gap', '--maxw']) {
+  for (const tok of ['--bg', '--bg-2', '--ink', '--dim', '--line', '--accent', '--accent-ink', '--warn', '--stop', '--done', '--font-display', '--font-body', '--font-mono', '--radius', '--radius-plate', '--radius-in', '--ring-width', '--gap', '--maxw', '--t-micro', '--t-small', '--t-body', '--t-lead', '--t-h2', '--t-h1', '--t-hero', '--s1', '--s7', '--motion-fast', '--motion-base', '--ease']) {
     assert.match(theme, new RegExp(`${tok}:`), tok);
   }
+  // Every colour-bearing token has a light value and a dark value in each of the three places a theme is set.
+  for (const tok of ['--bg', '--bg-2', '--ink', '--dim', '--line', '--line-2', '--accent', '--accent-2', '--accent-ink', '--accent-tint', '--warn', '--stop', '--stop-tint', '--done', '--done-tint', '--well', '--track', '--lamp-off', '--edge-hi', '--field-hi', '--shade-1', '--shade-2', '--grain', '--grain-blend']) {
+    assert.equal((theme.match(new RegExp(`${tok}:`, 'g')) ?? []).length, 4, tok + ' in :root, prefers-color-scheme dark, [data-theme=dark] and [data-theme=light]');
+  }
+  // Every token style.css reads is one theme.css defines.
+  const defined = new Set([...theme.matchAll(/(--[a-z0-9-]+):/g)].map((m) => m[1]));
+  const used = new Set([...style.matchAll(/var\((--[a-z0-9-]+)/g)].map((m) => m[1]));
+  const undefinedTokens = [...used].filter((t) => !defined.has(t) && t !== '--off');
+  assert.deepEqual(undefinedTokens, [], 'tokens style.css uses but theme.css never sets');
   assert.match(theme, /prefers-color-scheme:\s*dark/);
   assert.match(theme, /\[data-theme="dark"\]/);
   assert.match(theme, /\[data-theme="light"\]/);
 });
 
-test('no gradients, no oversized shadows, motion is switched off on request', () => {
-  assert.doesNotMatch(style, /gradient\(/);
-  assert.doesNotMatch(style, /box-shadow:\s*[^;]*\b(1[0-9]|[2-9][0-9])px/);
+test('one light spot on the field, no decorative gradients, shadows held close, motion switched off on request', () => {
+  const gradients = [...style.matchAll(/[a-z-]*gradient\(/g)].map((m) => m[0]);
+  assert.deepEqual(gradients, ['radial-gradient('], 'one radial spot behind the plate, nothing linear');
+  assert.match(style, /body\s*\{[^}]*radial-gradient\([^)]*var\(--field-hi\)/, 'the spot is the field colour token, not a named colour');
+  for (const m of style.matchAll(/box-shadow:\s*([^;]+);/g)) {
+    for (const px of m[1].matchAll(/(-?\d+)px/g)) assert.ok(Math.abs(Number(px[1])) <= 40, 'shadow offset or blur over 40px: ' + m[1]);
+  }
+  assert.doesNotMatch(style, /box-shadow:[^;]*var\(--accent\)/, 'no glow in the accent colour');
   assert.match(style, /prefers-reduced-motion/);
+  const reduced = style.slice(style.indexOf('prefers-reduced-motion'));
+  for (const sel of ['.picto-link', '.ring.is-busy .ring-arc', '.lamp.is-on.is-pulse i', '.screen.is-active']) assert.match(reduced, new RegExp(sel.replace(/[.]/g, '\\.') + '[^}]*animation:\\s*none'), sel);
+  assert.match(reduced, /--motion-fast:\s*0ms;\s*--motion-base:\s*0ms/);
+  // The cable's dashes move only while the browser's port window is open (the mode radios are locked then).
+  const link = [...style.matchAll(/^([^\n]*)\.picto-link\s*\{[^}]*animation:\s*link/gm)].map((m) => m[1]);
+  assert.deepEqual(link, ['#screen-prepare:has(#mode-first:disabled) ']);
+});
+
+test('the visual upgrade kept its four structural hooks in the markup and nothing inline', () => {
+  for (const cls of ['picto-pc', 'picto-link', 'picto-body', 'picto-screen', 'picto-led']) assert.match(html, new RegExp(`<svg class="picto"[\\s\\S]*?class="${cls}"[\\s\\S]*?</svg>`), cls);
+  assert.match(html, /<svg class="ring" id="ring"[^>]*>\s*<circle class="ring-dial" cx="60" cy="60" r="44" aria-hidden="true"\/>\s*<circle class="ring-track"/);
+  assert.match(html, /<svg class="mark" id="mark"[^>]*>\s*<circle class="mark-fill" cx="60" cy="60" r="46"\/>\s*<circle class="ring-dial" cx="60" cy="60" r="44"\/>\s*<circle class="mark-ring"/);
+  assert.match(html, /<div class="hatches">\s*<details class="tech" id="tech">[\s\S]*?<details class="log" id="log-details">[\s\S]*?<details class="alt-wrap" id="alt-wrap">[\s\S]*?<\/details>\s*<\/div>\s*<\/div>/, 'the three hatches sit in one chamber, last on the plate');
+  assert.match(html, /<a class="brand" href="\.\/"><svg viewBox="0 0 32 32" aria-hidden="true">[\s\S]*?<\/svg>esp32install<\/a>/);
+  assert.match(html, /<link rel="icon" href="data:image\/svg\+xml,[^"]*rect x='16' y='8' width='14' height='16'/, 'the favicon is the same sign as the brand');
 });
 
 test('the backup dialog has a hint line that ui.js fills with the saved file name (D-06)', () => {
