@@ -69,8 +69,21 @@ function rangeFrom(res) {
   return m ? Number(m[1]) : null;
 }
 
-/** The whole file's length as this answer states it, given that it starts at `at`, or null. */
+/**
+ * The whole file's length as this answer states it, given that it starts at `at`, or null.
+ *
+ * ⛔ A compressed answer states the length of what went over the wire, while the browser hands us
+ * what came out of the decompressor. Believing the header then makes the body look longer than the
+ * file "should" be, and the download fails on a server that is doing nothing wrong. Measured
+ * 16.09.2026 on the live site: `catalog.json` is 1305 bytes and arrived with
+ * `Content-Encoding: gzip` and `Content-Length: 380`, which broke every fetch the page makes.
+ * Most real servers compress JSON and JavaScript; the bare `python3 -m http.server` used while
+ * building this does not, which is why the suite did not see it. When the answer is encoded the
+ * length is simply unknown: progress goes quiet and nothing else changes.
+ */
 function totalFrom(res, at) {
+  const encoding = String(res.headers?.get?.('Content-Encoding') ?? '').trim().toLowerCase();
+  if (encoding && encoding !== 'identity') return null;
   const m = /^bytes\s+\d+-\d+\/(\d+)$/i.exec(String(res.headers?.get?.('Content-Range') ?? '').trim());
   if (m) return Number(m[1]);
   const length = Number(res.headers?.get?.('Content-Length'));

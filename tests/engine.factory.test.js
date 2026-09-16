@@ -1030,3 +1030,28 @@ test('the stage bar moves with the bytes while a part downloads', async () => {
   assert.ok(percents.every((v, i) => i === 0 || v >= percents[i - 1]), 'and it only ever goes forward');
   assert.ok(percents.at(-1) <= 30 && percents.at(-1) > percents[0]);
 });
+
+test('a compressed answer states the wire length, and the download must not believe it', async () => {
+  // Measured on the live site 16.09.2026: catalog.json is 1305 bytes, served with
+  // Content-Encoding: gzip and Content-Length: 380. The browser hands over what came out of the
+  // decompressor, so trusting the header made every fetch fail with manifest.fetch on a server
+  // that was doing nothing wrong. Most real servers compress JSON; python3 -m http.server does not.
+  const bytes = Uint8Array.from({ length: 1305 }, (_, i) => i & 0xff);
+  const fetchFn = async () => ({
+    ok: true, status: 200, url: 'https://h/catalog.json',
+    headers: new Map([['Content-Length', '380'], ['Content-Encoding', 'gzip']]),
+    arrayBuffer: async () => bytes.buffer.slice(0),
+  });
+  const got = await fetchBytes(fetchFn, 'https://h/catalog.json', 1 << 20, noWait);
+  assert.deepEqual([...got], [...bytes], 'the whole body, not a failure');
+});
+
+test('an identity encoding is still a length we can believe', async () => {
+  const bytes = Uint8Array.from({ length: 64 }, (_, i) => i);
+  const fetchFn = async () => ({
+    ok: true, status: 200, url: 'https://h/f.bin',
+    headers: new Map([['Content-Length', '64'], ['Content-Encoding', 'identity']]),
+    arrayBuffer: async () => bytes.buffer.slice(0),
+  });
+  assert.deepEqual([...await fetchBytes(fetchFn, 'https://h/f.bin', 1 << 20, noWait)], [...bytes]);
+});
