@@ -2,7 +2,9 @@
 
 The site is static files. Copy them somewhere that serves HTTPS and you have an
 installer. There is nothing to compile, no runtime, no database, and nothing that
-calls home.
+phones a third party you did not put in the catalog yourself: the page fetches the
+binaries a manifest names, from its own origin unless `allowOrigins` says
+otherwise, and nothing else.
 
 ## What the host has to do
 
