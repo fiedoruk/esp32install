@@ -537,9 +537,13 @@ test('a row in the system list wears the action, and Copy link sits a level unde
   assert.ok(copy, '.sys-copy');
   assert.match(copy[1], /color:\s*var\(--dim\)/);
   assert.match(copy[1], /text-transform:\s*uppercase/, 'panel lettering, not a second button');
-  assert.match(copy[1], /opacity:\s*0/);
-  assert.match(style, /\.sys:hover \.sys-copy, \.sys-copy:focus-visible \{ opacity: 1; \}/, 'the pointer and the keyboard both bring it back');
-  assert.match(style, /@media \(hover: none\) \{ \.sys-copy \{ opacity: 1; \} \}/, 'a touch screen has no hover, so there it is always out');
+  // Visible at rest on every device: the owner asked for shortcuts to the catalogued images by
+  // name, and a shortcut that appears only under a pointer is not a shortcut. Quieter than the
+  // row, never hidden by it.
+  assert.match(copy[1], /opacity:\s*0\.7/, 'present but a level under the row');
+  assert.doesNotMatch(copy[1], /opacity:\s*0;/, 'never hidden at rest');
+  assert.match(style, /\.sys:hover \.sys-copy, \.sys-copy:hover, \.sys-copy:focus-visible \{ opacity: 1; \}/, 'pointer and keyboard bring it to full strength');
+  assert.doesNotMatch(style, /@media \(hover: none\) \{ \.sys-copy/, 'no touch special case is needed once it is always out');
   assert.match(read('app/ui.js'), /arrow\.className = 'sys-arrow';\s*arrow\.setAttribute\('aria-hidden', 'true'\);/);
 });
 

@@ -630,11 +630,13 @@ details[open] pre, details[open] code { font-family: var(--font-mono); }
   font: 700 var(--t-micro) var(--font-display);
   letter-spacing: 0.06em;
   text-transform: uppercase;
-  opacity: 0;
+  /* Visible at rest. The owner asked for shortcuts to the catalogued images by name, and a
+     shortcut that appears only under a pointer is not a shortcut. It stays a level quieter than
+     the row so the row still reads as the action. */
+  opacity: 0.7;
   transition: opacity var(--motion-fast) var(--ease);
 }
-.sys:hover .sys-copy, .sys-copy:focus-visible { opacity: 1; }
-@media (hover: none) { .sys-copy { opacity: 1; } }
+.sys:hover .sys-copy, .sys-copy:hover, .sys-copy:focus-visible { opacity: 1; }
 /* The newest entry wears the same tint as a chosen door, so the list has a first and not a first of three. */
 .sys.is-newest { border-color: var(--accent); background: var(--accent-tint); }
 /* Your own file: a dashed card under the list, and a block on the prepare screen. */
