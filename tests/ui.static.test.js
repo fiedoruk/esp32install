@@ -490,9 +490,18 @@ test('the signet is drawn in fills on a 2px grid, and the favicon is the same dr
 
 test('a row in the system list carries its release and its own address, and the newest one is not a third identical tile', () => {
   const ui = read('app/ui.js');
-  assert.match(ui, /if \(i === 0\) li\.classList\.add\('is-newest'\);/, "the catalog's first entry is its newest");
+  // The highlight is a recommendation, so it may only land on a stable release. When the newest
+  // entry is a pre-release no row is highlighted: the row under it is not the newest anything.
+  assert.match(ui, /const stable = channel === 'stable';/);
+  assert.match(ui, /if \(i === 0 && stable\) li\.classList\.add\('is-newest'\);/, "the tint goes to the newest entry only while it is stable");
+  assert.match(ui, /if \(i === 0 && stable\) \{\s*const flag = document\.createElement\('span'\);\s*flag\.className = 'sys-newest';/, 'and so does the word');
   assert.match(ui, /const channel = \(release\?\.channel \?\? 'stable'\);/);
-  assert.match(ui, /tag\.textContent = channel === 'stable' \? release\.version : `\$\{release\.version\} · \$\{channel\}`;/, 'the channel shows only when it is not the stable one');
+  assert.match(ui, /tag\.textContent = release\.version;/, 'the version is the version, with no channel suffix stuck to it');
+  assert.doesNotMatch(ui, /`\$\{release\.version\} · \$\{channel\}`/, 'a two-letter suffix is not a warning');
+  // A pre-release carries the install screen's own amber sentence, in the row, before the choice.
+  assert.match(ui, /if \(!stable\) \{\s*const pre = document\.createElement\('span'\);\s*pre\.className = 'sys-pre';\s*pre\.textContent = t\('simple\.preRelease'\);/);
+  assert.match(style, /\.pre-label, \.sys-pre \{[^}]*color: var\(--warn\)/, 'one tag, the same amber, in both places');
+  assert.match(style, /\.sys-pre \{ grid-column: 1 \/ -1;/, 'on its own line in the row');
   assert.match(ui, /new URL\(a\.getAttribute\('href'\), document\.baseURI\)\.href/, 'the copied address is absolute and respects <base>');
   assert.match(ui, /copy\.textContent = t\('pick\.copied'\);\s*setTimeout\(\(\) => \{ copy\.textContent = t\('pick\.copy'\); \}, 2000\);/, 'it says so for two seconds, with no dialog');
   assert.match(ui, /copy\.setAttribute\('aria-live', 'polite'\)/);

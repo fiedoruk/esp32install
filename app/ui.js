@@ -408,9 +408,12 @@ export function mountUi({ i18n, system }) {
     },
     /**
      * The list of systems. A row is not a card of a name: it carries the device, the version it
-     * would install and, when that release is not the stable one, its channel. The catalog's first
-     * entry is its newest, so it wears the tint and the word, and the three-identical-tiles rhythm
-     * is broken by the first row rather than by decoration.
+     * would install and, when that release is not the stable one, a plain sentence saying so.
+     * The tint and the word NEWEST belong to the newest release only while that release is
+     * stable: highlighting a test build is a recommendation, and the strongest thing on the
+     * screen may not recommend a pre-release to somebody afraid of breaking their device. A
+     * catalogue whose newest entry is a pre-release therefore has no highlighted row at all —
+     * that is the answer, not a fallback, because the row below it is not the newest anything.
      *
      * Each row also offers its own address, because the answer to "I want a link straight to this
      * one on my page" is a link the owner of that page can copy, not a second catalog.
@@ -423,9 +426,10 @@ export function mountUi({ i18n, system }) {
       systems.forEach((s, i) => {
         const release = Array.isArray(s.releases) ? s.releases[0] : null;
         const channel = (release?.channel ?? 'stable');
+        const stable = channel === 'stable';
         const li = document.createElement('li');
         li.className = 'sys';
-        if (i === 0) li.classList.add('is-newest');
+        if (i === 0 && stable) li.classList.add('is-newest');
         const a = document.createElement('a');
         a.className = 'sys-go';
         a.href = hrefFor(s);
@@ -436,7 +440,7 @@ export function mountUi({ i18n, system }) {
         a.append(name, small);
         const meta = document.createElement('p');
         meta.className = 'sys-meta';
-        if (i === 0) {
+        if (i === 0 && stable) {
           const flag = document.createElement('span');
           flag.className = 'sys-newest';
           flag.textContent = t('pick.newest');
@@ -445,7 +449,7 @@ export function mountUi({ i18n, system }) {
         if (release?.version) {
           const tag = document.createElement('span');
           tag.className = 'sys-version';
-          tag.textContent = channel === 'stable' ? release.version : `${release.version} · ${channel}`;
+          tag.textContent = release.version;
           meta.append(tag);
         }
         const copy = document.createElement('button');
@@ -469,6 +473,15 @@ export function mountUi({ i18n, system }) {
         arrow.className = 'sys-arrow';
         arrow.setAttribute('aria-hidden', 'true');
         li.append(a, meta, copy, arrow);
+        // What `· rc` used to mean, said in the same amber words the install screen uses — and
+        // said before the choice instead of two screens after it. Its own line in the row: a
+        // warning that has to share a line with a version number is an afterthought.
+        if (!stable) {
+          const pre = document.createElement('span');
+          pre.className = 'sys-pre';
+          pre.textContent = t('simple.preRelease');
+          li.append(pre);
+        }
         $('pick-list').append(li);
       });
     },

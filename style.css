@@ -165,10 +165,10 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
   color: var(--accent);
 }
 .kicker:empty { display: none; }
-/* A test release wears a small amber tag under the kicker: caution, not stop. */
-.pre-label {
-  align-self: flex-start;
-  margin: var(--s2) 0 0;
+/* A test release wears a small amber tag: caution, not stop. One tag, two places — under the
+   kicker on the install screen, and in the row of the list that offers it, so the warning arrives
+   before the choice and not after it. */
+.pre-label, .sys-pre {
   padding: 4px 10px;
   border-radius: 999px;
   background: var(--well);
@@ -176,6 +176,7 @@ svg { fill: none; stroke: currentColor; stroke-width: 2; stroke-linecap: round; 
   font: 700 var(--t-micro)/1.3 var(--font-display);
   letter-spacing: 0.04em;
 }
+.pre-label { align-self: flex-start; margin: var(--s2) 0 0; }
 
 h1, h2, h3 {
   font-family: var(--font-display);
@@ -637,8 +638,11 @@ details[open] pre, details[open] code { font-family: var(--font-mono); }
   transition: opacity var(--motion-fast) var(--ease);
 }
 .sys:hover .sys-copy, .sys-copy:hover, .sys-copy:focus-visible { opacity: 1; }
-/* The newest entry wears the same tint as a chosen door, so the list has a first and not a first of three. */
+/* The newest entry wears the same tint as a chosen door, so the list has a first and not a first
+   of three — but only while that entry is stable (see showSystems). */
 .sys.is-newest { border-color: var(--accent); background: var(--accent-tint); }
+/* The test-release tag takes the width of the row, under the name: it is a sentence, not a suffix. */
+.sys-pre { grid-column: 1 / -1; justify-self: start; white-space: normal; }
 /* Your own file: a dashed card under the list, and a block on the prepare screen. */
 .own-card {
   display: block;
@@ -773,6 +777,7 @@ dialog p { margin-top: 8px; }
   .sys-meta { grid-column: 1; grid-row: 2; }
   .sys-copy { grid-column: 2; grid-row: 2; justify-self: end; margin-right: -10px; }
   .sys-arrow { grid-column: 2; grid-row: 1; justify-self: end; align-self: center; }
+  .sys-pre { grid-row: 3; }
   .foot-cols { grid-template-columns: 1fr; gap: var(--s4); }
   .foot-bottom { margin-left: 0; } /* the licence line wraps under the mark instead of off the edge */
   .facts dt { margin-top: 6px; }
