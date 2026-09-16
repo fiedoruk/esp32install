@@ -17,7 +17,10 @@ test('no inline scripts, no inline styles, strict CSP meta, module entry, no CDN
   assert.doesNotMatch(html, /\sstyle="/i);
   assert.doesNotMatch(html, /\son[a-z]+="/i, 'no inline event handlers');
   assert.match(html, /http-equiv="Content-Security-Policy"[^>]*default-src 'self'/);
-  assert.match(html, /script-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'none'/);
+  assert.match(html, /script-src 'self'; connect-src 'self'; img-src 'self' data:; style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none'; form-action 'none'/);
+  // frame-ancestors is ignored in a <meta> policy and logs a console error; it belongs in the host's HTTP headers.
+  assert.doesNotMatch(html, /frame-ancestors/);
+  assert.match(html, /<meta name="description" content="[^"]{40,}">/);
   assert.doesNotMatch(html, /unsafe-inline|https?:\/\/(unpkg|cdn\.jsdelivr|esm\.sh)/);
   assert.match(html, /<script type="module" src="app\/main\.js"><\/script>/);
   assert.match(html, /<html lang="en"/);

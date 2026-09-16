@@ -28,6 +28,14 @@ produce puzzling JSON parse errors.
 
 Nothing else matters. No PHP, no Node, no server-side code of any kind.
 
+One thing the files cannot do for themselves: stop another site from framing
+the page. The `frame-ancestors` directive is ignored inside a `<meta>` policy,
+so it is not in `index.html`; it and the older `X-Frame-Options` only work as
+HTTP response headers, which the host sets. On Apache that is
+`Header set Content-Security-Policy "frame-ancestors 'none'"` plus
+`Header set X-Frame-Options "DENY"`; on nginx `add_header` with the same two
+values. Without them the page loads and works, but can be embedded elsewhere.
+
 ## Local testing
 
 ```

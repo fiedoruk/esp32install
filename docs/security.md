@@ -98,7 +98,7 @@ erase, anything not covered by the release stays on the chip.
 ```
 default-src 'self'; script-src 'self'; connect-src 'self'; img-src 'self' data:;
 style-src 'self'; font-src 'self'; object-src 'none'; base-uri 'none';
-frame-ancestors 'none'; form-action 'none'
+form-action 'none'
 ```
 
 `script-src 'self'` with no `unsafe-inline` and no `unsafe-eval` means no inline
@@ -107,10 +107,16 @@ the DOM cannot become script. `connect-src 'self'` is the reason `allowOrigins`
 needs a deliberate change to the page's policy as well as to the catalog if you
 move binaries off-origin: the origin has to be added to `connect-src` in
 `index.html`, and `tools/check.py` then accepts it there because the catalog
-lists it. `frame-ancestors 'none'` stops another site from framing the installer
-and steering clicks at it. `form-action 'none'` and `base-uri 'none'` remove two
-classic redirection tricks. The page also sets `referrer: no-referrer`, so
-visiting an installer link does not tell the firmware host where you came from.
+lists it. `form-action 'none'` and `base-uri 'none'` remove two classic
+redirection tricks. The page also sets `referrer: no-referrer`, so visiting an
+installer link does not tell the firmware host where you came from.
+
+One directive is deliberately absent. `frame-ancestors`, which stops another
+site from framing the installer and steering clicks at it, is ignored by
+browsers when it appears in a `<meta>` policy and only logs a console error
+there. It belongs in an HTTP header set by the host, together with the older
+`X-Frame-Options`; [replicate.md](replicate.md#what-the-host-has-to-do) shows
+where. Until the host sends it, the page can be framed.
 
 `tools/check.py` fails if that meta tag is missing, if `default-src` is not
 exactly `'self'`, or if `script-src`, `script-src-elem`, `connect-src` or
