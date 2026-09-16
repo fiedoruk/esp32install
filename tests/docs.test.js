@@ -28,6 +28,12 @@ test('docs/profiles.md documents no code that en.json does not have', () => {
   assert.deepEqual(unknown, []);
 });
 
+test('the download-counter example keeps its log where the example says to keep it', () => {
+  const replicate = read('docs/replicate.md');
+  assert.doesNotMatch(replicate, /\$log = __DIR__/, 'a log beside the binary is served with the binary');
+  assert.match(replicate, /\$log = '\/var\/log\/esp32install\/downloads\.log';/);
+});
+
 test('the README replication example does not overwrite the shipped schema 1 manifest', () => {
   const readme = read('README.md');
   assert.doesNotMatch(readme, /--out firmware\/demo-1-0-0\.json/);

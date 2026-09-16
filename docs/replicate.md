@@ -404,7 +404,9 @@ is how these counters turn into a way to read any file on the server:
 // firmware/demo.php — counts one download, then sends the file. The manifest's
 // "path" for this part says "demo.php" instead of "demo.bin".
 $file = __DIR__ . '/demo.bin';
-$log = __DIR__ . '/downloads.log';
+// Anywhere the web server does not serve. Not this folder and not the document
+// root: a log written next to the binary is fetched as easily as the binary.
+$log = '/var/log/esp32install/downloads.log';
 file_put_contents($log, date('c') . "\t" . basename($file) . "\n", FILE_APPEND | LOCK_EX);
 header('Content-Type: application/octet-stream');
 header('Content-Length: ' . filesize($file));
@@ -415,7 +417,9 @@ The installer checks the size and the SHA-256 of what arrives, so the script has
 to send the bytes unchanged: no compression the manifest does not know about, no
 HTML error page in place of the file. Count the lines, not the bytes; `wc -l
 downloads.log` is the number. Keep that log where the server does not hand it
-out: outside the served directory, or denied in the host's configuration.
+out: the path above is outside the document root altogether, which is the point —
+`__DIR__ . '/downloads.log'` would publish it as `/firmware/downloads.log`. Where
+you cannot write outside the root, deny the file in the host's configuration.
 
 Server access logs answer the same question without any code at all, and a
 privacy-respecting analytics tool can count the page view. The page also calls
