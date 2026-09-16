@@ -1,0 +1,28 @@
+{
+  "brand": "esp32ai.me",
+  "tagline": "A laboratory of ESP32 devices: radio, emini Home, a privacy zone.",
+  "columns": [
+    {
+      "title": "Devices",
+      "links": [
+        { "text": "esp32ai.me", "href": "https://esp32ai.me/" },
+        { "text": "Open Radio", "href": "https://esp32ai.me/radio" },
+        { "text": "emini Home", "href": "https://emini.ink/home/" }
+      ]
+    },
+    {
+      "title": "Installer",
+      "links": [
+        { "text": "Source code", "href": "https://github.com/fiedoruk/esp32install" },
+        { "text": "Put this on your own server", "href": "https://github.com/fiedoruk/esp32install/blob/main/docs/replicate.md" },
+        { "text": "MIT licence", "href": "https://github.com/fiedoruk/esp32install/blob/main/LICENSE" }
+      ]
+    },
+    {
+      "title": "More",
+      "links": [
+        { "text": "404.tf", "href": "https://404.tf/" }
+      ]
+    }
+  ]
+}

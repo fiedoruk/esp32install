@@ -1,0 +1,32 @@
+{
+  "site": "esp32ai.me — a laboratory of ESP32 devices",
+  "systems": [
+    {
+      "id": "emini-home",
+      "name": "emini Home",
+      "device": "ZECTRIX NOTE4C",
+      "guide": "https://emini.ink/home/",
+      "releases": [
+        { "version": "0.5.0", "manifest": "manifests/emini-home-0-5-0.json" },
+        { "version": "0.4.4", "manifest": "manifests/emini-home-0-4-4.json" }
+      ]
+    },
+    {
+      "id": "open-radio",
+      "name": "Open Radio",
+      "device": "M5Stack Core2",
+      "guide": "https://esp32ai.me/radio",
+      "releases": [
+        { "version": "0.4.1", "manifest": "manifests/radio-0-4-1.json" }
+      ]
+    },
+    {
+      "id": "radbox",
+      "name": "RADBOX",
+      "device": "M5Stack Core2",
+      "releases": [
+        { "version": "0.1.0-rc15", "channel": "rc", "manifest": "manifests/radbox-0-1-0-rc15.json" }
+      ]
+    }
+  ]
+}

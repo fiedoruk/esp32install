@@ -1,0 +1,25 @@
+{
+  "schema": 2,
+  "name": "Open Radio Core2",
+  "version": "0.4.1",
+  "profile": "factory",
+  "new_install_prompt_erase": true,
+  "builds": [
+    {
+      "boardKey": "core2",
+      "board": "M5Stack Core2",
+      "chipFamily": "ESP32",
+      "flashSizeMB": 16,
+      "usbVendorId": 6790,
+      "usbProductId": 21972,
+      "parts": [
+        {
+          "path": "../firmware/open-radio/0.4.1/open-radio-0-4-1.bin",
+          "offset": 0,
+          "size": 2495616,
+          "sha256": "0230fa8c4e09d8568a316e688bc6efdc3caa2bd8a1ee7a5a75b4fd3b051c1fa8"
+        }
+      ]
+    }
+  ]
+}
