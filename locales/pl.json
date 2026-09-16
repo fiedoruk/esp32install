@@ -8,7 +8,8 @@
     "showLog": "Pokaż zapis techniczny",
     "hideLog": "Ukryj zapis techniczny",
     "language": "Język",
-    "progress": "Postęp"
+    "progress": "Postęp",
+    "titleVersion": "Zainstaluj {system} {version}"
   },
   "door": {
     "title": "Co chcesz zrobić?",
@@ -16,11 +17,12 @@
     "firstHint": "Na urządzeniu jest coś innego albo jeszcze nic.",
     "update": "Aktualizacja",
     "updateHint": "{system} jest już na tym urządzeniu.",
-    "updateHintOwn": "To, co jest w pliku, jest już na tym urządzeniu."
+    "updateHintOwn": "To, co jest w pliku, jest już na tym urządzeniu.",
+    "firstHintNew": "Nowe urządzenie. Nic jeszcze na nim nie ustawiono."
   },
   "gate": {
     "insecure": "Żeby połączyć się z urządzeniem, otwórz tę stronę pod adresem zaczynającym się od https.",
-    "noSerial": "Ta przeglądarka nie potrafi połączyć się z urządzeniem przez kabel. Użyj Chrome albo Edge na komputerze. Telefon nie wystarczy.",
+    "noSerial": "Ta przeglądarka nie potrafi połączyć się z urządzeniem przez kabel. Użyj Chrome, Edge, Opery albo Firefoksa od wersji 151 na komputerze. Telefon nie wystarczy.",
     "altFirst": "Możesz też zainstalować z okna terminala:"
   },
   "action": {
@@ -72,7 +74,8 @@
       "hintCable": "Weź kabel od telefonu albo od aparatu. Niektóre cienkie kable tylko ładują i nie przesyłają danych.",
       "hintDoor": "Jeśli nie masz pewności, wybierz „Pierwsza instalacja”. To zawsze jest bezpieczne.",
       "hintBackup": "Kopia pozwoli przywrócić urządzenie dokładnie takie, jakie było. Zajmie kilka minut i nie jest konieczna.",
-      "picker": "Po kliknięciu przeglądarka otworzy małe okienko z pytaniem, którego urządzenia użyć. Wybierz to, które pojawiło się po podłączeniu kabla."
+      "picker": "Po kliknięciu przeglądarka otworzy małe okienko z pytaniem, którego urządzenia użyć. Wybierz to, które pojawiło się po podłączeniu kabla.",
+      "backupFirst": "Ta instalacja zaczyna się od skopiowania wszystkiego, co jest na urządzeniu. To potrwa kilka minut, a miejsce zapisu wskażesz sam."
     },
     "install": {
       "keepCable": "Nie odłączaj kabla, dopóki instalacja się nie skończy."
@@ -131,7 +134,8 @@
         "otadata": "Wygląda na ustawienia rozruchu.",
         "data": "Nie wygląda na program. Sam podaj adres."
       }
-    }
+    },
+    "preRelease": "Wersja testowa — nie jest to wydanie stabilne."
   },
   "pick": {
     "title": "Wybierz system",

@@ -1,7 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import { readFileSync, readdirSync } from 'node:fs';
-import { detectLang, createI18n } from '../app/i18n.js';
+import { detectLang, createI18n, langLinkHref } from '../app/i18n.js';
 
 const en = JSON.parse(readFileSync(new URL('../locales/en.json', import.meta.url), 'utf8'));
 
@@ -12,6 +12,15 @@ test('detectLang order: ?lang, html lang, navigator, fallback en', () => {
   assert.equal(detectLang({ htmlLang: '', query: 'pl', navigatorLanguages: ['de'], available }), 'pl');
   assert.equal(detectLang({ htmlLang: '', query: '', navigatorLanguages: ['pl-PL', 'en'], available }), 'pl');
   assert.equal(detectLang({ htmlLang: 'de', query: 'xx', navigatorLanguages: ['de-DE'], available }), 'en');
+});
+
+test('langLinkHref always spells the language out, keeps the query, and returns only path and query', () => {
+  assert.equal(langLinkHref('https://esp32ai.me/pl/install/?fw=radio', 'en'), '/pl/install/?fw=radio&lang=en', 'EN from a Polish copy must say lang=en, or the html lang keeps it Polish');
+  assert.equal(langLinkHref('https://esp32ai.me/install/?fw=radio&lang=pl', 'en'), '/install/?fw=radio&lang=en');
+  assert.equal(langLinkHref('https://esp32ai.me/install/?fw=radio', 'pl'), '/install/?fw=radio&lang=pl');
+  assert.equal(langLinkHref('https://esp32ai.me/install/?own=1&lang=en', 'pl'), '/install/?own=1&lang=pl');
+  assert.equal(langLinkHref('https://esp32ai.me/install/', 'en'), '/install/?lang=en');
+  assert.equal(detectLang({ htmlLang: 'pl', query: 'en', navigatorLanguages: ['pl'], available: ['en', 'pl'] }), 'en', 'and detectLang honours it');
 });
 
 test('t() falls back to en, then to the key, and interpolates safely', () => {
@@ -55,9 +64,9 @@ test('positive control: jargon in a simple key is caught', () => { assert.ok(JAR
 
 /** Keys the page and the engine ask for by name. Dropping one breaks the UI silently. */
 const REQUIRED = [
-  'app.title', 'app.subtitle', 'app.notDetected',
+  'app.title', 'app.titleVersion', 'app.subtitle', 'app.notDetected',
   'app.stage', 'app.copyLog', 'app.showLog', 'app.hideLog', 'app.language',
-  'door.title', 'door.first', 'door.firstHint', 'door.update', 'door.updateHint', 'door.updateHintOwn',
+  'door.title', 'door.first', 'door.firstHint', 'door.firstHintNew', 'door.update', 'door.updateHint', 'door.updateHintOwn',
   'gate.insecure', 'gate.noSerial', 'gate.altFirst',
   'action.connect', 'action.connecting', 'action.installing', 'action.retry',
   'action.cancel', 'action.backup', 'action.saveBackup', 'action.chooseBackup', 'action.chooseBackupTitle', 'action.chooseBackupHint', 'action.erase',
@@ -69,7 +78,7 @@ const REQUIRED = [
   'result.ok', 'result.stopped',
   'board.pick', 'board.pickHint',
   'alt.title', 'alt.cmd', 'alt.files', 'alt.drivers', 'alt.guide',
-  'simple.prepare.title', 'simple.prepare.hintCable', 'simple.prepare.hintDoor', 'simple.prepare.hintBackup',
+  'simple.prepare.title', 'simple.prepare.hintCable', 'simple.prepare.hintDoor', 'simple.prepare.hintBackup', 'simple.prepare.backupFirst', 'simple.preRelease',
   'simple.install.keepCable', 'simple.backup.save', 'simple.backup.saved', 'simple.done.title', 'simple.done.next', 'simple.done.again', 'simple.stopped.safe', 'simple.stopped.during',
   'tech.title', 'tech.chip', 'tech.flash', 'tech.board', 'tech.release', 'tech.checksum', 'tech.log', 'tech.file',
   'simple.own.title', 'simple.own.instead', 'simple.own.hint', 'simple.own.choose', 'simple.own.read', 'simple.own.address', 'simple.own.device',

@@ -42,3 +42,15 @@ export function createI18n(dicts, lang) {
   };
   return { t, lang };
 }
+
+/**
+ * The address of this page in another language. `lang` is always written out, English included:
+ * a copy served under a language path (`/pl/install/` with `<html lang="pl">`) would otherwise
+ * stay Polish when the parameter is merely dropped, because the page's own `lang` wins next.
+ * Only the path and the query are returned, so a copy under any host or `<base>` stays where it is.
+ */
+export function langLinkHref(href, target) {
+  const url = new URL(href);
+  url.searchParams.set('lang', target);
+  return url.pathname + url.search;
+}

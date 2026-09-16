@@ -249,3 +249,28 @@ test('the stopped title depends on whether the engine had begun erasing or writi
   assert.match(en.simple.stopped.safe, /unchanged/);
   assert.match(en.simple.stopped.during, /Keep the cable in/);
 });
+
+test('the first screen names the version, labels a pre-release, and warns before a preserve install that a copy comes first', () => {
+  assert.match(html, /<p class="kicker" id="title"><\/p>\s*<p class="pre-label" id="pre-label" hidden><\/p>/, 'the label sits next to the system name');
+  assert.match(html, /<p class="lead" id="backup-first" hidden data-i18n="simple\.prepare\.backupFirst"><\/p>\s*<div class="opt-row" id="backup-opt" hidden>/);
+  assert.match(html, /<small id="door-first-hint" data-i18n="door\.firstHint"><\/small>/);
+  const main = read('app/main.js');
+  assert.match(main, /title: i18n\.t\('app\.titleVersion', \{ system: system\.name, version: manifest\.version \}\)/, 'the kicker carries the version');
+  assert.match(main, /preRelease: \(release\.channel \?\? 'stable'\) !== 'stable'/, 'absent channel means stable, as in catalog.js');
+  assert.match(main, /ui\.setPreserve\(manifest\.profile === 'preserve'\)/);
+  const ui = read('app/ui.js');
+  assert.match(ui, /\$\('pre-label'\)\.textContent = preRelease \? t\('simple\.preRelease'\) : '';\s*\$\('pre-label'\)\.hidden = !preRelease;/);
+  assert.match(ui, /\$\('backup-first'\)\.hidden = !on;\s*\$\('door-first-hint'\)\.textContent = t\(on \? 'door\.firstHintNew' : 'door\.firstHint'\);/);
+  assert.match(en.app.titleVersion, /\{system\} \{version\}/);
+  assert.match(en.simple.prepare.backupFirst, /copying everything/);
+  assert.match(en.door.firstHintNew, /^New device\./);
+});
+
+test('the browser gate names every browser with Web Serial and the EN link always says lang=en', () => {
+  assert.match(en.gate.noSerial, /Chrome, Edge, Opera or Firefox 151/);
+  assert.match(read('README.md'), /Firefox 151 or newer/);
+  assert.match(read('docs/replicate.md'), /Firefox 151 and newer/);
+  const main = read('app/main.js');
+  assert.match(main, /a\.href = langLinkHref\(location\.href, target\);/);
+  assert.doesNotMatch(main, /searchParams\.delete\('lang'\)/, 'dropping the parameter left /pl/install Polish');
+});

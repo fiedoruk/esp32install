@@ -35,6 +35,7 @@
 <main id="app" class="app">
   <div class="plate">
     <p class="kicker" id="title"></p>
+    <p class="pre-label" id="pre-label" hidden></p>
 
     <section class="gate" id="gate" hidden aria-live="polite"><p id="gate-text"></p></section>
 
@@ -91,7 +92,7 @@
         <label class="door" for="mode-first">
           <input type="radio" name="mode" id="mode-first" value="first" checked>
           <svg viewBox="0 0 48 48" aria-hidden="true"><path d="M8 18l16-8 16 8v16l-16 8-16-8z"/><path d="M8 18l16 8 16-8M24 26v16"/><rect x="18" y="8" width="12" height="9" rx="2"/></svg>
-          <span><b data-i18n="door.first"></b><small data-i18n="door.firstHint"></small></span>
+          <span><b data-i18n="door.first"></b><small id="door-first-hint" data-i18n="door.firstHint"></small></span>
         </label>
         <label class="door" for="mode-update">
           <input type="radio" name="mode" id="mode-update" value="update">
@@ -100,6 +101,7 @@
         </label>
       </div>
 
+      <p class="lead" id="backup-first" hidden data-i18n="simple.prepare.backupFirst"></p>
       <div class="opt-row" id="backup-opt" hidden>
         <label class="opt" for="backup"><input type="checkbox" id="backup"><span id="backup-label"></span></label>
         <button class="hint" type="button" aria-expanded="false" aria-controls="hint-backup" data-i18n-attr="aria-label:hint.open"><span aria-hidden="true">?</span></button>

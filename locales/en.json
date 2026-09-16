@@ -8,7 +8,8 @@
     "showLog": "Show technical log",
     "hideLog": "Hide technical log",
     "language": "Language",
-    "progress": "Progress"
+    "progress": "Progress",
+    "titleVersion": "Install {system} {version}"
   },
   "door": {
     "title": "What are you doing?",
@@ -16,11 +17,12 @@
     "firstHint": "The device runs something else, or nothing yet.",
     "update": "Update",
     "updateHint": "{system} is already on this device.",
-    "updateHintOwn": "What is in the file is already on this device."
+    "updateHintOwn": "What is in the file is already on this device.",
+    "firstHintNew": "New device. Nothing has been set up on it yet."
   },
   "gate": {
     "insecure": "This page has to be opened over a secure (https) address before it can talk to a device.",
-    "noSerial": "This browser cannot talk to a device over a cable. Use Chrome or Edge on a computer. A phone will not do.",
+    "noSerial": "This browser cannot talk to a device over a cable. Use Chrome, Edge, Opera or Firefox 151 or newer, on a computer. A phone will not do.",
     "altFirst": "You can still install from a terminal window:"
   },
   "action": {
@@ -72,7 +74,8 @@
       "hintCable": "Use a cable that came with a phone or camera. Some thin cables only charge and carry no data.",
       "hintDoor": "If you are not sure, choose First installation. It is always safe.",
       "hintBackup": "A copy lets you put the device back exactly as it was. It takes a few minutes and is optional.",
-      "picker": "After you click, your browser opens a small window asking which device to use. Choose the one that appeared when you plugged in the cable."
+      "picker": "After you click, your browser opens a small window asking which device to use. Choose the one that appeared when you plugged in the cable.",
+      "backupFirst": "This install starts by copying everything that is on the device. It takes a few minutes and you choose where to keep the copy."
     },
     "install": {
       "keepCable": "Keep the cable connected until this finishes."
@@ -131,7 +134,8 @@
         "otadata": "Looks like start-up settings.",
         "data": "Does not look like a program. Type the address yourself."
       }
-    }
+    },
+    "preRelease": "Test version — not the stable release."
   },
   "pick": {
     "title": "Choose a system",

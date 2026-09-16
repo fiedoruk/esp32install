@@ -5,7 +5,7 @@
  * when there is no catalog to list.
  * The portal may define `window.__esp32installAnalytics(name, props)`; this file only calls it.
  */
-import { detectLang, createI18n } from './i18n.js';
+import { detectLang, createI18n, langLinkHref } from './i18n.js';
 import { pickRelease } from './catalog.js';
 import { CHIP_FAMILIES, normalizeManifest, localManifest } from './manifest.js';
 import { createInstaller, fetchBytes, fetchOwnFile } from './engine.js';
@@ -29,13 +29,11 @@ async function loadJson(url, max = 512 * 1024) {
   return JSON.parse(new TextDecoder().decode(bytes));
 }
 
-/** Language links keep `?fw=` and friends; only `lang` changes. */
+/** Language links keep `?fw=` and friends; only `lang` changes, and it is always spelled out. */
 function setupLangLinks(lang) {
   for (const a of document.querySelectorAll('nav.lang a')) {
-    const url = new URL(location.href);
     const target = a.getAttribute('hreflang');
-    if (target === 'en') url.searchParams.delete('lang'); else url.searchParams.set('lang', target);
-    a.href = url.pathname + url.search;
+    a.href = langLinkHref(location.href, target);
     if (target === lang) a.setAttribute('aria-current', 'true');
   }
 }
@@ -295,8 +293,14 @@ async function boot() {
   const manifestUrl = new URL(release.manifest, document.baseURI).href;
   const manifest = normalizeManifest(await loadJson(manifestUrl), manifestUrl, { allowOrigins: catalog.allowOrigins ?? [] });
   document.title = i18n.t('app.title', { system: system.name });
-  ui.showInstaller({ title: i18n.t('app.title', { system: system.name }), release: manifest.version });
+  // The first layer says which version this is, and whether it is the stable one (D-06: no surprises later).
+  ui.showInstaller({
+    title: i18n.t('app.titleVersion', { system: system.name, version: manifest.version }),
+    release: manifest.version,
+    preRelease: (release.channel ?? 'stable') !== 'stable',
+  });
   ui.setBackupAvailable(manifest.profile === 'factory');
+  ui.setPreserve(manifest.profile === 'preserve');
   ui.setOwnLink(ownHref(lang));
   const b0 = manifest.builds[0];
   const guide = release.guide ?? system.guide;

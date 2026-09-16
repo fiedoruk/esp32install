@@ -266,10 +266,20 @@ export function mountUi({ i18n, system }) {
       for (const s of screens) { $('screen-' + s).hidden = true; $('screen-' + s).classList.remove('is-active'); }
       $('alt-wrap').open = true;
     },
-    showInstaller({ title, release }) {
+    showInstaller({ title, release, preRelease = false }) {
       $('title').textContent = title;
+      $('pre-label').textContent = preRelease ? t('simple.preRelease') : '';
+      $('pre-label').hidden = !preRelease;
       $('fact-release').textContent = release;
       showScreen('prepare');
+    },
+    /**
+     * A preserve release starts with a mandatory copy of the device, and its first door is for a
+     * device with nothing set up yet, not for one running something else. Both are said on screen 1.
+     */
+    setPreserve(on) {
+      $('backup-first').hidden = !on;
+      $('door-first-hint').textContent = t(on ? 'door.firstHintNew' : 'door.firstHint');
     },
     showSystems(systems, hrefFor, ownHref) {
       $('pick').hidden = false;

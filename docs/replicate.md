@@ -43,9 +43,10 @@ python3 -m http.server 8731
 python3 tools/check.py http://127.0.0.1:8731/
 ```
 
-`localhost` and `127.0.0.1` are treated as secure contexts by Chrome and Edge, so
-the install button works there and you can rehearse a release against real
-hardware before you upload anything.
+`localhost` and `127.0.0.1` are treated as secure contexts by every browser
+that has Web Serial (Chrome, Edge, Opera, Firefox 151 and newer), so the install
+button works there and you can rehearse a release against real hardware before
+you upload anything.
 
 ## Without a catalog
 

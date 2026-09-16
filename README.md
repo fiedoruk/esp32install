@@ -61,8 +61,10 @@ a copy of these files with no catalog opens on it directly.
 ## What you need
 
 The page talks to the device through the Web Serial API, which today means
-**Chrome or Edge on a desktop computer** (Windows, macOS, Linux), and the page
-must be served over **HTTPS** or opened from `localhost`.
+**Chrome, Edge, Opera or Firefox 151 or newer, on a desktop computer** (Windows,
+macOS, Linux); Safari and every phone browser lack it. The page must be served
+over **HTTPS** or opened from `localhost`. The page tests for the API rather than
+for a browser name, so a browser that gains it later works without a change.
 
 Anywhere else the page still loads, still shows the release, the files and their
 checksums, and still prints a ready-made `esptool` command line under *Other ways
@@ -70,8 +72,10 @@ to install*. Only the button is replaced by a sentence:
 
 - Not a secure address: *"This page has to be opened over a secure (https)
   address before it can talk to a device."*
-- No Web Serial (Firefox, Safari, any phone): *"This browser cannot talk to a
-  device over a cable. Use Chrome or Edge on a computer. A phone will not do."*
+- No Web Serial (Safari, an older Firefox, any phone): *"This browser cannot
+  talk to a device over a cable. Use Chrome, Edge, Opera or Firefox 151 or
+  newer, on a computer. A phone will not do."* On a phone the page offers to
+  copy or share the link instead, so it can be opened on a computer.
 
 ## Replicate in three steps
 
