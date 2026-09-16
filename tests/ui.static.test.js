@@ -462,3 +462,21 @@ test('the signet is drawn in fills on a 2px grid, and the favicon is the same dr
   assert.match(style, /\.brand \.word b \{ font-weight: 800; \}/);
   assert.doesNotMatch(style, /\.brand[^{]*\{[^}]*text-shadow|\.brand[^{]*\{[^}]*gradient/);
 });
+
+test('a row in the system list carries its release and its own address, and the newest one is not a third identical tile', () => {
+  const ui = read('app/ui.js');
+  assert.match(ui, /if \(i === 0\) li\.classList\.add\('is-newest'\);/, "the catalog's first entry is its newest");
+  assert.match(ui, /const channel = \(release\?\.channel \?\? 'stable'\);/);
+  assert.match(ui, /tag\.textContent = channel === 'stable' \? release\.version : `\$\{release\.version\} · \$\{channel\}`;/, 'the channel shows only when it is not the stable one');
+  assert.match(ui, /new URL\(a\.getAttribute\('href'\), document\.baseURI\)\.href/, 'the copied address is absolute and respects <base>');
+  assert.match(ui, /copy\.textContent = t\('pick\.copied'\);\s*setTimeout\(\(\) => \{ copy\.textContent = t\('pick\.copy'\); \}, 2000\);/, 'it says so for two seconds, with no dialog');
+  assert.match(ui, /copy\.setAttribute\('aria-live', 'polite'\)/);
+  assert.doesNotMatch(ui, /showSystems[\s\S]{0,2000}?innerHTML/);
+  assert.match(style, /\.sys\.is-newest \{[^}]*background:\s*var\(--accent-tint\)/, 'the same tint as a chosen door');
+  assert.match(style, /\.sys-go::after \{[^}]*inset:\s*0/, 'the whole row is the link');
+  assert.match(style, /\.sys-copy \{[^}]*position:\s*relative/, 'and the button sits above it');
+  // The own-file card is the one dashed thing on the page: a dash there means "not a release".
+  assert.equal((style.match(/border:\s*2px dashed/g) ?? []).length, 1);
+  assert.match(style, /\.own-card \{[^}]*border: 2px dashed/);
+  for (const k of ['newest', 'copy', 'copied']) assert.ok(en.pick[k], 'pick.' + k);
+});

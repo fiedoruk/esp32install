@@ -516,20 +516,31 @@ details[open] pre, details[open] code { font-family: var(--font-mono); }
 .alt code { font: 13px ui-monospace, "SF Mono", Menlo, monospace; color: var(--dim); overflow-wrap: anywhere; }
 .pick { display: flex; flex-direction: column; gap: var(--s3); margin-top: var(--s4); }
 .pick-list { list-style: none; margin: var(--s2) 0 0; padding: 0; display: grid; gap: 10px; }
-.pick-list a {
-  display: block;
-  padding: 16px 18px;
+/* One row per system: what it is, what it would install, and its own address to hand to someone
+   else's page. Three tiles of nothing but a name were three identical tiles; the version, the
+   channel and the newest entry's tint are what tell them apart. */
+.sys {
+  position: relative;
+  display: grid;
+  grid-template-columns: 1fr auto auto;
+  align-items: center;
+  gap: var(--s1) var(--s4);
+  padding: 12px 16px;
   border: 2px solid var(--line);
   border-radius: var(--radius);
-  color: var(--ink);
-  text-decoration: none;
-  font-family: var(--font-display);
-  font-weight: 700;
-  font-size: 19px;
   transition: border-color var(--motion-fast) var(--ease);
 }
-.pick-list a:hover { border-color: var(--accent); }
+.sys:hover { border-color: var(--accent); }
+/* The whole row is the link; the copy button sits above it, later in the paint order. */
+.sys-go { color: var(--ink); text-decoration: none; font: 700 19px var(--font-display); }
+.sys-go::after { content: ""; position: absolute; inset: 0; border-radius: inherit; }
 .pick-list small { display: block; font: 15px var(--font-body); color: var(--dim); }
+.sys-meta { display: flex; align-items: center; gap: var(--s2); white-space: nowrap; }
+.sys-newest { font: 700 var(--t-micro) var(--font-display); letter-spacing: 0.06em; text-transform: uppercase; color: var(--accent); }
+.sys-version { font: 600 var(--t-small) var(--font-display); color: var(--dim); }
+.sys-copy { position: relative; margin-top: 0; }
+/* The newest entry wears the same tint as a chosen door, so the list has a first and not a first of three. */
+.sys.is-newest { border-color: var(--accent); background: var(--accent-tint); }
 /* Your own file: a dashed card under the list, and a block on the prepare screen. */
 .own-card {
   display: block;
@@ -640,6 +651,8 @@ dialog p { margin-top: 8px; }
   .plate { padding: var(--s5) var(--s4); }
   .fields { grid-template-columns: 1fr; }
   .facts { grid-template-columns: 1fr; gap: 2px 0; }
+  .sys { grid-template-columns: 1fr auto; }
+  .sys-copy { grid-column: 2; grid-row: 2; justify-self: end; }
   .facts dt { margin-top: 6px; }
   .foot { justify-content: center; }
 }
@@ -651,7 +664,7 @@ dialog p { margin-top: 8px; }
   .lamp.is-on.is-pulse i { animation: none; }
   .picto-link { animation: none !important; }
   .ring-arc { transition: none; }
-  .door, .door::after, .cta, .pick-list a, summary::before { transition: none; }
+  .door, .door::after, .cta, .sys, summary::before { transition: none; }
 }
 
 /* ---- Wi-Fi after the install: one heading, two fields, one button ---------- */

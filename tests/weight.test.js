@@ -11,10 +11,15 @@ const read = (p) => readFileSync(new URL('../' + p, import.meta.url), 'utf8');
 /**
  * The two sheets are the whole of the page's styling — there is no build step to shrink them — so
  * a ceiling here is the only thing standing between a working page and a slow one. The numbers are
- * a little above what the sheets weigh today (2026-09-16: style 25 541 B, theme 4 927 B; 6.7 and
- * 1.6 KB gzipped) and they are meant to be raised deliberately, with a reason, not drifted past.
+ * a little above what the sheets weigh today and they are meant to be raised deliberately, with a
+ * reason, not drifted past.
+ *
+ * Raised 2026-09-16 from 27 000 to 29 000: the identity round added a mark, a real class for the
+ * secondary buttons (which replaced three half-classes, so most of it came back), rows in the
+ * system list that carry a version and an address, and the footer the deployment fills in. Style
+ * stood at 25 541 B before it and at 27 8xx after; theme did not move.
  */
-const CEILING = { 'style.css': 27000, 'theme.css': 5200 };
+const CEILING = { 'style.css': 29000, 'theme.css': 5200 };
 
 test('neither stylesheet has grown past its ceiling', () => {
   const over = Object.entries(CEILING)

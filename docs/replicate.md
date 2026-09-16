@@ -279,6 +279,27 @@ OK csp index.html pins default-src to 'self'
 OK vendor esptool-js-0.6.1.js matches the pinned checksum
 ```
 
+## Linking straight at one system
+
+The list is one way in; a link is the other. Every row in the list carries a
+**Copy link** button that puts that row's own address on the clipboard, so the
+owner of another page can paste it there without reading this file. The addresses
+are plain and you can also write them by hand:
+
+| What the visitor gets | Address |
+|---|---|
+| The list of systems | `https://example.com/install/` |
+| One system, newest stable release | `https://example.com/install/?fw=my-system` |
+| The same, in Polish | `https://example.com/install/?fw=my-system&lang=pl` |
+| One exact version, for a device tested with it | `https://example.com/install/?fw=my-system&v=1.1.0` |
+| The newest release whatever its channel | `https://example.com/install/?fw=my-system&channel=pre` |
+| Someone's own file from their computer | `https://example.com/install/?own=1` |
+
+`fw` is the `id` from `catalog.json`, not the name. `lang` is always worth
+spelling out on a link you publish: without it the visitor's browser decides, and
+a copy served under a language path (`/pl/install/`) keeps its own language until
+`lang` says otherwise.
+
 ## Making it look like yours
 
 **`theme.css` holds the tokens, and a replica should not need to touch anything

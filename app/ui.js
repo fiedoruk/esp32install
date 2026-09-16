@@ -329,22 +329,65 @@ export function mountUi({ i18n, system }) {
       $('backup-first').hidden = !on;
       $('door-first-hint').textContent = t(on ? 'door.firstHintNew' : 'door.firstHint');
     },
+    /**
+     * The list of systems. A row is not a card of a name: it carries the device, the version it
+     * would install and, when that release is not the stable one, its channel. The catalog's first
+     * entry is its newest, so it wears the tint and the word, and the three-identical-tiles rhythm
+     * is broken by the first row rather than by decoration.
+     *
+     * Each row also offers its own address, because the answer to "I want a link straight to this
+     * one on my page" is a link the owner of that page can copy, not a second catalog.
+     */
     showSystems(systems, hrefFor, ownHref) {
       $('pick').hidden = false;
       hideHatches(); // nothing to show without a system
       $('own-entry').href = ownHref;
       clear($('pick-list'));
-      for (const s of systems) {
+      systems.forEach((s, i) => {
+        const release = Array.isArray(s.releases) ? s.releases[0] : null;
+        const channel = (release?.channel ?? 'stable');
         const li = document.createElement('li');
+        li.className = 'sys';
+        if (i === 0) li.classList.add('is-newest');
         const a = document.createElement('a');
+        a.className = 'sys-go';
         a.href = hrefFor(s);
-        a.textContent = s.name;
+        const name = document.createElement('b');
+        name.textContent = s.name;
         const small = document.createElement('small');
         small.textContent = s.device ?? '';
-        a.append(small);
-        li.append(a);
+        a.append(name, small);
+        const meta = document.createElement('p');
+        meta.className = 'sys-meta';
+        if (i === 0) {
+          const flag = document.createElement('span');
+          flag.className = 'sys-newest';
+          flag.textContent = t('pick.newest');
+          meta.append(flag);
+        }
+        if (release?.version) {
+          const tag = document.createElement('span');
+          tag.className = 'sys-version';
+          tag.textContent = channel === 'stable' ? release.version : `${release.version} · ${channel}`;
+          meta.append(tag);
+        }
+        const copy = document.createElement('button');
+        copy.type = 'button';
+        copy.className = 'btn btn--ghost sys-copy';
+        copy.textContent = t('pick.copy');
+        copy.setAttribute('aria-live', 'polite'); // the word changes in place, so it is spoken in place
+        // The address as a visitor would paste it elsewhere: absolute, and resolved against <base>
+        // so a copy served under /pl/ hands out its own address and not the English one.
+        copy.addEventListener('click', async () => {
+          try {
+            await navigator.clipboard.writeText(new URL(a.getAttribute('href'), document.baseURI).href);
+            copy.textContent = t('pick.copied');
+            setTimeout(() => { copy.textContent = t('pick.copy'); }, 2000);
+          } catch { /* the clipboard is blocked; the address is in the row's own link anyway */ }
+        });
+        li.append(a, meta, copy);
         $('pick-list').append(li);
-      }
+      });
     },
     /** Catalogued install: the quiet way out to the own-file path. */
     setOwnLink(href) { $('own-instead').href = href; $('own-instead').hidden = false; },

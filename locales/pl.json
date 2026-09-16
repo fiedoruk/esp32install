@@ -147,7 +147,10 @@
   },
   "pick": {
     "title": "Wybierz system",
-    "hint": "Wskaż, co chcesz zainstalować na urządzeniu."
+    "hint": "Wskaż, co chcesz zainstalować na urządzeniu.",
+    "newest": "Najnowszy",
+    "copy": "Skopiuj odnośnik",
+    "copied": "Skopiowano"
   },
   "erase": {
     "title": "Wyczyścić całe urządzenie?",

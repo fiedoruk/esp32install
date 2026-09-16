@@ -147,7 +147,10 @@
   },
   "pick": {
     "title": "Choose a system",
-    "hint": "Pick what you want to put on your device."
+    "hint": "Pick what you want to put on your device.",
+    "newest": "Newest",
+    "copy": "Copy link",
+    "copied": "Copied"
   },
   "erase": {
     "title": "Erase everything on the device?",
