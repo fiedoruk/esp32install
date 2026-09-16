@@ -45,8 +45,13 @@ Against the device:
 - Nothing may reach past the end of flash, and no two parts may overlap.
 - Whatever lands at the chip's bootloader offset must start with `0xE9` and carry
   this chip family's image id.
+- Every other part that starts with `0xE9` and is at least a header long must
+  carry this chip family's image id as well, so an application built for another
+  chip is refused even in a `preserve` release that never touches the bootloader.
 - A build is only offered when its declared chip family, flash size, USB ids,
   chip-description substrings and feature strings match the hardware present.
+  Flash size is compared for equality, not capacity. USB ids are compared only
+  when both the build and the port report them.
 
 After writing:
 
@@ -74,8 +79,9 @@ chain of trust beyond the TLS certificate of the site you are on.
 **ESP8266 images belong to this board.** ESP8266 firmware headers carry no chip
 id, so only the `0xE9` magic byte is checked.
 
-**ESP32-C61 images belong to this chip.** esptool-js 0.6.1 does not declare a
-bootloader offset for that family, so the header check is skipped entirely.
+**ESP32-C61 images at the bootloader offset.** esptool-js 0.6.1 does not
+declare a bootloader offset for that family, so the check at that offset is
+skipped. Parts that start with `0xE9` are still checked for the C61 image id.
 
 **That an unversioned part is the right one.** A manifest may omit `size` and
 `sha256` outside the `preserve` profile, in which case there is nothing to
@@ -99,15 +105,21 @@ frame-ancestors 'none'; form-action 'none'
 script and no string-to-code can run, so a manifest field that somehow reached
 the DOM cannot become script. `connect-src 'self'` is the reason `allowOrigins`
 needs a deliberate change to the page's policy as well as to the catalog if you
-move binaries off-origin. `frame-ancestors 'none'` stops another site from
-framing the installer and steering clicks at it. `form-action 'none'` and
-`base-uri 'none'` remove two classic redirection tricks. The page also sets
-`referrer: no-referrer`, so visiting an installer link does not tell the firmware
-host where you came from.
+move binaries off-origin: the origin has to be added to `connect-src` in
+`index.html`, and `tools/check.py` then accepts it there because the catalog
+lists it. `frame-ancestors 'none'` stops another site from framing the installer
+and steering clicks at it. `form-action 'none'` and `base-uri 'none'` remove two
+classic redirection tricks. The page also sets `referrer: no-referrer`, so
+visiting an installer link does not tell the firmware host where you came from.
 
-`tools/check.py` fails if that meta tag is missing or if `default-src` is not
-`'self'`, which makes weakening the policy a visible act rather than a silent
-one.
+`tools/check.py` fails if that meta tag is missing, if `default-src` is not
+exactly `'self'`, or if `script-src`, `script-src-elem`, `connect-src` or
+`style-src` name anything beyond `'self'` that was not declared: origins from the
+catalog's `allowOrigins` are accepted in `connect-src`, and origins passed as
+`--allow-origin` (a host's own analytics) are accepted in `script-src`,
+`script-src-elem` and `connect-src`. `style-src` and `default-src` never widen.
+That makes weakening the policy a visible act rather than a silent one, and it
+ships with no third party of anyone's baked in.
 
 ## No CDN
 
@@ -125,10 +137,11 @@ The product sends nothing anywhere. It has no analytics, no error reporting and
 no update check.
 
 It does call `window.__esp32installAnalytics(name, props)` when the surrounding
-site has defined that function, with `start`, `done` and `error` events carrying
-the system id, the version, the chip family and, for errors, the stage and the
-error code. The installer never defines it. A site that wants to count installs
-opts in by writing that function; a replica that does nothing sends nothing.
+site has defined that function. `start` carries the system id and the version,
+because at that point no device has been read. `done` adds the chip family.
+`error` adds the chip family, the stage and the error code. The installer never
+defines it. A site that wants to count installs opts in by writing that function;
+a replica that does nothing sends nothing.
 
 ## Backups contain your data
 

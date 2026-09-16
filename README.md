@@ -36,16 +36,18 @@ fonts. `tests/` and `tools/` are not needed on the server; leaving `tools/` ther
 is harmless and handy, because `check.py` then runs from the same machine.
 
 **2. Write a manifest for your firmware.** Put the binaries next to the manifest
-and let the tool measure sizes and checksums:
+and let the tool measure sizes and checksums. Give the output a name of your own;
+the shipped `firmware/demo-1-0-0.json` is the schema 1 example and is best left
+as it is:
 
 ```
 python3 tools/manifest.py firmware/demo.bin@0x1000 \
   --chip ESP32 --name "Demo firmware" --version 1.0.0 \
-  --prompt-erase --out firmware/demo-1-0-0.json
+  --prompt-erase --out firmware/my-firmware-1-0-0.json
 ```
 
 ```
-wrote firmware/demo-1-0-0.json: Demo firmware 1.0.0, 1 part, 4096 bytes
+wrote firmware/my-firmware-1-0-0.json: Demo firmware 1.0.0, 1 part, 4096 bytes
 ```
 
 `--help` lists every option, including `--profile preserve` and the compatibility
@@ -83,7 +85,9 @@ have passed.
 - **Where the files may come from.** Every part URL must resolve to the origin
   that served the manifest, or to an origin the site listed in `allowOrigins`.
   Only `http:` and `https:` are accepted, and any user name or password in the
-  URL is stripped.
+  URL is stripped. An origin in `allowOrigins` also has to be added to
+  `connect-src` in the page's Content-Security-Policy, or the browser blocks the
+  fetch; `check.py` accepts exactly the listed origins there.
 - **Where the bytes actually came from.** Redirects are followed, but the final
   response has to be on the same origin as the request; otherwise the download is
   rejected.
@@ -100,10 +104,14 @@ have passed.
   is no silent fallback to 4 MB.
 - **The right chip.** The part that covers the chip's bootloader offset must
   start with the ESP image magic `0xE9`, and the chip id inside that header must
-  be the one this chip family declares.
+  be the one this chip family declares. Every other part that starts with `0xE9`
+  is held to the same chip id, so an application built for another chip is
+  refused even when nothing is written at the bootloader offset.
 - **The right build.** A build is offered only if its chip family, and any
   `flashSizeMB`, USB vendor and product id, chip-description substrings and
   feature strings it declares, match the hardware that is plugged in.
+  `flashSizeMB` is an equality filter, not a minimum. USB ids are compared only
+  when both the build and the port report them.
 
 The `preserve` profile adds more before it writes: the chip must not have secure
 boot or flash encryption enabled, its MAC address is read and re-read so the
@@ -147,8 +155,9 @@ Two caveats worth knowing before you publish:
 - **ESP8266** images carry no chip id field, so only the `0xE9` magic byte is
   checked. An image built for a different ESP8266 board will pass that check.
 - **ESP32-C61** is the one chip esptool-js 0.6.1 does not give a bootloader
-  offset for. The header check is skipped entirely for it, so nothing verifies
-  that the image belongs to this chip. Everything else still applies.
+  offset for. The check at the bootloader offset is skipped for it; parts that
+  start with `0xE9` are still checked for the C61 image id. Everything else still
+  applies.
 
 ## The two profiles
 

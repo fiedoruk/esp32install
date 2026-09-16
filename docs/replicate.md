@@ -104,7 +104,10 @@ By default every file a manifest names has to come from the same origin as the
 manifest itself. That is the rule that makes the installer safe to hand to
 someone: a release cannot quietly point the download at a third party.
 
-To serve binaries from another host, list its origin in `catalog.json`:
+To serve binaries from another host, three edits are needed, and the page
+refuses the download until all three are in place.
+
+**1. List the origin in `catalog.json`.** Scheme, host and port, no path:
 
 ```json
 {
@@ -114,11 +117,35 @@ To serve binaries from another host, list its origin in `catalog.json`:
 }
 ```
 
+**2. Let the page reach it.** The Content-Security-Policy in `index.html` ships
+with `connect-src 'self'`, and the browser enforces that before the installer's
+own origin check ever runs. Add the origin there:
+
+```
+connect-src 'self' https://files.example.org
+```
+
+Without this edit the fetch is blocked by the page's own policy and the install
+stops with a download error that looks like a network problem and is not.
+
+**3. Let the checker know.** `tools/check.py` reads `allowOrigins` from the
+catalog and accepts exactly those origins in `connect-src`, nothing more. An
+origin in the policy that the catalog does not list is a FAIL; an origin in the
+catalog that the policy does not name is a WARN, because the page would refuse
+to download from it. So after steps 1 and 2:
+
+```
+python3 tools/check.py .
+```
+
+```
+OK csp index.html pins default-src to 'self'
+```
+
 Then that host has to allow the page to read the bytes, because the browser is
 doing a cross-origin `fetch`. It must send `Access-Control-Allow-Origin` with
 your installer's origin, or `*`. Without it the browser blocks the response and
-the install stops with a download error, which looks like a network problem and
-is not.
+the install stops with the same download error as in step 2.
 
 The origin check is also repeated on the response, not only on the manifest. A
 redirect is followed, but if the bytes finally arrive from an origin other than
@@ -230,3 +257,18 @@ privacy-respecting analytics tool can count the page view. The page also calls
 `window.__esp32installAnalytics(name, props)` if the surrounding site defines it,
 with `start`, `done` and `error` events. It is never defined by the installer
 itself, and nothing breaks if it is absent.
+
+An analytics script loaded from another host needs two things the product does
+not ship with. Its origin goes into `script-src` (and `script-src-elem`, if you
+use it) and, if the script phones home, into `connect-src` of the policy in
+`index.html`. And `tools/check.py` has to be told that this widening is yours,
+because by default it accepts nothing beyond `'self'` in those directives:
+
+```
+python3 tools/check.py https://example.com/install/ --allow-origin https://stats.example.org
+```
+
+The flag is repeatable and takes an origin, not a URL. It widens `script-src`,
+`script-src-elem` and `connect-src` only; `default-src` and `style-src` stay at
+`'self'` whatever you pass. Origins from the catalog's `allowOrigins` are
+accepted in `connect-src` without any flag.

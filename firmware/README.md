@@ -54,9 +54,9 @@ firmware/
   mysystem.bin
 ```
 
-`tools/manifest.py` refuses to write a manifest whose binaries sit above it in
-the directory tree, because a web server rarely mirrors that; pass
-`--path-prefix` when the site serves them under a different path.
+`tools/manifest.py` writes binaries one or two directories above the manifest
+as `../` paths and refuses anything deeper, because a web server rarely mirrors
+that; pass `--path-prefix` when the site serves them under a different path.
 
 Keeping every release's files under their own version-stamped names, rather than
 overwriting a single `firmware.bin`, is what makes an old `&v=` link keep working

@@ -4,8 +4,11 @@ A release picks one of two ways to install itself. `factory` writes a whole
 layout and may erase the chip first. `preserve` writes only the parts it lists
 into a device that already works, and never erases anything.
 
-The profile is set by `profile` at the top of the manifest, or per build. Absent
-means `factory`.
+The profile is set by `profile` at the top of the manifest. Absent means
+`factory`. A build may repeat the same value; a build that names a different
+profile is refused with `manifest.profile`, because the engine installs by the
+manifest's profile and a `preserve` build inside a `factory` manifest would
+otherwise run through the erase path.
 
 ## `factory`, step by step
 
@@ -24,8 +27,12 @@ means `factory`.
    into the log.
 5. **Check the layout.** No part past the end of flash, no overlaps, total within
    the limit.
-6. **Check the boot image.** Whatever covers the chip's bootloader offset must
-   start with `0xE9` and carry this chip's image id.
+6. **Check the images.** Whatever covers the chip's bootloader offset must
+   start with `0xE9` and carry this chip's image id. Then every part that is at
+   least a header long and starts with `0xE9` must carry this chip's image id as
+   well, wherever it is written; an application for another chip is refused even
+   when nothing covers the bootloader offset. A data part that happens to start
+   with `0xE9` is refused too. ESP8266 images carry no chip id and are not judged.
 7. **Optional backup.** If the user ticked the box, the whole flash is read once
    and offered as a download named `<name>-backup-<8 hex>.bin`. It is a keepsake:
    it is not read back, not re-verified, and never blocks the install.
@@ -50,7 +57,8 @@ means `factory`.
 ### Where you can still cancel
 
 Up to and including the erase prompt. Cancellation is checked after the port
-picker, after each downloaded part, after the backup and after the erase prompt.
+picker, after the device answered, after the board choice, after each downloaded
+part, after the download as a whole, after the backup and after the erase prompt.
 From the first write onwards the install runs to the end.
 
 Closing the tab calls cancel, so a cancellation before the write leaves the
@@ -76,14 +84,17 @@ never calls `eraseFlash`.
    `update.tableOffset` must hold this release's partition table, with the rest of
    the sector `0xff`. In *first installation* mode the `firstInstall.regions`
    entries must match and the `firstInstall.empty` ranges must be all `0xff`.
-5. **Download and verify.** As in `factory`, except that `size` and `sha256` are
-   mandatory on every part, so nothing unverified can reach the chip.
+5. **Download and verify.** As in `factory`, including the image check on every
+   part, except that `size` and `sha256` are mandatory on every part, so nothing
+   unverified can reach the chip.
 6. **Back up, for real this time.** The whole flash is read twice and the two
-   reads must agree byte for byte. The copy is compared against the header read
+   reads must agree byte for byte. The ring shows a time estimate from the read
+   rate, as the write stage does. The copy is compared against the header read
    in step 4. Then it is saved as `<name>-backup-<8 hex>.bin` and its SHA-256 goes
    into the log.
-7. **Hand the backup back.** A dialog asks the user to choose the file they just
-   saved. The page checks its size and its SHA-256 against the copy it made. This
+7. **Hand the backup back.** A dialog names the file that was just saved, says
+   that the browser put it in its download folder, and asks the user to choose
+   it. The page checks its size and its SHA-256 against the copy it made. This
    is deliberate friction: it proves the file really landed on disk before
    anything is written.
 8. **Re-check.** The MAC is read again and the header is read again, and both
@@ -110,58 +121,101 @@ the page against `0xff`.
 
 ### Where you can still cancel
 
-Up to step 8. Cancellation is checked after the port picker, after the identity
-check, after the download, after the backup is saved, after the file is handed
-back, and after the final re-check. From step 9 onwards it runs to the end.
+Up to step 8. Besides the checks shared with `factory` up to the download, the
+`preserve` flow checks for cancellation at seven points of its own: after the
+identity check, after the header comparison, after the download, after the backup
+is saved, after the file is handed back, after that file has been verified, and
+after the final re-check. From step 9 onwards it runs to the end.
+
+### Part order
+
+List the application before the partition table, as the example manifest does.
+The parts are written in the order listed, so if the write fails during the
+application the old table is still on the device and a retry in *first
+installation* mode remains possible. Written the other way round, a failure
+between the two parts leaves a table that points at an application that is not
+there yet.
 
 ## Stop conditions
 
 Every one of these leaves the device unwritten, unless the table says otherwise.
-The sentences are the English strings the page shows.
+The sentences are the English strings the page shows, taken from
+`locales/en.json`; a test in `tests/` fails if a code is missing from this page
+or its sentence drifts from the file.
 
-### The release is at fault
+### The release or the catalog is at fault
 
 | Code | Message |
 |---|---|
+| `manifest.url` | The address of the release file is not valid. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.notObject` | The release file is not valid. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.schema` | The release file is written in a format this installer does not know ({schema}). This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.name` | The release file does not say which system it installs. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.version` | The release file does not say which version it is. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.noBuilds` | The release file offers nothing to install. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.build` | Entry {index} of the release file is not valid. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.boardKey` | Entry {index} of the release file has an invalid name. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.chipFamily` | Build {boardKey} names a device this installer does not know ({chipFamily}). This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.profile` | Build {boardKey} asks for a way of installing this installer does not know. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.preserveNoErase` | Build {boardKey} asks to clear the whole device, which is not allowed when settings have to be kept. This is a problem with the release itself, not with your device. Tell whoever published it. |
-| `manifest.preserveNeedsSize` | Build {boardKey}, file {index} needs both a size and a checksum. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.flashSizeMB` | Build {boardKey} states an invalid memory size. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.usb` | Build {boardKey} states invalid USB identifiers. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.filters` | Build {boardKey} has invalid matching rules. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.compatibility` | Build {boardKey} has invalid compatibility data. This is a problem with the release itself, not with your device. Tell whoever published it. |
-| `manifest.chipFamily` | Build {boardKey} names a device this installer does not know ({chipFamily}). This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.noParts` | Build {boardKey} has no files to install. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.part` | Build {boardKey}, file {index} is not valid. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.path` | One of the files in the release has no location to download from. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.origin` | The release points to another site ({origin}), and files have to come from this site. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.offset` | Build {boardKey}, file {index} has an invalid address. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.size` | Build {boardKey}, file {index} has an invalid size. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.sha256` | Build {boardKey}, file {index} has an invalid checksum. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `manifest.preserveNeedsSize` | Build {boardKey}, file {index} needs both a size and a checksum. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.duplicateBoardKey` | Two builds in the release file share the name {boardKey}. This is a problem with the release itself, not with your device. Tell whoever published it. |
 | `manifest.fetch` | Could not download the release file ({status}). Check your connection and try again. If it keeps failing, the release itself is broken, not your device. Tell whoever published it. |
+| `catalog.fetch` | Could not load the list of systems. Check your connection and try again. If it keeps failing, this page is broken, not your device. Tell whoever runs it. |
+| `catalog.unknownSystem` | There is no system called {fw} here. This is a problem with the release itself, not with your device. Tell whoever published it. |
+| `catalog.unknownVersion` | This version of {fw} is not available here. This is a problem with the release itself, not with your device. Tell whoever published it. |
 
-`manifest.compatibility` is also what a `preserve` release gets when a region
-carries no checksum, when it declares no region at all, or when
-`update.tableOffset` names an offset no part is written at.
+`manifest.compatibility` is what a `preserve` release gets when a region carries
+no checksum, when it declares no region at all, when `update.tableOffset` is
+missing, or when it names an offset no part is written at. All of that is
+decided when the manifest is read, before the device is opened. `manifest.profile`
+also covers a build whose `profile` differs from the manifest's: the page installs
+by the manifest's profile and refuses a build that says otherwise.
 
 ### The download does not match the release
 
 | Code | Message |
 |---|---|
 | `verify.empty` | One of the release files is empty. Nothing was written, so your device is unchanged. Try again, and tell whoever published this release if it happens again. |
+| `verify.part` | One of the release files is not usable. Nothing was written, so your device is unchanged. Try again, and tell whoever published this release if it happens again. |
+| `verify.tooLarge` | The file {path} is larger than this installer allows. Nothing was written. Tell whoever published this release. |
 | `verify.size` | The file {path} arrived with {bytes} bytes instead of {expected}. The download was stopped and nothing was written. Check your connection and try again. |
 | `verify.sha256` | The file {path} does not match the release and may have been damaged on the way. Nothing was written. Check your connection and try again. |
-| `verify.tooLarge` | The file {path} is larger than this installer allows. Nothing was written. Tell whoever published this release. |
-| `verify.totalTooLarge` | This release is larger than this installer allows. Nothing was written. Tell whoever published this release. |
 | `verify.overlap` | Two files in this release want the same place on the device. Nothing was written. Tell whoever published this release. |
 | `verify.beyondFlash` | This release needs more memory than this device has. Nothing was written. Check that you picked the right system for your device. |
+| `verify.totalTooLarge` | This release is larger than this installer allows. Nothing was written. Tell whoever published this release. |
 | `verify.notAnImage` | The file for address 0x{offset} is not a program this device can start. Nothing was written. Tell whoever published this release. |
 | `verify.wrongChip` | These files are made for a different device ({found}), not {expected}. Nothing was written. Check that you picked the right system for your device. |
+| `verify.flashSize` | The size of the device's memory could not be determined. Nothing was written. Unplug the device, plug it back in and try again. |
+| `verify.chipUnknown` | This device's chip is not one this installer knows. Nothing was written. Check that you picked the right system for your device. |
+
+`verify.wrongChip` comes from two checks: the part that covers the chip's
+bootloader offset, and every other part that starts with the image magic `0xE9`.
+The second one is what catches an application built for another chip in a
+`preserve` release, where nothing is written at the bootloader offset.
 
 ### The device is not the one this release expects
 
 | Code | Message |
 |---|---|
-| `device.noMatch` | This release is not made for this device. Yours has a {chip} chip with {flash} of memory. Check that you picked the right system for your device. |
-| `device.flashUnknown` | The size of the device's memory could not be read reliably (id 0x{id}). Nothing was written. Try another cable or another USB port. |
 | `device.chipUnknown` | The device did not say what it is. Unplug it, plug it back in and try again. |
+| `device.flashUnknown` | The size of the device's memory could not be read reliably (id 0x{id}). Nothing was written. Try another cable or another USB port. |
+| `device.noMatch` | This release is not made for this device. Yours has a {chip} chip with {flash} of memory. Check that you picked the right system for your device. |
+| `device.changed` | A different device is connected now. Start again with the device you want to install on. |
 | `device.secured` | This device is locked by its maker (secure boot or encrypted flash), so nothing was written. Use the tools from the device's maker instead. |
 | `device.layout` | This device's memory is arranged differently from the one this release was tested on. Nothing was written. Tell whoever published this release. |
 | `device.notEmpty` | The area this release needs is already in use. Nothing was written. Choose First installation to clear the device and start fresh. |
-| `device.changed` | A different device is connected now. Start again with the device you want to install on. |
 
 `device.secured`, `device.layout`, `device.notEmpty` and `device.changed` belong
 to the `preserve` profile.
@@ -185,6 +239,8 @@ to the `preserve` profile.
 | `flash.erase` | The device could not be cleared. Nothing was written. Reconnect the device and try again. |
 | `flash.write` | Writing stopped part way. Reconnect the device and try again. Do not erase the device by hand. |
 | `flash.verify` | What is on the device does not match the release. Keep your copy and try again. |
+| `engine.load` | The part of this page that talks to devices could not be loaded. Reload the page and try again. |
+| `engine.busy` | Something else is still running. Wait for it to finish and try again. |
 | `engine.unexpected` | Something unexpected stopped the installer before anything was written. Reload the page and try again. |
 
 `flash.write` and `flash.verify` are the two codes that can appear after writing
