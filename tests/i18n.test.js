@@ -69,7 +69,7 @@ const REQUIRED = [
   'door.title', 'door.first', 'door.firstHint', 'door.firstHintNew', 'door.update', 'door.updateHint', 'door.updateHintOwn',
   'gate.insecure', 'gate.noSerial', 'gate.altFirst',
   'action.connect', 'action.connecting', 'action.installing', 'action.retry',
-  'action.cancel', 'action.backup', 'action.saveBackup', 'action.chooseBackup', 'action.chooseBackupTitle', 'action.chooseBackupHint', 'action.erase',
+  'action.cancel', 'action.backup', 'action.backupUnknown', 'action.saveBackup', 'action.chooseBackup', 'action.chooseBackupTitle', 'action.chooseBackupHint', 'action.erase',
   'action.theme', 'action.themeLight', 'action.themeDark',
   'stage.idle', 'stage.connecting', 'stage.detecting', 'stage.matching', 'stage.downloading',
   'stage.verifying', 'stage.checkingDevice', 'stage.backup', 'stage.erasing', 'stage.writing',

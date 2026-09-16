@@ -274,3 +274,13 @@ test('the browser gate names every browser with Web Serial and the EN link alway
   assert.match(main, /a\.href = langLinkHref\(location\.href, target\);/);
   assert.doesNotMatch(main, /searchParams\.delete\('lang'\)/, 'dropping the parameter left /pl/install Polish');
 });
+
+test('the backup checkbox estimates from the detected flash, and says "a few minutes" until then', () => {
+  const ui = read('app/ui.js');
+  assert.match(ui, /\$\('backup-label'\)\.textContent = t\('action\.backupUnknown'\);/, 'mountUi: nothing is known yet');
+  assert.doesNotMatch(ui, /minutes: 5/, 'no hard-coded number');
+  assert.match(ui, /const minutes = backupMinutes\(hw\);\s*\$\('backup-label'\)\.textContent = minutes === null \? t\('action\.backupUnknown'\) : t\('action\.backup', \{ minutes \}\);/, 'setHardware: from the flash size and the port');
+  assert.match(read('app/progress.js'), /1 MB per minute through a UART bridge[\s\S]*8 MB per minute through the chip's own USB/, 'the assumption is written down');
+  assert.doesNotMatch(en.action.backupUnknown, /\d/);
+  assert.match(en.action.backup, /\{minutes\}/);
+});

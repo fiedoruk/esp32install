@@ -7,6 +7,7 @@
 import { InstallError } from './errors.js';
 import { createLineBuffer } from './console.js';
 import { MAX_PARTS } from './own.js';
+import { backupMinutes } from './progress.js';
 
 const $ = (id) => document.getElementById(id);
 const clear = (el) => { while (el.firstChild) el.removeChild(el.firstChild); };
@@ -65,7 +66,7 @@ export function mountUi({ i18n, system }) {
   const vars = { system };
   translateDom(t, vars);
   $('connect-label').textContent = t('action.connect');
-  $('backup-label').textContent = t('action.backup', { minutes: 5 });
+  $('backup-label').textContent = t('action.backupUnknown'); // no device read yet: words, not a number
   $('door-update-hint').textContent = t('door.updateHint', vars);
   $('lamp-device-text').textContent = t('app.notDetected');
   $('done-again').textContent = t('simple.done.again');
@@ -408,6 +409,9 @@ export function mountUi({ i18n, system }) {
       $('fact-chip').textContent = hw.chipDescription;
       $('fact-flash').textContent = hw.flashSizeMB + ' MB';
       setLamp('lamp-device', 'is-on');
+      // The copy's length is known now; the checkbox says it for the next run on this device.
+      const minutes = backupMinutes(hw);
+      $('backup-label').textContent = minutes === null ? t('action.backupUnknown') : t('action.backup', { minutes });
     },
     setBuild(b) {
       $('fact-board').textContent = b.board;

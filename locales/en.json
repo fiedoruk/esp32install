@@ -42,7 +42,8 @@
     "themeDark": "Dark",
     "wifiSend": "Send to the device",
     "console": "Show what the device says",
-    "consoleStop": "Stop listening to the device"
+    "consoleStop": "Stop listening to the device",
+    "backupUnknown": "Save a copy of what is on the device first (a few minutes)"
   },
   "stage": {
     "idle": "Ready",

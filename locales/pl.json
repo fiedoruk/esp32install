@@ -42,7 +42,8 @@
     "themeDark": "Ciemny",
     "wifiSend": "Wyślij do urządzenia",
     "console": "Pokaż, co mówi urządzenie",
-    "consoleStop": "Przestań słuchać urządzenia"
+    "consoleStop": "Przestań słuchać urządzenia",
+    "backupUnknown": "Najpierw zapisz kopię tego, co jest na urządzeniu (kilka minut)"
   },
   "stage": {
     "idle": "Czekam na start",
