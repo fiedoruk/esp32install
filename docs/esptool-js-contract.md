@@ -12,6 +12,10 @@ Verified against the npm package (lib/esploader.d.ts, lib/targets/*.js) on 2026-
 - `loader.readFlashId()` → number (JEDEC id); size code = `(id >> 16) & 0xff`; `loader.DETECTED_FLASH_SIZES[code]` → '4MB' etc. or undefined.
   We do NOT use `detectFlashSize()` because it silently defaults to 4MB.
 - `loader.checkCommand(desc, 0x14, new Uint8Array(0), 0, 20, 5000)` → Uint8Array(20) security info (ESP32-S3 and newer).
+- `loader.chip.readEfuse(loader, word)` → number. Declared on `ESP32ROM` in the bundle and inherited by the
+  later families, but it reads `this.EFUSE_RD_REG_BASE`, which only the classic ESP32 sets to its block-0 base
+  (`0x3FF5A000`). `app/security.js` therefore calls it for `ESP32` alone, as the fallback for chips whose ROM
+  has no command 0x14.
 - `loader.readFlash(addr, size, onPacket?)` → Uint8Array.
 - `loader.eraseFlash()` → whole-chip erase (stub required).
 - `loader.writeFlash({ fileArray:[{data, address}], flashMode:'keep', flashFreq:'keep', flashSize:'keep', eraseAll:false, compress:true, reportProgress(fileIndex, written, total), calculateMD5Hash(image)→hex })`.

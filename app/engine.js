@@ -2,7 +2,7 @@
  * Install engine. The only module that touches Web Serial and esptool-js; both come in
  * through `createInstaller(deps)` so the whole flow runs against a fake in tests.
  *
- * Factory profile: connect → detect → match → download + verify every part →
+ * Factory profile: connect → detect → match → security state → download + verify every part →
  * layout check → boot-image check → (optional backup) → (erase) → write with MD5 → hard reset.
  * Nothing is erased or written until every verification step has passed.
  * Preserve profile: see preserve.js; it shares connect/pick/download and never erases.
@@ -12,6 +12,7 @@ import { compatibleBuilds, mismatchReasons } from './match.js';
 import { checkFetchedPart, checkLayout, checkBootImage, checkImageParts, sha256Hex } from './verify.js';
 import { md5Hex } from './md5.js';
 import { runPreserve } from './preserve.js';
+import { checkSecurity } from './security.js';
 import { readWholeFlash, backupFilename } from './backup.js';
 import { etaSeconds } from './progress.js';
 
@@ -226,6 +227,13 @@ export function createInstaller(deps) {
     const { manifest, mode } = job;
     const hw = await connect(manifest.builds.length === 1 ? manifest.builds[0] : null);
     const build = await pick(manifest, hw);
+    // Before the erase and before the write: a board with secure boot or flash encryption would
+    // take these plaintext bytes and stop booting. A chip that cannot say is not blocked here —
+    // that is every ESP8266 and every classic ESP32 whose efuses did not read — and the reason
+    // goes into the log.
+    stage('checkingDevice', 11);
+    await checkSecurity(loader, hw.chipFamily, log, { unknownIsLocked: false });
+    check();
     const parts = await download(build, hw);
     check();
     // Optional keepsake copy (D-04): one read, saved, not re-verified and never a gate.

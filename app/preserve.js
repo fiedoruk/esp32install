@@ -13,6 +13,7 @@ import { InstallError } from './errors.js';
 import { sha256Hex } from './verify.js';
 import { md5Hex } from './md5.js';
 import { readRange, verifiedBackup, matchesBackup, backupFilename, readBackHandle } from './backup.js';
+import { checkSecurity } from './security.js';
 import { etaSeconds } from './progress.js';
 
 const PAGE = 0x1000;
@@ -23,20 +24,6 @@ const hex = (n) => '0x' + n.toString(16);
 function differs(a, b, from = 0, to = a.length) {
   for (let i = from; i < to; i++) if (a[i] !== b[i]) return i;
   return -1;
-}
-
-/** Security info: the flags word (bytes 0-3) and the flash-encryption count (byte 4) must both be zero. */
-async function assertUnlocked(loader, log) {
-  let info;
-  try {
-    info = await loader.checkCommand('security info', 0x14, new Uint8Array(0), 0, 20, 5000);
-  } catch (err) {
-    log('security info: ' + (err?.message ?? err) + '; treating the device as locked');
-    fail('device.secured', { reason: 'unsupported' });
-  }
-  if (!(info instanceof Uint8Array) || info.length !== 20) fail('device.secured', { reason: 'malformed' });
-  const flags = (info[0] | (info[1] << 8) | (info[2] << 16) | (info[3] << 24)) >>> 0;
-  if (flags !== 0 || info[4] !== 0) fail('device.secured', { flags: hex(flags), cryptCount: info[4] });
 }
 
 const sectorDown = (n) => Math.floor(n / PAGE) * PAGE;
@@ -134,7 +121,9 @@ export async function runPreserve(ctx) {
   const flashBytes = hw.flashSizeMB * 1024 * 1024;
 
   stage('checkingDevice', 11);
-  await assertUnlocked(loader(), log);
+  // A state this profile cannot read is treated as locked: it writes into a device it promises
+  // to keep working, and it has no erase to fall back on.
+  await checkSecurity(loader(), hw.chipFamily, log, { unknownIsLocked: true });
   const mac = String(await loader().chip.readMac(loader()));
   const sameDevice = async () => {
     const now = String(await loader().chip.readMac(loader()));

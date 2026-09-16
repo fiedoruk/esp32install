@@ -61,9 +61,16 @@ After writing:
   header to prove that bytes outside the written parts are unchanged and that the
   sector padding around them reads `0xff`.
 
-The `preserve` profile additionally refuses a device with secure boot or
-encrypted flash, checks the MAC address before and after every long step, demands
-that the existing flash header match the manifest's regions, and requires a
+Both profiles refuse a device with secure boot or encrypted flash before they
+erase or write anything: the plaintext this installer sends would leave such a
+board unable to start. The state comes from the ROM's security-info command, or,
+on a chip whose ROM has none, from the efuses (`docs/profiles.md`, `preserve`
+step 2). They differ in what an unreadable state means: `factory` installs anyway
+and says so in the log, because it writes a whole layout to a device it makes no
+promise about, while `preserve` refuses to write on a guess.
+
+The `preserve` profile additionally checks the MAC address before and after every
+long step, demands that the existing flash header match the manifest's regions, and requires a
 whole-flash backup that was read twice, agreed with itself, was saved where the
 user chose, and was read back from disk through the same file handle. Without a
 save picker the user hands the downloaded file back instead.

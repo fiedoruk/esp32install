@@ -34,7 +34,7 @@ test('happy path: connect, detect, verify, erase (confirmed), write with MD5, re
   assert.equal(fake.transports.length, 1);
   assert.deepEqual(fake.transports[0].args, [port, false, true]);
   const names = fake.calls.map((c) => c[0]);
-  assert.deepEqual(names, ['transport', 'main', 'readFlashId', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(names, ['transport', 'main', 'readFlashId', 'checkCommand', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
   const w = fake.calls.find((c) => c[0] === 'writeFlash');
   assert.deepEqual(w[1], [[0, 0x3000]]); assert.equal(w[2], false); assert.equal(w[3], true);
   assert.ok(events.some((e) => e.type === 'hardware' && e.hw.flashSizeMB === 16));
@@ -135,6 +135,59 @@ test('cancel() from inside confirmErase → serial.cancelled, no erase, no write
   assert.ok(!called(s.fake, 'writeFlash'));
   assert.ok(called(s.fake, 'disconnect'));
   assert.equal(s.events.at(-1).type, 'error');
+});
+
+/* --- the secure-boot and flash-encryption gate ------------------------------- */
+
+test('a locked device stops a factory install before anything is downloaded, erased or written', async () => {
+  const flagged = new Uint8Array(20); flagged[0] = 0x01;
+  const encrypted = new Uint8Array(20); encrypted[4] = 0x01;
+  for (const fakeOptions of [{ securityInfo: flagged }, { securityInfo: encrypted }, { securityInfo: new Uint8Array(4) }]) {
+    const fake = makeFakeEsptool(fakeOptions);
+    const fetches = [];
+    const { inst, manifest, events } = await setup({ fake, fetch: async (u) => { fetches.push(u); throw new Error('nothing may be fetched'); } });
+    await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'device.secured');
+    assert.deepEqual(fetches, []);
+    assert.ok(!called(fake, 'eraseFlash'));
+    assert.ok(!called(fake, 'writeFlash'));
+    assert.ok(called(fake, 'disconnect'));
+    assert.equal(events.at(-1).type, 'error');
+  }
+});
+
+test('a chip whose ROM has no security-info command is not blocked from a factory install', async () => {
+  const fake = makeFakeEsptool({ securityRejects: true }); // classic ESP32, no efuses to read either
+  const { inst, manifest, events } = await setup({ fake });
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
+  assert.ok(called(fake, 'writeFlash'));
+  const log = events.filter((e) => e.type === 'log').map((e) => e.line).join('\n');
+  assert.match(log, /security info:/, 'the reason is in the log, not in a stop');
+  assert.match(log, /could not be read/);
+});
+
+test('classic ESP32: the efuses answer when the command does not, and a locked one still stops the install', async () => {
+  const cases = [
+    { efuse: { 0: 1 << 20, 6: 0 }, locked: true, why: 'FLASH_CRYPT_CNT with one bit blown means encrypted' },
+    { efuse: { 0: 0, 6: 1 << 4 }, locked: true, why: 'ABS_DONE_0: secure boot v1' },
+    { efuse: { 0: 0, 6: 1 << 5 }, locked: true, why: 'ABS_DONE_1: secure boot v2' },
+    { efuse: { 0: 3 << 20, 6: 0 }, locked: false, why: 'two bits blown is an even count: encryption off' },
+    { efuse: { 0: 0, 6: 0 }, locked: false, why: 'a blank board' },
+  ];
+  for (const { efuse, locked, why } of cases) {
+    const fake = makeFakeEsptool({ securityRejects: true, efuse });
+    const { inst, manifest } = await setup({ fake });
+    const run = inst.run({ manifest, mode: 'first', options: {} });
+    if (locked) {
+      await assert.rejects(run, (e) => e.code === 'device.secured' && e.params.source === 'efuse', why);
+      assert.ok(!called(fake, 'eraseFlash'), why);
+      assert.ok(!called(fake, 'writeFlash'), why);
+    } else {
+      assert.equal((await run).verified, true, why);
+      assert.ok(called(fake, 'writeFlash'), why);
+    }
+    assert.deepEqual(fake.calls.filter((c) => c[0] === 'readEfuse').map((c) => c[1]), [0, 6], 'the two block-0 words esptool reads');
+  }
 });
 
 /* --- a build that always erases still asks, and tells the truth --------------- */
@@ -345,7 +398,7 @@ test('own file: installs from memory with no fetch at all, the full check chain,
   assert.equal(r.verified, true);
   assert.equal(r.build, 'local');
   assert.deepEqual(fetches, [], 'nothing was fetched');
-  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'checkCommand', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
   const w = fake.calls.find((c) => c[0] === 'writeFlash');
   assert.deepEqual(w[1], [[0, 0x3000]]);
   assert.equal(w[2], false, 'erase is its own step, never eraseAll');
@@ -446,7 +499,7 @@ test('own file by address: a relative same-origin address is fetched once, then 
     chooseBuild: async (b) => b[0], confirmErase: async () => true, saveBackup: async () => {} });
   const r = await inst.run({ manifest, mode: 'first', options: {} });
   assert.equal(r.verified, true);
-  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'checkCommand', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
   assert.ok(fake.flash.subarray(0, img.length).every((b, i) => b === img[i]));
 });
 
@@ -544,7 +597,7 @@ test('own files: two parts (partition table + application) are written in one ca
   assert.equal(manifest.promptErase, false, 'nothing covers the bootloader: the one on the device stays');
   const r = await inst.run({ manifest, mode: 'first', options: {} });
   assert.equal(r.verified, true);
-  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'checkCommand', 'writeFlash', 'after', 'disconnect']);
   assert.deepEqual(fake.calls.find((c) => c[0] === 'writeFlash')[1], [[0x8000, 0xc00], [0x10000, 0x200]]);
   assert.ok(fake.flash.subarray(0x8000, 0x8c00).every((b, i) => b === table[i]));
   assert.ok(fake.flash.subarray(0x10000, 0x10200).every((b, i) => b === app[i]));
@@ -558,7 +611,7 @@ test('own files: three parts with the bootloader at 0 on an S3 ask about erasing
   assert.equal(manifest.promptErase, true);
   const r = await inst.run({ manifest, mode: 'first', options: {} });
   assert.equal(r.verified, true);
-  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
+  assert.deepEqual(fake.calls.map((c) => c[0]), ['transport', 'main', 'readFlashId', 'checkCommand', 'eraseFlash', 'writeFlash', 'after', 'disconnect']);
   assert.deepEqual(fake.calls.find((c) => c[0] === 'writeFlash')[1], [[0x0, 0x5000], [0x8000, 0xc00], [0x10000, 0x200]]);
   assert.ok(fake.flash.subarray(0, 0x5000).every((b, i) => b === boot[i]));
 });

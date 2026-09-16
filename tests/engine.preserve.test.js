@@ -186,6 +186,36 @@ test('secured device (secure boot flag, encryption count, or no security-info co
   }
 });
 
+test('classic ESP32: no security-info command, so the efuses decide whether preserve may run', async () => {
+  for (const { efuse, locked } of [
+    { efuse: { 0: 0, 6: 0 }, locked: false },
+    { efuse: { 0: 1 << 20, 6: 0 }, locked: true },
+    { efuse: { 0: 0, 6: 1 << 4 }, locked: true },
+  ]) {
+    const img = deviceImage();
+    const manifest = await manifestFor(img);
+    manifest.builds[0].chipFamily = 'ESP32'; // a Core2-class board: the ROM has no command 0x14
+    const { inst, fake } = await setup({ img, manifest, fakeOptions: { chipName: 'ESP32', securityRejects: true, efuse } });
+    const run = inst.run({ manifest, mode: 'first', options: {} });
+    if (locked) {
+      await assert.rejects(run, (e) => e.code === 'device.secured' && e.params.source === 'efuse');
+      assert.ok(!called(fake, 'readFlash')); assert.ok(!called(fake, 'writeFlash'));
+    } else {
+      assert.equal((await run).verified, true, 'an unlocked classic ESP32 is no longer refused outright');
+      assert.ok(called(fake, 'writeFlash'));
+    }
+  }
+});
+
+test('preserve still refuses a device whose security state cannot be read at all', async () => {
+  const img = deviceImage();
+  const manifest = await manifestFor(img);
+  manifest.builds[0].chipFamily = 'ESP32';
+  const { inst, fake } = await setup({ img, manifest, fakeOptions: { chipName: 'ESP32', securityRejects: true } });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'device.secured' && e.params.reason === 'unsupported');
+  assert.ok(!called(fake, 'readFlash')); assert.ok(!called(fake, 'writeFlash'));
+});
+
 test('header mismatch (different bootloader) → device.layout, no backup, no write', async () => {
   const known = deviceImage();
   const manifest = await manifestFor(known);

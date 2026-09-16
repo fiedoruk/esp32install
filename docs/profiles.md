@@ -25,7 +25,14 @@ already on the device. `preserve` cannot be chosen for it: there is no
    serial port is offered. Cancelling here stops before the device is touched.
 2. **Read the device.** The chip family, the chip description, the feature list
    and the flash size are read. The flash size comes from the JEDEC id; an
-   unreadable or unknown id stops the install rather than assuming 4 MB.
+   unreadable or unknown id stops the install rather than assuming 4 MB. Then the
+   same security check `preserve` makes (see step 2 there): a board with secure
+   boot or flash encryption is refused with `device.secured` before the erase,
+   because the plaintext this installer writes would leave it unable to start.
+   The one difference is what an unreadable state means. `factory` writes a whole
+   layout to a device it makes no promise about, so a chip that cannot answer is
+   installed to anyway and the reason goes into the technical log; `preserve`
+   refuses.
 3. **Match.** Builds are filtered by chip family, `flashSizeMB`, USB ids,
    `chipDescriptionIncludes` and `featuresAll`. One survivor is used directly.
    Several survivors open a board chooser. None stops the install.
@@ -91,10 +98,20 @@ credentials, calibration or user data. It has no erase path at all: the module
 never calls `eraseFlash`.
 
 1. **Connect and match.** As in `factory`.
-2. **Check that the chip is unlocked.** The security-info command is read. All
-   four flag bytes and the flash-encryption counter must be zero. A device with
-   secure boot or encrypted flash is refused, and so is a device whose ROM does
-   not answer that command at all, which is treated as locked.
+2. **Check that the chip is unlocked.** The security-info command (`0x14`) is
+   read. All four flag bytes and the flash-encryption counter must be zero. A
+   device with secure boot or encrypted flash is refused with `device.secured`.
+
+   That command exists on ESP32-S3 and newer. On a classic ESP32 — a Core2, say —
+   the ROM does not have it, and the two block-0 efuses esptool reads are consulted
+   instead: `FLASH_CRYPT_CNT` (seven bits at bit 20 of word 0, encryption on when an
+   odd number of them are blown) and `ABS_DONE_0`/`ABS_DONE_1` (bits 4 and 5 of word
+   6, secure boot v1 and v2). ESP8266 has neither feature and passes. Anything else
+   that neither answers the command nor has efuses this page knows how to read is
+   treated as locked by `preserve`, which never writes on a guess. The efuse path is
+   read from the chip's own registers through esptool-js and is **not measured on
+   locked hardware**: it has been exercised against the fakes, not against a board
+   with the fuses actually blown.
 3. **Note the identity.** The MAC address is read and kept, then re-read before
    the backup and again before the first write. A different MAC means someone
    swapped the device mid-install.

@@ -16,6 +16,7 @@ export function makeFakeEsptool({
   macSequence = null,       // e.g. ['a', 'a', 'b']: readMac answers in turn, then repeats the last
   securityInfo = null,      // Uint8Array returned by checkCommand('security info', ...)
   securityRejects = false,  // chip that does not know the security-info command
+  efuse = null,             // { 0: word0, 6: word6 }: block-0 efuses a classic ESP32 would report
   tamperRead = null,        // (addr, n, index, data) => void — may mutate the bytes returned by readFlash
   corruptAt = null,         // flash address bumped after every writeFlash (models a bad write)
 } = {}) {
@@ -48,6 +49,9 @@ export function makeFakeEsptool({
           if (!macSequence) return mac;
           return macSequence[Math.min(macCalls++, macSequence.length - 1)];
         },
+        // Only a chip whose efuses were seeded has this method, as in esptool-js, where it is
+        // declared on ESP32ROM and reads that family's own EFUSE_RD_REG_BASE.
+        ...(efuse ? { readEfuse: async (_loader, word) => { calls.push(['readEfuse', word]); return efuse[word] ?? 0; } } : {}),
       };
       calls.push(['main']);
       return 'desc';
