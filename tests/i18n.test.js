@@ -99,7 +99,7 @@ const REQUIRED = [
   'simple.wifi.title', 'simple.wifi.hint', 'simple.wifi.network', 'simple.wifi.password', 'simple.wifi.ok', 'simple.wifi.skip', 'simple.wifi.open',
   'action.wifiSend', 'action.console', 'action.consoleStop',
   'pick.title', 'pick.hint',
-  'erase.title', 'erase.textFirst', 'erase.textUpdate', 'erase.textAlways', 'erase.yes', 'erase.no',
+  'erase.title', 'erase.textFirst', 'erase.textUpdate', 'erase.textAlways', 'erase.yes', 'erase.no', 'erase.noErase',
   'hint.open', 'hint.close',
 ];
 const get = (o, k) => k.split('.').reduce((x, p) => (x && typeof x === 'object' ? x[p] : undefined), o);

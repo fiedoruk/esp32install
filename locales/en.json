@@ -166,6 +166,7 @@
     "textAlways": "This system always starts from a clean device, so everything on {board} goes, including the saved Wi-Fi network and any settings. They cannot be kept this time.",
     "yes": "Erase and install",
     "no": "Keep settings",
+    "noErase": "Install without erasing",
     "hint": "Erasing removes saved Wi-Fi and settings from the device. The system you are installing goes on fresh. Your copy from the previous step, if you made one, is not affected."
   },
   "hint": {

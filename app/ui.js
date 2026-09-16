@@ -710,7 +710,11 @@ export function mountUi({ i18n, system }) {
         $('erase-title').textContent = t('erase.title');
         $('erase-text').textContent = t(key, { board: build.board });
         $('erase-yes').textContent = t('erase.yes');
-        $('erase-no').textContent = t(!required && mode === 'update' ? 'erase.no' : 'action.cancel');
+        // Cancel only where Cancel is the truth. The required dialog does stop the install, so it
+        // says so; the optional one carries on without erasing whichever door it was opened from,
+        // and a button labelled Cancel that installs anyway is the one place a beginner's Cancel
+        // would not mean cancel.
+        $('erase-no').textContent = t(required ? 'action.cancel' : mode === 'update' ? 'erase.no' : 'erase.noErase');
         let settled = false;
         const finish = (v) => { if (settled) return; settled = true; d.close(); resolve(v); };
         $('erase-yes').onclick = () => finish(true);

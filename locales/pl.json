@@ -166,6 +166,7 @@
     "textAlways": "Ten system zawsze zaczyna od czystego urządzenia, więc z {board} zniknie wszystko, razem z zapisaną siecią Wi-Fi i ustawieniami. Tym razem nie da się ich zachować.",
     "yes": "Wyczyść i zainstaluj",
     "no": "Zachowaj ustawienia",
+    "noErase": "Zainstaluj bez czyszczenia",
     "hint": "Czyszczenie usuwa z urządzenia zapisaną sieć Wi-Fi i ustawienia. System instaluje się wtedy od zera. Kopia z poprzedniego kroku, jeśli ją masz, zostaje nietknięta."
   },
   "hint": {

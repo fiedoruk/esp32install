@@ -62,10 +62,12 @@ already on the device. `preserve` cannot be chosen for it: there is no
    person came through. If the manifest sets `new_install_prompt_erase`, the
    dialog asks. In *first installation* mode it reads *"This will erase everything
    on {board}, including saved Wi-Fi and settings, and install a fresh copy."* with
-   **Erase and install** and **Cancel**. In *update* mode it reads *"Erasing also
-   removes saved settings. You can keep them."* with **Erase and install** and
-   **Keep settings**. Both second buttons mean the same thing to the engine: do
-   not erase, carry on installing.
+   **Erase and install** and **Install without erasing**. In *update* mode it reads
+   *"Erasing also removes saved settings. You can keep them."* with **Erase and
+   install** and **Keep settings**. Both second buttons mean the same thing to the
+   engine: do not erase, carry on installing — and both say so, because a dialog
+   headed *"Erase everything on the device?"* whose second button said **Cancel**
+   while it installed anyway was the one place a beginner's Cancel did not cancel.
 
    A build that sets `eraseAll` is the third case. It erases in *update* mode too,
    where the door said the system *"is already on this device"*, so it may not be

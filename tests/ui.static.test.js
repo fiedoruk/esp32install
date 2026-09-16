@@ -336,7 +336,12 @@ test('the erase dialog of a release that always clears offers no way to keep any
   const ui = read('app/ui.js');
   assert.match(ui, /confirmErase\(build, mode, \{ required = false \} = \{\}\)/);
   assert.match(ui, /const key = required \? 'erase\.textAlways' : mode === 'update' \? 'erase\.textUpdate' : 'erase\.textFirst';/);
-  assert.match(ui, /t\(!required && mode === 'update' \? 'erase\.no' : 'action\.cancel'\)/, 'the second button cancels, it does not promise to keep settings');
+  // Cancel only where Cancel is the truth: the required dialog's No throws before anything is
+  // touched, while the optional one installs without erasing whichever door opened it.
+  assert.match(ui, /t\(required \? 'action\.cancel' : mode === 'update' \? 'erase\.no' : 'erase\.noErase'\)/,
+    'a button that installs anyway must not say Cancel');
+  assert.equal(en.erase.noErase, 'Install without erasing');
+  for (const k of ['no', 'noErase']) assert.doesNotMatch(en.erase[k], /cancel/i, 'erase.' + k + ' must not read as cancelling');
   assert.match(en.erase.textAlways, /\{board\}/);
   assert.match(en.erase.textAlways, /cannot be kept/i, 'the dialog says what is about to happen');
   const engine = read('app/engine.js');
