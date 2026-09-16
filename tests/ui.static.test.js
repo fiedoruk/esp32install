@@ -407,3 +407,18 @@ test('own-file path: the copy option is offered only once a file exists (setBack
   assert.match(main, /ui\.bindOwnRemove\(\(rowId\) => \{ picked\.delete\(rowId\); retitle\(\); \}\);/, 'a removed file leaves the tab title too');
   assert.match(read('app/ui.js'), /\$\('title'\)\.textContent = has \? t\('app\.title', \{ system: filled\.map\(\(r\) => r\.part\.name\)\.join\(', '\) \}\) : t\('simple\.own\.title'\);/, 'and the kicker follows the rows, not the last file added');
 });
+
+/* --- identity, footer and the de-slop round (2026-09-16) ------------------ */
+
+test('an open hatch holds no card, and the "?" ring rides the line of text it belongs to', () => {
+  const open = style.match(/\.hatches details\[open\] > \.facts, \.hatches details\[open\] > \.alt \{([^}]*)\}/);
+  assert.ok(open, 'the rule that dresses an open hatch');
+  assert.doesNotMatch(open[1], /background|border-radius/, 'a card in there is a third background and a second radius on one piece of text');
+  assert.match(open[1], /padding:[^;]*\s0\s/, 'no side padding: the contents line up with the summary label');
+  const hint = style.match(/\.hint \{([^}]*)\}/);
+  assert.ok(hint, '.hint');
+  assert.match(hint[1], /display:\s*inline-flex/);
+  assert.match(hint[1], /vertical-align:\s*middle/);
+  assert.doesNotMatch(hint[1], /flex:\s*none/, 'it is no longer a flex item pinned to the plate edge');
+  assert.match(style, /\.line \{\s*display:\s*block/, 'the line is a block, so the heading stays inline and the ring follows the last word');
+});

@@ -200,18 +200,23 @@ p { margin: 0; }
 #screen-prepare:has(#mode-first:disabled) .picto-link { animation: link 900ms linear infinite; }
 @keyframes link { to { stroke-dashoffset: -9; } }
 
-.line { display: flex; align-items: flex-start; gap: 10px; }
-.line > h1, .line > h2 { flex: 1; }
+/* A heading and its "?" are one line of text, so the line is a block and the heading stays inline:
+   the ring then follows the last word. As a flex row it was pushed to the plate's right edge and
+   floated there, related to nothing. */
+.line { display: block; }
+.line > h1, .line > h2 { display: inline; }
 /* The question above the doors is a field label, not a heading. */
 .door-title { font: 600 var(--t-small)/1.4 var(--font-body); letter-spacing: 0; color: var(--dim); margin: 0; }
-.line:has(> .door-title) { margin-top: var(--s6); align-items: center; }
-.line:has(> .door-title) .hint { margin-top: 0; }
+.line:has(> .door-title) { margin-top: var(--s6); }
 
-/* "?" hints: a small ring, the text opens underneath, never a tooltip. */
+/* "?" hints: a small ring at the end of the sentence it belongs to, opening underneath, never a tooltip. */
 .hint {
-  flex: none;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+  vertical-align: middle;
+  margin: 0 0 0 10px;
   width: 30px; height: 30px;
-  margin-top: 2px;
   padding: 0;
   border: 1.5px solid var(--line);
   border-radius: 999px;
@@ -274,7 +279,7 @@ p { margin: 0; }
 /* Before the copy option on a first install: why it starts with a copy, said once, in the quiet voice. */
 #backup-first { margin-top: var(--s3); font-size: var(--t-body); color: var(--dim); }
 .opt-row { display: flex; align-items: flex-start; gap: 10px; margin-top: var(--s3); }
-.opt { flex: 1; display: flex; gap: 10px; align-items: flex-start; color: var(--dim); cursor: pointer; }
+.opt { display: flex; gap: 10px; align-items: flex-start; color: var(--dim); cursor: pointer; }
 .opt input { width: 20px; height: 20px; margin: 4px 0 0; accent-color: var(--accent); flex: none; }
 
 /* The one button. */
@@ -444,12 +449,11 @@ summary::before {
   transition: transform var(--motion-fast) var(--ease);
 }
 details[open] > summary::before { transform: rotate(45deg); }
-/* An open hatch shows its inside in the plate's own colour. */
+/* An open hatch lays its contents straight on the chamber floor. A card in here would be a third
+   background and a second radius on one piece of text, and its side margins read as decoration. */
 .hatches details[open] > .facts, .hatches details[open] > .alt {
-  background: var(--bg-2);
-  border-radius: var(--radius-in);
-  padding: var(--s3) var(--s4);
-  margin: 0 0 var(--s3);
+  padding: var(--s1) 0 var(--s5);
+  margin: 0;
 }
 .facts {
   display: grid;
