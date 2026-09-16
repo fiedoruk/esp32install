@@ -299,7 +299,10 @@ p { margin: 0; }
 }
 .cta:hover:not(:disabled) { background: var(--accent-2); }
 .cta:active:not(:disabled) { box-shadow: inset 0 2px 4px rgb(0 0 0 / 0.18); }
-.cta:disabled { opacity: 0.55; cursor: progress; }
+/* Off is the ordinary state on the own-file path, before a file is chosen: the pointer may not
+   claim something is running. Only the busy button does that. */
+.cta:disabled { opacity: 0.55; cursor: default; }
+.cta.is-busy { cursor: progress; }
 .note { margin-top: var(--s3); color: var(--dim); font-size: var(--t-small); text-align: center; }
 /* Why the button is off sits right above it, in the button's own gap. */
 #connect-why { margin-top: var(--s6); }
@@ -475,6 +478,7 @@ details[open] pre, details[open] code { font-family: var(--font-mono); }
 .log pre { max-height: 240px; overflow: auto; min-height: 3em; background: var(--bg-2); }
 .small, .quiet-btn, .warn-btn {
   margin-top: 10px;
+  min-height: 44px; /* the same target as the hatch summaries; Remove used to come out at 39px */
   padding: 8px 14px;
   border-radius: 999px;
   border: 1.5px solid var(--line);
@@ -583,8 +587,35 @@ dialog p { margin-top: 8px; }
   cursor: pointer;
 }
 .choice:hover { border-color: var(--accent); }
-.file { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; color: var(--dim); }
-.file input { width: 100%; font: 16px var(--font-body); color: var(--ink); }
+/* The picker draws its own label, because the native input prints the browser's own words in the
+   browser's own language and nothing on this page can translate them. The input keeps its place in
+   the page — focusable, and read out as a file field — clipped to a point behind that label. */
+.file { position: relative; display: flex; flex-direction: column; gap: 8px; margin-top: 12px; color: var(--dim); cursor: pointer; }
+.file > span {
+  align-self: flex-start;
+  display: inline-flex;
+  align-items: center;
+  min-height: 44px;
+  padding: 8px 14px;
+  border: 1.5px solid var(--line);
+  border-radius: 999px;
+  color: var(--ink);
+  font: 600 15px var(--font-body);
+}
+.file input {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: 0;
+  padding: 0;
+  border: 0;
+  overflow: hidden;
+  clip-path: inset(50%);
+}
+.file:hover > span { border-color: var(--accent); }
+.file:has(input:focus-visible) > span { outline: 2px solid var(--accent); outline-offset: 2px; }
+.file:has(input:disabled) { cursor: default; }
+.file:has(input:disabled) > span { opacity: 0.55; }
 
 /* ---- small screens ------------------------------------------------------- */
 
