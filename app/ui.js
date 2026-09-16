@@ -195,6 +195,7 @@ export function mountUi({ i18n, system }) {
       r.title.hidden = ownRows.length === 1;
       r.remove.hidden = ownRows.length === 1 && !r.part; // the only empty row stays
     });
+    $('title').textContent = has ? t('app.title', { system: filled.map((r) => r.part.name).join(', ') }) : t('simple.own.title');
     const chipFamily = ownChipFamily();
     $('fact-board').textContent = chipFamily ?? '';
     $('fact-release').textContent = filled.map((r) => `${r.part.name}, ${r.part.size} bytes` + (parseAddress(r.address.value) === null ? '' : `, at 0x${parseAddress(r.address.value).toString(16)}`)).join('; ');
@@ -384,7 +385,6 @@ export function mountUi({ i18n, system }) {
       row.address.value = offset === null || offset === undefined ? '' : '0x' + offset.toString(16);
       row.info.textContent = t('simple.own.kind.' + kind) + (chipFamily ? ' ' + chipFamily + '.' : '');
       if (chipFamily && !$('own-chip').value) $('own-chip').value = chipFamily;
-      $('title').textContent = t('app.title', { system: ownFilled().map((r) => r.part.name).join(', ') });
       refreshOwn();
     },
     ownChoice,

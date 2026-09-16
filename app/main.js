@@ -211,6 +211,7 @@ async function startOwn(lang) {
   if (!esptool) return;
   const picked = new Map(); // row id → { name, bytes, sha256, url? }
   const names = () => [...picked.values()].map((p) => p.name).join(', ');
+  const retitle = () => { document.title = picked.size ? i18n.t('app.title', { system: names() }) : i18n.t('simple.own.title'); };
   const run = makeInstaller({ esptool, ui, fw: 'local', nameOf: names });
   const report = (e) => ui.setError(e instanceof InstallError ? e : new InstallError('engine.unexpected', { detail: String(e?.message ?? e) }, e));
   // Both ways in end here: bytes in memory, inspected, shown with the defaults they suggest.
@@ -223,12 +224,12 @@ async function startOwn(lang) {
     if (id === null) return; // every row is taken; the page has already switched the button off
     picked.set(id, { name, bytes, sha256, url });
     ui.setOwnPart(id, { name, size: bytes.length, sha256, ...facts });
-    document.title = i18n.t('app.title', { system: names() });
+    retitle();
   };
   ui.bindOwnFile(async (rowId, file) => {
     try { await accept(rowId, file.name, new Uint8Array(await file.arrayBuffer())); } catch (e) { report(e); }
   });
-  ui.bindOwnRemove((rowId) => { picked.delete(rowId); });
+  ui.bindOwnRemove((rowId) => { picked.delete(rowId); retitle(); });
   ui.bindOwnUrl(async (address) => {
     if (!String(address ?? '').trim()) return;
     ui.setOwnReading(true);

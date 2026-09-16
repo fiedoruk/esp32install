@@ -315,4 +315,6 @@ test('own-file path: the copy option is offered only once a file exists (setBack
   const a = main.indexOf("ui.setBackupAvailable(true); // the own-file path");
   const b = main.indexOf("ui.showOwn([...CHIP_FAMILIES]);");
   assert.ok(a > 0 && b > a, 'showOwn must run last, so its refresh decides what is visible');
+  assert.match(main, /ui\.bindOwnRemove\(\(rowId\) => \{ picked\.delete\(rowId\); retitle\(\); \}\);/, 'a removed file leaves the tab title too');
+  assert.match(read('app/ui.js'), /\$\('title'\)\.textContent = has \? t\('app\.title', \{ system: filled\.map\(\(r\) => r\.part\.name\)\.join\(', '\) \}\) : t\('simple\.own\.title'\);/, 'and the kicker follows the rows, not the last file added');
 });
