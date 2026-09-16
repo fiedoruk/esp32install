@@ -125,6 +125,19 @@ class CrossOriginRedirect(SourceError):
 class Fetched:
     data: bytes
     declared_length: Optional[int] = None
+    # Response headers, lower-cased, or None for a directory on disk, which has none. Kept because
+    # two of the things the docs tell a host to set can only be seen here.
+    headers: Optional[Dict[str, str]] = None
+
+
+def collect_headers(headers: Any) -> Dict[str, str]:
+    """Response headers as a lower-cased dict; a header sent twice is joined, as a browser joins it."""
+    collected: Dict[str, str] = {}
+    items = headers.items() if hasattr(headers, 'items') else []
+    for name, value in items:
+        key = str(name).lower()
+        collected[key] = '%s, %s' % (collected[key], value) if key in collected else str(value)
+    return collected
 
 
 def origin(url: str) -> Tuple[str, str]:
@@ -170,6 +183,7 @@ class HttpSource:
                 if status != 200:
                     raise Unreachable('%s answered %s' % (ref, status))
                 declared = response.headers.get('Content-Length')
+                headers = collect_headers(response.headers)
                 data = response.read()
         except urllib.error.HTTPError as exc:
             if exc.code == 404:
@@ -181,7 +195,7 @@ class HttpSource:
             length = int(declared) if declared is not None else None
         except ValueError:
             length = None
-        return Fetched(data, length)
+        return Fetched(data, length, headers)
 
 
 class DirSource:
@@ -390,6 +404,26 @@ def unreachable_origins(policies: Sequence[str], catalog_origins: Sequence[str])
     return [o for o in catalog_origins if o not in connect]
 
 
+def framing_problem(headers: Optional[Dict[str, str]]) -> Optional[str]:
+    """Why another site could put this page in a frame and steer clicks at it, or None.
+
+    Either header is enough: `X-Frame-Options`, or a `Content-Security-Policy` response header
+    with `frame-ancestors`. Neither can come from the page itself — `frame-ancestors` is ignored
+    in a `<meta>` policy — so this is the one check that only a live site can answer. A directory
+    has no headers and is not judged.
+    """
+    if headers is None:
+        return None
+    if headers.get('x-frame-options', '').strip():
+        return None
+    # A response may carry several policies, separated by commas; look in all of them.
+    policy = headers.get('content-security-policy', '').replace(',', ';')
+    if 'frame-ancestors' in csp_directives(policy):
+        return None
+    return ('neither X-Frame-Options nor a Content-Security-Policy with frame-ancestors is sent, '
+            'so another site can put this page in a frame; the page cannot set that itself')
+
+
 def check_index(source: Source, catalog_origins: Sequence[str] = (),
                 extra_origins: Sequence[str] = ()) -> List[Finding]:
     ref = source.join(source.root(), INDEX)
@@ -407,6 +441,12 @@ def check_index(source: Source, catalog_origins: Sequence[str] = (),
         if problem is not None:
             return [Finding(FAIL, 'csp', '%s: %s' % (INDEX, problem))]
     findings = [Finding(OK, 'csp', "%s pins default-src to %s" % (INDEX, SELF))]
+    problem = framing_problem(fetched.headers)
+    if problem is not None:
+        findings.append(Finding(WARN, 'framing', '%s: %s' % (INDEX, problem)))
+    elif fetched.headers is not None:
+        findings.append(Finding(OK, 'framing', '%s: the host sends a header that stops other sites '
+                                'framing the page' % INDEX))
     for origin_ in unreachable_origins(policies, catalog_origins):
         findings.append(Finding(WARN, 'csp', '%s: connect-src does not name %s, which %s lists in '
                                 'allowOrigins; the page will refuse to download from there'

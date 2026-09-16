@@ -142,7 +142,11 @@ site from framing the installer and steering clicks at it, is ignored by
 browsers when it appears in a `<meta>` policy and only logs a console error
 there. It belongs in an HTTP header set by the host, together with the older
 `X-Frame-Options`; [replicate.md](replicate.md#what-the-host-has-to-do) shows
-where. Until the host sends it, the page can be framed.
+where. Until the host sends it, the page can be framed — though Web Serial is not
+delegated to cross-origin frames by default, so what a framing site gains is the
+visitor's clicks, not their device. `tools/check.py` given a URL reads the
+response headers and says `WARN framing` when neither header is there; given a
+directory it says nothing, because a directory has no headers.
 
 `tools/check.py` fails if that meta tag is missing, if `default-src` is not
 exactly `'self'`, or if `script-src`, `script-src-elem`, `connect-src` or

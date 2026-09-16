@@ -35,6 +35,12 @@ HTTP response headers, which the host sets. On Apache that is
 `Header set Content-Security-Policy "frame-ancestors 'none'"` plus
 `Header set X-Frame-Options "DENY"`; on nginx `add_header` with the same two
 values. Without them the page loads and works, but can be embedded elsewhere.
+Point `tools/check.py` at the live URL once it is up and it says which of the two
+it sees: `WARN framing` when neither header arrives, `OK framing` when one does.
+A directory on disk has no headers, so only the URL form can answer this. Web
+Serial itself is not delegated to a cross-origin frame by default, so a framed
+copy could not reach the device even so; what framing buys an attacker is the
+clicks, not the port.
 
 ## Local testing
 

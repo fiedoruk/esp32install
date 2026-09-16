@@ -887,6 +887,97 @@ class ShapeTest(SiteFixture):
         self.assertEqual(self.levels(found, 'vendor'), [check.OK] * 3, 'esptool-js and the two Improv files')
 
 
+class FramingTest(SiteFixture):
+    """The two headers only a live site can answer for. No socket: a fake response carries them."""
+
+    class Response:
+        """What urllib hands back from `opener.open`, reduced to what check.py reads."""
+
+        def __init__(self, body, headers, status=200):
+            self.body = body
+            self.status = status
+            self.headers = _Headers(headers)
+
+        def getcode(self):
+            return self.status
+
+        def read(self):
+            return self.body
+
+        def __enter__(self):
+            return self
+
+        def __exit__(self, *exc):
+            return False
+
+    def http_source(self, headers):
+        """An HttpSource whose opener answers every request with the site's index.html."""
+        source = check.make_source('https://example.test/install/')
+        body = (self.site / 'index.html').read_bytes()
+        source.opener = _Opener(lambda ref: FramingTest.Response(body, headers))
+        return source
+
+    def test_a_live_site_without_either_header_warns(self):
+        found = check.check_index(self.http_source({'Content-Type': 'text/html'}))
+        self.assertEqual([f.level for f in found if f.what == 'framing'], [check.WARN])
+        self.assertTrue(any('frame' in f.detail for f in found if f.what == 'framing'))
+        self.assertEqual([f.level for f in found if f.level == check.FAIL], [])
+
+    def test_either_header_is_enough(self):
+        for headers in ({'X-Frame-Options': 'SAMEORIGIN'},
+                        {'Content-Security-Policy': "default-src 'self'; frame-ancestors 'self'"},
+                        {'Content-Security-Policy': "default-src 'self', frame-ancestors 'none'"},
+                        {'x-frame-options': 'DENY', 'Content-Security-Policy': "default-src 'self'"}):
+            with self.subTest(headers=headers):
+                found = check.check_index(self.http_source(headers))
+                self.assertEqual([f.level for f in found if f.what == 'framing'], [check.OK])
+
+    def test_a_policy_without_frame_ancestors_is_not_mistaken_for_one(self):
+        found = check.check_index(self.http_source({'Content-Security-Policy': "default-src 'self'; script-src 'self'"}))
+        self.assertEqual([f.level for f in found if f.what == 'framing'], [check.WARN])
+
+    def test_the_headers_survive_the_read_path(self):
+        source = self.http_source({'X-Frame-Options': 'DENY', 'Content-Length': '17'})
+        fetched = source.read('https://example.test/install/index.html')
+        self.assertEqual(fetched.headers['x-frame-options'], 'DENY')
+        self.assertEqual(fetched.declared_length, 17)
+
+    def test_a_header_sent_twice_is_joined_like_a_browser_joins_it(self):
+        self.assertEqual(check.collect_headers(_Headers([('Content-Security-Policy', "default-src 'self'"),
+                                                         ('Content-Security-Policy', "frame-ancestors 'none'")])),
+                         {'content-security-policy': "default-src 'self', frame-ancestors 'none'"})
+
+    def test_a_directory_is_not_judged_on_headers(self):
+        """A checkout has no headers, so nothing is claimed about framing either way."""
+        found = self.findings()
+        self.assertEqual([f.level for f in found if f.what == 'framing'], [])
+        self.assertIsNone(check.framing_problem(None))
+
+
+class _Headers:
+    """Stand-in for `email.message.Message`: ordered pairs, case-insensitive `get`."""
+
+    def __init__(self, pairs):
+        self.pairs = list(pairs.items() if hasattr(pairs, 'items') else pairs)
+
+    def items(self):
+        return list(self.pairs)
+
+    def get(self, name, default=None):
+        for key, value in self.pairs:
+            if key.lower() == name.lower():
+                return value
+        return default
+
+
+class _Opener:
+    def __init__(self, answer):
+        self.answer = answer
+
+    def open(self, request, timeout=None):
+        return self.answer(getattr(request, 'full_url', request))
+
+
 class HelperTest(unittest.TestCase):
     """The pieces of the HTTP path that can be exercised without a socket."""
 
