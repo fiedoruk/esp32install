@@ -5,6 +5,7 @@ import { runPreserve } from '../app/preserve.js';
 import { normalizeManifest } from '../app/manifest.js';
 import { makeFakeEsptool } from './helpers/fakeEsptool.js';
 import { sha256Hex } from '../app/verify.js';
+import { saveBackupWithHandle } from '../app/backup.js';
 
 const MiB = 1024 * 1024;
 const FLASH = 16 * MiB;
@@ -79,7 +80,7 @@ function afterWrite(img, parts) {
 const fileOf = (bytes) => ({ size: bytes.length, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) });
 
 /** Wires the installer with a device image; the saved backup is what `requestBackupFile` hands back unless overridden. */
-async function setup({ img = deviceImage(), fakeOptions = {}, manifest, backupFile, app = APP, now } = {}) {
+async function setup({ img = deviceImage(), fakeOptions = {}, manifest, backupFile, app = APP, now, saveBackup } = {}) {
   const fake = makeFakeEsptool({ chipName: 'ESP32-S3', flashImage: img, ...fakeOptions });
   fakes.push(fake);
   manifest ??= await manifestFor(img, { app });
@@ -93,7 +94,7 @@ async function setup({ img = deviceImage(), fakeOptions = {}, manifest, backupFi
     onEvent: (e) => events.push(e),
     chooseBuild: async (builds) => builds[0],
     confirmErase: async () => { throw new Error('preserve must never ask about erasing'); },
-    saveBackup: async (bytes, name) => { fake.calls.push(['saveBackup', name]); saved.push(bytes); },
+    saveBackup: async (bytes, name) => { fake.calls.push(['saveBackup', name]); saved.push(bytes); return saveBackup ? saveBackup(bytes, name) : null; },
     requestBackupFile: async (filename) => { fake.calls.push(['requestBackupFile', filename]); return backupFile ?? fileOf(saved.at(-1)); },
     ...(now ? { now } : {}),
   });
@@ -159,10 +160,12 @@ test('backup stage events carry a numeric time estimate after the first chunk, i
   let t = 0;
   const { inst, manifest, events } = await setup({ now: () => (t += 1500) }); // every look at the clock is 1.5 s later
   await inst.run({ manifest, mode: 'first', options: {} });
-  const backup = events.filter((e) => e.type === 'stage' && e.stage === 'backup');
+  // The save and read-back announcements carry a phase and no estimate; the chunk reads carry neither phase nor, at first, an estimate.
+  const backup = events.filter((e) => e.type === 'stage' && e.stage === 'backup' && e.params?.phase === undefined);
   assert.equal(backup[0].eta, undefined, 'the bare stage announcement has no estimate yet');
   const measured = backup.slice(1);
   assert.equal(measured.length, 128, 'two 16 MiB reads in 256 KiB chunks');
+  assert.ok(events.filter((e) => e.type === 'stage' && e.stage === 'backup' && e.params?.phase).every((e) => e.eta === undefined), 'no stale estimate beside the save button');
   assert.ok(measured.every((e) => Number.isFinite(e.eta) && e.eta >= 0), `eta values: ${measured.slice(0, 3).map((e) => e.eta)}`);
   assert.ok(measured[0].eta > measured.at(-2).eta, 'the estimate falls as the read progresses');
   assert.equal(measured.at(-1).eta, 0);
@@ -267,6 +270,102 @@ test('the two backup reads differ → backup.mismatch, nothing saved, nothing wr
   await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'backup.mismatch');
   assert.equal(hits, 2, 'the tamper hit the second pass');
   assert.ok(!called(fake, 'saveBackup')); assert.ok(!called(fake, 'writeFlash'));
+});
+
+/* --- The backup saved through a file handle (File System Access API) ------ */
+
+/**
+ * A fake `showSaveFilePicker` for the engine tests: the handle keeps what was written and
+ * hands it back from `getFile()`, unless `readBack` replaces the bytes or `abort` cancels.
+ */
+function fakePicker({ name = 'Home-copy.bin', abort = false, readBack = null } = {}) {
+  const log = { written: [], options: null, reads: 0 };
+  const handle = {
+    name,
+    async createWritable() { return { async write(b) { log.written.push(new Uint8Array(b)); }, async close() {}, async abort() {} }; },
+    async getFile() {
+      log.reads++;
+      const bytes = readBack ?? log.written.at(-1);
+      return { size: bytes.length, arrayBuffer: async () => bytes.buffer.slice(bytes.byteOffset, bytes.byteOffset + bytes.length) };
+    },
+  };
+  const picker = async (options) => {
+    log.options = options;
+    if (abort) { const e = new Error('The user aborted a request.'); e.name = 'AbortError'; throw e; }
+    return handle;
+  };
+  return { picker, handle, log };
+}
+
+test('handle path: the copy is written through the picked handle, read back and verified; the file dialog is never opened', async () => {
+  const { picker, log } = fakePicker({ name: 'my-device.bin' });
+  const { inst, manifest, fake, img, events } = await setup({ saveBackup: (bytes, name) => saveBackupWithHandle(bytes, name, { picker }) });
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
+  assert.ok(called(fake, 'saveBackup'));
+  assert.ok(!called(fake, 'requestBackupFile'), 'no re-selection dialog when the handle path was used');
+  assert.equal(log.written.length, 1);
+  assert.equal(firstDiff(log.written[0], img), -1, 'the bytes on disk are the whole original flash');
+  assert.equal(log.reads, 1, 'read back exactly once');
+  assert.match(log.options.suggestedName, /^Home-backup-[0-9a-f]{8}\.bin$/);
+  assert.equal(r.backup.filename, 'my-device.bin', 'the result names the file as the user saved it');
+  assert.equal(r.backup.sha256, await sha256Hex(img));
+  const names = fake.calls.map((c) => c[0]);
+  assert.ok(names.indexOf('writeFlash') > names.indexOf('saveBackup'), 'nothing is written before the copy is verified on disk');
+  // The read-back announces itself on the first layer with the name the user sees.
+  const readBack = events.find((e) => e.type === 'stage' && e.stage === 'backup' && e.params?.phase === 'readBack');
+  assert.ok(readBack, 'a backup stage event marks the read-back');
+  assert.equal(readBack.params.file, 'my-device.bin');
+  const save = events.find((e) => e.type === 'stage' && e.stage === 'backup' && e.params?.phase === 'save');
+  assert.ok(save, 'a backup stage event marks the moment the copy is ready to be saved');
+  assert.ok(events.indexOf(save) < events.indexOf(readBack));
+  assert.ok(events.some((e) => e.type === 'log' && e.line.includes('my-device.bin')));
+});
+
+test('handle path: what comes back from disk differs from the copy → backup.file, nothing written', async () => {
+  const img = deviceImage();
+  const other = img.slice(); other[0x400000] ^= 0x01;
+  const { picker, log } = fakePicker({ readBack: other });
+  const { inst, manifest, fake } = await setup({ img, saveBackup: (bytes, name) => saveBackupWithHandle(bytes, name, { picker }) });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'backup.file' && e.params.filename === 'Home-copy.bin');
+  assert.equal(log.written.length, 1, 'the copy was written');
+  assert.ok(!called(fake, 'requestBackupFile'));
+  assert.ok(!called(fake, 'writeFlash'));
+  assert.ok(called(fake, 'disconnect'));
+  // A short file is caught by its length alone.
+  const short = fakePicker({ readBack: img.slice(0, FLASH - 1) });
+  const s2 = await setup({ img, saveBackup: (bytes, name) => saveBackupWithHandle(bytes, name, { picker: short.picker }) });
+  await assert.rejects(s2.inst.run({ manifest: s2.manifest, mode: 'first', options: {} }), (e) => e.code === 'backup.file');
+  assert.ok(!called(s2.fake, 'writeFlash'));
+});
+
+test('handle path: the user cancels the save picker → serial.cancelled, nothing written, no file dialog', async () => {
+  const { picker, log } = fakePicker({ abort: true });
+  const { inst, manifest, fake, events } = await setup({ saveBackup: (bytes, name) => saveBackupWithHandle(bytes, name, { picker }) });
+  await assert.rejects(inst.run({ manifest, mode: 'first', options: {} }), (e) => e.code === 'serial.cancelled');
+  assert.equal(log.written.length, 0);
+  assert.ok(!called(fake, 'requestBackupFile'));
+  assert.ok(!called(fake, 'writeFlash'));
+  assert.ok(called(fake, 'disconnect'));
+  assert.equal(events.at(-1).type, 'error');
+});
+
+test('no save picker in this browser: saveBackup yields null and the download + re-selection path runs end to end', async () => {
+  const { inst, manifest, fake, img, saved } = await setup({ saveBackup: (bytes, name) => saveBackupWithHandle(bytes, name, { picker: undefined }) });
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
+  assert.ok(called(fake, 'saveBackup'));
+  assert.ok(called(fake, 'requestBackupFile'), 'the fallback still asks for the file');
+  assert.equal(firstDiff(saved[0], img), -1);
+  assert.match(r.backup.filename, /^Home-backup-[0-9a-f]{8}\.bin$/);
+});
+
+test('a handle result without a handle object is treated as the fallback, never as a verified copy', async () => {
+  const { inst, manifest, fake } = await setup({ saveBackup: async () => ({ name: 'nothing-behind-it.bin' }) });
+  const r = await inst.run({ manifest, mode: 'first', options: {} });
+  assert.equal(r.verified, true);
+  assert.ok(called(fake, 'requestBackupFile'), 'without a handle the file must be handed back');
+  assert.match(r.backup.filename, /^Home-backup-/);
 });
 
 test('bytes outside written parts are unchanged after write (positive control: a fake that corrupts 0x9000 fails flash.verify)', async () => {

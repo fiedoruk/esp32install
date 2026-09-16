@@ -248,12 +248,16 @@ test('the optional factory backup reports a time estimate after the first chunk'
   let t = 0;
   const { inst, manifest, events } = await setup({ saveBackup: async () => {}, now: () => (t += 1500) });
   await inst.run({ manifest, mode: 'first', options: { backup: true } });
-  const backup = events.filter((e) => e.type === 'stage' && e.stage === 'backup');
+  const backup = events.filter((e) => e.type === 'stage' && e.stage === 'backup' && e.params?.phase === undefined);
   assert.equal(backup[0].eta, undefined);
   const measured = backup.slice(1);
   assert.equal(measured.length, 64, 'one 16 MiB read in 256 KiB chunks');
   assert.ok(measured.every((e) => Number.isFinite(e.eta) && e.eta >= 0));
   assert.equal(measured.at(-1).eta, 0);
+  // The save button is announced after the read, without a stale estimate beside it.
+  const save = events.find((e) => e.type === 'stage' && e.stage === 'backup' && e.params?.phase === 'save');
+  assert.ok(save && save.eta === undefined);
+  assert.ok(events.indexOf(save) > events.indexOf(backup.at(-1)));
 });
 
 test('an application image for another chip stops a factory install even when it does not cover the bootloader offset', async () => {

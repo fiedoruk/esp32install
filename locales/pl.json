@@ -29,6 +29,7 @@
     "retry": "Spróbuj jeszcze raz",
     "cancel": "Przerwij",
     "backup": "Najpierw zapisz kopię tego, co jest na urządzeniu (około {minutes} min)",
+    "saveBackup": "Zapisz kopię",
     "chooseBackup": "Wybierz zapisaną przed chwilą kopię",
     "chooseBackupTitle": "Teraz wskaż kopię zapisaną przed chwilą",
     "chooseBackupHint": "Przeglądarka zapisała ją jako {file}, zwykle w folderze Pobrane.",
@@ -67,6 +68,10 @@
     },
     "install": {
       "keepCable": "Nie odłączaj kabla, dopóki instalacja się nie skończy."
+    },
+    "backup": {
+      "save": "Kopia jest gotowa. Wskaż, gdzie ją trzymać, a instalacja pójdzie dalej.",
+      "saved": "Zapisano jako {file}. Sprawdzam, czy da się ją odczytać."
     },
     "done": {
       "title": "Gotowe.",

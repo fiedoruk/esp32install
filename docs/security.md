@@ -64,8 +64,9 @@ After writing:
 The `preserve` profile additionally refuses a device with secure boot or
 encrypted flash, checks the MAC address before and after every long step, demands
 that the existing flash header match the manifest's regions, and requires a
-whole-flash backup that was read twice, agreed with itself, and was handed back
-by the user from disk.
+whole-flash backup that was read twice, agreed with itself, was saved where the
+user chose, and was read back from disk through the same file handle. Without a
+save picker the user hands the downloaded file back instead.
 
 ## What the installer cannot verify
 
@@ -156,8 +157,10 @@ that includes the NVS partition, and NVS is where Wi-Fi SSIDs and passwords live
 along with tokens, pairing keys and whatever else the firmware stored.
 
 The file never leaves your computer: it is produced in the browser and saved
-through the normal download dialog. But once it is on disk it is an unencrypted
-copy of your device's secrets.
+through the system's save dialog, or the normal download on a browser without
+one. The page sees the file name you chose and a handle it can read back; it
+never learns the folder path, because browsers do not expose it. But once the
+copy is on disk it is an unencrypted copy of your device's secrets.
 
 Keep it private. Do not attach it to a bug report, do not put it in a public
 repository, and do not hand it to a stranger who offers to look at your device.

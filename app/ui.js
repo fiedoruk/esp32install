@@ -144,6 +144,7 @@ export function mountUi({ i18n, system }) {
     startInstall() {
       setRing(0, true);
       $('eta').textContent = '';
+      $('save-backup').hidden = true;
       $('stage-text').textContent = t('stage.connecting');
       setLamp('lamp-device', 'is-off', t('app.notDetected'));
       setLamp('lamp-cable', 'is-on');
@@ -154,6 +155,8 @@ export function mountUi({ i18n, system }) {
     setStage({ stage, percent, params = {}, eta }) {
       const sentence = stage === 'writing'
         ? t('stage.writing', { n: params.n, total: params.total })
+        : stage === 'backup' && params.phase === 'save' ? t('simple.backup.save')
+        : stage === 'backup' && params.phase === 'readBack' ? t('simple.backup.saved', { file: String(params.file ?? '') })
         : stage === 'downloading' ? t('stage.downloading') : t('stage.' + stage);
       $('stage-text').textContent = sentence;
       setRing(percent, !MEASURED.has(stage));
@@ -261,8 +264,23 @@ export function mountUi({ i18n, system }) {
       });
     },
     /**
-     * Preserve profile: the user re-selects the copy they just saved. The dialog names the file
-     * and says where the browser put it, so nobody has to guess. Cancelling stops the install.
+     * The copy is ready: one button, and the promise resolves on its click. The save itself
+     * happens in the caller, inside that click, because the browser's save picker only opens
+     * on a user gesture. The button disappears once clicked; the stage sentence stays.
+     */
+    requestBackupSave() {
+      return new Promise((resolve) => {
+        const btn = $('save-backup');
+        btn.disabled = false;
+        btn.hidden = false;
+        btn.onclick = () => { btn.onclick = null; btn.disabled = true; btn.hidden = true; resolve(); };
+        btn.focus();
+      });
+    },
+    /**
+     * Preserve profile without a save picker: the user re-selects the copy they just downloaded.
+     * The dialog names the file and says where the browser put it, so nobody has to guess.
+     * Cancelling stops the install.
      */
     requestBackupFile(filename) {
       return new Promise((resolve, reject) => {

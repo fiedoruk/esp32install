@@ -4,14 +4,15 @@
  * write, and there is no erase path: this module never calls `eraseFlash`.
  *
  * Order: connect → match → security state → identity (MAC) → header read + layout
- * checks → download + verify → mandatory verified backup, saved and re-selected by the
- * user → identity + header re-check → write part by part with an MD5 read-back →
+ * checks → download + verify → mandatory verified backup, saved where the user chooses and
+ * read back from disk (or, without a save picker, downloaded and re-selected by the user)
+ * → identity + header re-check → write part by part with an MD5 read-back →
  * read-back of everything outside the written parts → hard reset.
  */
 import { InstallError } from './errors.js';
 import { sha256Hex } from './verify.js';
 import { md5Hex } from './md5.js';
-import { readRange, verifiedBackup, matchesBackup, backupFilename } from './backup.js';
+import { readRange, verifiedBackup, matchesBackup, backupFilename, readBackHandle } from './backup.js';
 import { etaSeconds } from './progress.js';
 
 const PAGE = 0x1000;
@@ -151,23 +152,34 @@ export async function runPreserve(ctx) {
   const parts = await download(build, hw);
   check();
 
-  // Mandatory backup: two reads that agree, saved, then re-selected by the user so the
-  // copy on disk is proven to be the one the write is about to rely on.
+  // Mandatory backup: two reads that agree, saved, then proven to be on disk before the
+  // write relies on it. With a save handle the page reads the file back itself; without
+  // one the user re-selects the download and the page checks that.
   await sameDevice();
   stage('backup', 33);
   const backupStartedAt = now();
   // Two full reads of the flash: the estimate covers both, from the rate of the first chunks.
   const backup = await verifiedBackup(loader(), flashBytes, (done, total) => stage('backup', 33 + (done / total) * 6, {}, etaSeconds(backupStartedAt, done, total, now)));
   if (differs(backup.bytes, header, 0, headerSize) >= 0) fail('device.changed', { reason: 'header' });
-  const filename = backupFilename(manifest.name, backup.sha256);
-  await deps.saveBackup(backup.bytes, filename);
+  const suggested = backupFilename(manifest.name, backup.sha256);
+  stage('backup', 39, { phase: 'save' });
+  const saved = await deps.saveBackup(backup.bytes, suggested);
+  const filename = saved?.handle ? saved.name : suggested;
   log(`backup ${filename} sha256 ${backup.sha256}`);
   check();
-  // The dialog names the file, so the user knows what to look for in the browser's download folder.
-  const file = await deps.requestBackupFile(filename);
-  check();
-  if (!file) fail('serial.cancelled');
-  if (!(await matchesBackup(file, backup.sha256, flashBytes))) fail('backup.file', { filename });
+  if (saved?.handle) {
+    // The same handle the bytes went through: what comes back must be the copy, whole.
+    stage('backup', 39, { phase: 'readBack', file: filename });
+    const back = await readBackHandle(saved.handle);
+    check();
+    if (back.length !== flashBytes || (await sha256Hex(back)) !== backup.sha256) fail('backup.file', { filename });
+  } else {
+    // The dialog names the file, so the user knows what to look for in the browser's download folder.
+    const file = await deps.requestBackupFile(filename);
+    check();
+    if (!file) fail('serial.cancelled');
+    if (!(await matchesBackup(file, backup.sha256, flashBytes))) fail('backup.file', { filename });
+  }
   check();
 
   // Last checks before the first write, then no cancellation until the parts are on the chip.

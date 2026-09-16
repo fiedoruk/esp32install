@@ -34,8 +34,10 @@ otherwise run through the erase path.
    when nothing covers the bootloader offset. A data part that happens to start
    with `0xE9` is refused too. ESP8266 images carry no chip id and are not judged.
 7. **Optional backup.** If the user ticked the box, the whole flash is read once
-   and offered as a download named `<name>-backup-<8 hex>.bin`. It is a keepsake:
-   it is not read back, not re-verified, and never blocks the install.
+   and a **Save the copy** button appears. On a browser with a save picker the
+   click opens it, suggesting `<name>-backup-<8 hex>.bin`; elsewhere the click
+   downloads the file under that name. It is a keepsake: it is not read back,
+   not re-verified, and never blocks the install.
 8. **The erase prompt.** If the build sets `eraseAll`, the chip is erased without
    asking. Otherwise, if the manifest sets `new_install_prompt_erase`, a dialog
    asks. In *first installation* mode it reads *"This will erase everything on
@@ -90,13 +92,27 @@ never calls `eraseFlash`.
 6. **Back up, for real this time.** The whole flash is read twice and the two
    reads must agree byte for byte. The ring shows a time estimate from the read
    rate, as the write stage does. The copy is compared against the header read
-   in step 4. Then it is saved as `<name>-backup-<8 hex>.bin` and its SHA-256 goes
-   into the log.
-7. **Hand the backup back.** A dialog names the file that was just saved, says
-   that the browser put it in its download folder, and asks the user to choose
-   it. The page checks its size and its SHA-256 against the copy it made. This
-   is deliberate friction: it proves the file really landed on disk before
-   anything is written.
+   in step 4. Then the page shows one button, **Save the copy**, with the
+   sentence *"The copy is ready. Choose where to keep it, then the installation
+   continues."* Nothing is saved until that click: the browser's save picker
+   only opens on a user gesture. The suggested name is `<name>-backup-<8 hex>.bin`
+   and the SHA-256 goes into the log.
+7. **Prove the copy is on disk.** Two ways, chosen by the browser:
+   - *With a save picker* (Chrome, Edge): the click opens the system's save
+     dialog, the user picks a folder and may rename the file, and the bytes are
+     written through that handle. The page then reads the file back through the
+     same handle and compares its length and SHA-256 with the copy it made. The
+     stage line reads *"Saved as {file}. Checking it can be read back."* with the
+     name the user chose. The page never learns the folder: browsers do not
+     expose paths, only the file name and the handle.
+   - *Without one* (Brave, or any Chromium build with the File System Access API
+     switched off): the click downloads the file, then a dialog names it, says
+     that the browser put it in its download folder, and asks the user to choose
+     it. The page checks its size and its SHA-256 against the copy it made.
+
+   Either way the check is the gate: a copy that does not read back whole and
+   identical stops the install with `backup.file` before anything is written.
+   Cancelling the save picker or the file dialog stops it with `serial.cancelled`.
 8. **Re-check.** The MAC is read again and the header is read again, and both
    must be identical to step 3 and step 4.
 9. **Write part by part.** Each part is written on its own, `eraseAll` false. After
@@ -124,8 +140,9 @@ the page against `0xff`.
 Up to step 8. Besides the checks shared with `factory` up to the download, the
 `preserve` flow checks for cancellation at seven points of its own: after the
 identity check, after the header comparison, after the download, after the backup
-is saved, after the file is handed back, after that file has been verified, and
-after the final re-check. From step 9 onwards it runs to the end.
+is saved, after it has been read back (or, in the download path, after the file
+is handed back), after that copy has been verified, and after the final re-check.
+From step 9 onwards it runs to the end.
 
 ### Part order
 
@@ -229,6 +246,10 @@ to the `preserve` profile.
 |---|---|
 | `backup.mismatch` | The copy was read twice and the two reads differ. Nothing was written. Try again, ideally with a shorter cable. |
 | `backup.file` | The chosen file is not a copy of this device. Choose the copy you saved from this device, or start again without one. |
+
+`backup.file` covers both paths of step 7 in `preserve`: a file the user picked
+that is not the copy, and a copy saved through a handle that does not read back
+whole and identical. In both cases nothing has been written.
 
 ### The cable, the port, the write
 

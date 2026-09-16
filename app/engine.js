@@ -191,6 +191,7 @@ export function createInstaller(deps) {
       const flashBytes = hw.flashSizeMB * 1024 * 1024;
       const startedAt = now();
       const bytes = await readWholeFlash(loader, flashBytes, (done, total) => stage('backup', 33 + (done / total) * 2, {}, etaSeconds(startedAt, done, total, now)));
+      stage('backup', 35, { phase: 'save' }); // the page shows the save button on this event
       await saveBackup(bytes, backupFilename(manifest.name, await sha256Hex(bytes)));
       check();
     }

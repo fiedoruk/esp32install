@@ -7,7 +7,7 @@ import { pickRelease } from './catalog.js';
 import { normalizeManifest } from './manifest.js';
 import { createInstaller, fetchBytes } from './engine.js';
 import { esptoolCommand } from './verify.js';
-import { saveBlob } from './backup.js';
+import { saveBlob, saveBackupWithHandle } from './backup.js';
 import { mountUi, fileNameOf, hideHatches } from './ui.js';
 import { InstallError } from './errors.js';
 
@@ -98,7 +98,15 @@ async function boot() {
     },
     chooseBuild: (builds, hw) => ui.chooseBuild(builds, hw),
     confirmErase: (build, mode) => ui.confirmErase(build, mode),
-    saveBackup: (bytes, filename) => saveBlob(bytes, filename),
+    // The save waits for a click: the browser's save picker needs a user gesture. With a picker
+    // the copy goes where the user chooses and the engine reads it back through the same handle;
+    // without one (Firefox, Brave, Safari) the click downloads the file and the engine asks for it.
+    saveBackup: async (bytes, filename) => {
+      await ui.requestBackupSave();
+      const saved = await saveBackupWithHandle(bytes, filename);
+      if (!saved) await saveBlob(bytes, filename);
+      return saved;
+    },
     requestBackupFile: (filename) => ui.requestBackupFile(filename),
   });
   ui.bindConnect(async () => {

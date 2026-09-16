@@ -117,7 +117,9 @@ The `preserve` profile adds more before it writes: the chip must not have secure
 boot or flash encryption enabled, its MAC address is read and re-read so the
 device cannot be swapped mid-install, the existing flash header must match the
 regions the manifest declares, and a whole-flash backup must be read twice, agree
-byte for byte, be saved, and then be picked from disk by the user.
+byte for byte, be saved where the user chooses, and then be read back from disk
+and match. On a browser without a save picker the user picks the downloaded file
+instead, and the page checks that.
 
 ## What is checked after writing
 
@@ -170,8 +172,11 @@ whole-flash backup is offered as an optional keepsake; it is never a gate.
 **`preserve`** exists for a device that already has a factory bootloader,
 partition table and user data that must stay. It never erases. It writes only the
 parts the manifest lists, one at a time, and it refuses to start unless the flash
-already looks the way the manifest says it should. The backup is mandatory there,
-and the user has to hand the saved file back to the page before the first write.
+already looks the way the manifest says it should. The backup is mandatory there:
+one click saves it where the user chooses, and the page reads it back through
+the same file handle before the first write. Browsers do not expose folder
+paths, so the page never learns where the copy went, only its name. Without a
+save picker the click downloads the file and the user hands it back to the page.
 
 Step by step, with every stop condition: [docs/profiles.md](docs/profiles.md).
 

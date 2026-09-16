@@ -29,6 +29,7 @@
     "retry": "Try again",
     "cancel": "Cancel",
     "backup": "Save a copy of what is on the device first (about {minutes} min)",
+    "saveBackup": "Save the copy",
     "chooseBackup": "Choose the copy you just saved",
     "chooseBackupTitle": "Now choose the copy you just saved",
     "chooseBackupHint": "Your browser saved it as {file}, usually in the Downloads folder.",
@@ -67,6 +68,10 @@
     },
     "install": {
       "keepCable": "Keep the cable connected until this finishes."
+    },
+    "backup": {
+      "save": "The copy is ready. Choose where to keep it, then the installation continues.",
+      "saved": "Saved as {file}. Checking it can be read back."
     },
     "done": {
       "title": "All done.",

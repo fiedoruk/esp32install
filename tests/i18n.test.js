@@ -60,7 +60,7 @@ const REQUIRED = [
   'door.title', 'door.first', 'door.firstHint', 'door.update', 'door.updateHint',
   'gate.insecure', 'gate.noSerial', 'gate.altFirst',
   'action.connect', 'action.connecting', 'action.installing', 'action.retry',
-  'action.cancel', 'action.backup', 'action.chooseBackup', 'action.chooseBackupTitle', 'action.chooseBackupHint', 'action.erase',
+  'action.cancel', 'action.backup', 'action.saveBackup', 'action.chooseBackup', 'action.chooseBackupTitle', 'action.chooseBackupHint', 'action.erase',
   'stage.idle', 'stage.connecting', 'stage.detecting', 'stage.matching', 'stage.downloading',
   'stage.verifying', 'stage.checkingDevice', 'stage.backup', 'stage.erasing', 'stage.writing',
   'stage.md5', 'stage.done', 'stage.error',
@@ -69,7 +69,7 @@ const REQUIRED = [
   'board.pick', 'board.pickHint',
   'alt.title', 'alt.cmd', 'alt.files', 'alt.drivers', 'alt.guide',
   'simple.prepare.title', 'simple.prepare.hintCable', 'simple.prepare.hintDoor', 'simple.prepare.hintBackup',
-  'simple.install.keepCable', 'simple.done.title', 'simple.done.next', 'simple.done.again', 'simple.stopped.title',
+  'simple.install.keepCable', 'simple.backup.save', 'simple.backup.saved', 'simple.done.title', 'simple.done.next', 'simple.done.again', 'simple.stopped.title',
   'tech.title', 'tech.chip', 'tech.flash', 'tech.board', 'tech.release', 'tech.checksum', 'tech.log',
   'pick.title', 'pick.hint',
   'erase.title', 'erase.textFirst', 'erase.textUpdate', 'erase.yes', 'erase.no',
@@ -120,9 +120,11 @@ test('every error string says what happened and what to do', () => {
   assert.deepEqual(thin, []);
 });
 
-test('the backup hint names the file in both locales', () => {
+test('the backup hint and the saved-as sentence name the file in both locales', () => {
   assert.match(en.action.chooseBackupHint, /\{file\}/);
   assert.match(readLocale('pl').action.chooseBackupHint, /\{file\}/);
+  assert.match(en.simple.backup.saved, /\{file\}/);
+  assert.match(readLocale('pl').simple.backup.saved, /\{file\}/);
 });
 
 test('no dead error strings: every error.* key in en.json is thrown somewhere in app/', () => {

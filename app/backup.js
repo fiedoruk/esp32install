@@ -51,6 +51,45 @@ export async function matchesBackup(file, sha256, size) {
   return (await sha256Hex(bytes)) === sha256;
 }
 
+/**
+ * Browser helper for `deps.saveBackup` on browsers with the File System Access API: the user
+ * picks where the copy goes, the bytes are written through the handle, and the same handle is
+ * returned so the caller can read the file back and prove it landed. `picker` defaults to
+ * `showSaveFilePicker`; without one (Firefox, Brave, Safari) this returns `null` and the caller
+ * falls back to `saveBlob`. Cancelling the picker is `serial.cancelled`, not a crash.
+ * Needs a user gesture: call it from a click handler.
+ */
+export async function saveBackupWithHandle(bytes, filename, { picker = defaultPicker() } = {}) {
+  if (typeof picker !== 'function') return null;
+  let handle;
+  try {
+    handle = await picker({ suggestedName: filename, types: [{ description: 'Device backup', accept: { 'application/octet-stream': ['.bin'] } }] });
+  } catch (err) {
+    if (err?.name === 'AbortError') throw new InstallError('serial.cancelled', {}, err);
+    throw err;
+  }
+  const writable = await handle.createWritable();
+  try {
+    await writable.write(bytes);
+  } catch (err) {
+    try { await writable.abort(); } catch { /* the write error is the one to report */ }
+    throw err;
+  }
+  await writable.close();
+  return { handle, name: String(handle.name ?? filename) };
+}
+
+function defaultPicker() {
+  const g = globalThis;
+  return typeof g.showSaveFilePicker === 'function' ? (options) => g.showSaveFilePicker(options) : null;
+}
+
+/** The bytes the file behind `handle` holds now, read fresh from disk. */
+export async function readBackHandle(handle) {
+  const file = await handle.getFile();
+  return new Uint8Array(await file.arrayBuffer());
+}
+
 /** Browser helper for `deps.saveBackup`: offers `bytes` as a download named `filename`. */
 export async function saveBlob(bytes, filename) {
   const url = URL.createObjectURL(new Blob([bytes], { type: 'application/octet-stream' }));

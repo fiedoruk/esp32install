@@ -137,3 +137,13 @@ test('the backup dialog has a hint line that ui.js fills with the saved file nam
   assert.match(read('app/preserve.js'), /deps\.requestBackupFile\(filename\)/);
   assert.match(read('app/main.js'), /requestBackupFile: \(filename\) => ui\.requestBackupFile\(filename\)/);
 });
+
+test('the save button lives on the install screen, is hidden until the copy is ready, and main.js saves inside its click', () => {
+  assert.match(html, /<section class="screen" id="screen-install"[\s\S]*?<button class="cta" id="save-backup" type="button" hidden data-i18n="action\.saveBackup"><\/button>[\s\S]*?<\/section>/);
+  const ui = read('app/ui.js');
+  assert.match(ui, /requestBackupSave\(\)/);
+  assert.match(ui, /\$\('save-backup'\)\.hidden = true/, 'startInstall hides the button again');
+  const main = read('app/main.js');
+  assert.match(main, /await ui\.requestBackupSave\(\);\s*const saved = await saveBackupWithHandle\(bytes, filename\);\s*if \(!saved\) await saveBlob\(bytes, filename\);\s*return saved;/);
+  assert.match(read('app/preserve.js'), /readBackHandle\(saved\.handle\)/);
+});
