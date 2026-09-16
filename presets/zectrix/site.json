@@ -1,0 +1,27 @@
+{
+  "brand": "emini.ink",
+  "tagline": "A calm e-paper poster of your day, for the ZECTRIX NOTE4C.",
+  "columns": [
+    {
+      "title": "emini Home",
+      "links": [
+        { "text": "What it is", "href": "https://emini.ink/home/" },
+        { "text": "Po polsku", "href": "https://emini.ink/pl/home/" }
+      ]
+    },
+    {
+      "title": "Installer",
+      "links": [
+        { "text": "Source code", "href": "https://github.com/fiedoruk/esp32install" },
+        { "text": "Put this on your own server", "href": "https://github.com/fiedoruk/esp32install/blob/main/docs/replicate.md" },
+        { "text": "MIT licence", "href": "https://github.com/fiedoruk/esp32install/blob/main/LICENSE" }
+      ]
+    },
+    {
+      "title": "More devices",
+      "links": [
+        { "text": "esp32ai.me", "href": "https://esp32ai.me/" }
+      ]
+    }
+  ]
+}

@@ -1,0 +1,63 @@
+{
+  "schema": 2,
+  "name": "emini Home",
+  "version": "0.5.0",
+  "profile": "preserve",
+  "new_install_prompt_erase": false,
+  "builds": [
+    {
+      "boardKey": "note4c",
+      "board": "ZECTRIX NOTE4C DevKit",
+      "chipFamily": "ESP32-S3",
+      "flashSizeMB": 16,
+      "usbVendorId": 12346,
+      "usbProductId": 4097,
+      "compatibility": {
+        "regions": [
+          {
+            "offset": 0,
+            "size": 32768,
+            "sha256": "7d914bc1cd69da88931aa21e7c596b33f70fae0edcad46cdba39b611e305d025"
+          },
+          {
+            "offset": 53248,
+            "size": 8192,
+            "sha256": "8ba3b110139f45443d4f268d1a3373ef99a1718b71d51664531b83ee2d4b91a3"
+          }
+        ],
+        "firstInstall": {
+          "regions": [
+            {
+              "offset": 32768,
+              "size": 4096,
+              "sha256": "ce40cfe75056ef74bc052942f8a9ee3dce8e5e14ba17a6f63685a8fa0d11a23d"
+            }
+          ],
+          "empty": [
+            {
+              "offset": 65536,
+              "size": 65536
+            }
+          ]
+        },
+        "update": {
+          "tableOffset": 32768
+        }
+      },
+      "parts": [
+        {
+          "path": "../firmware/emini-home/0.5.0/emini-home-0.5.0-note4c.bin",
+          "offset": 131072,
+          "size": 2867824,
+          "sha256": "df644e95eb080cdd5aabfd92d052eba1909b7c1a1c37f31baef3babe1b7e1799"
+        },
+        {
+          "path": "../firmware/emini-home/0.5.0/emini-home-0.5.0-partition-table.bin",
+          "offset": 32768,
+          "size": 3072,
+          "sha256": "9375ba2d5bf131bdb991c07024cb1cdb40538e14698a602fa7d9c87f57b38946"
+        }
+      ]
+    }
+  ]
+}
