@@ -66,6 +66,9 @@ CSP_ALLOWED = {
 SCRIPT_DIRECTIVES = ('script-src', 'script-src-elem', 'connect-src')
 CONNECT_DIRECTIVES = ('connect-src',)
 ORIGIN = re.compile(r'^https?://[A-Za-z0-9.-]+(?::\d{1,5})?$')
+# Hosts every browser treats as a secure context over plain http, which is what makes local
+# testing possible; everywhere else an allowOrigins entry has to be https.
+LOCAL_HOSTS = frozenset(('localhost', '127.0.0.1'))
 CATALOG = 'catalog.json'
 INDEX = 'index.html'
 VENDOR_SUMS = 'vendor/esptool-js/SHA256SUMS'
@@ -324,6 +327,22 @@ def is_origin(value: Any) -> bool:
     return isinstance(value, str) and ORIGIN.match(value) is not None
 
 
+def is_local_origin(value: str) -> bool:
+    """The one place `http:` is not a mistake: the machine the tester is sitting at."""
+    host = urllib.parse.urlsplit(value).hostname or ''
+    return host in LOCAL_HOSTS or host.endswith('.localhost')
+
+
+def insecure_origin(value: str) -> bool:
+    """An origin the page could not fetch from anyway: `http:` somewhere other than this machine.
+
+    The installer is served over https, so the browser refuses an `http:` download as mixed
+    content before the page's own origin check runs. Listing one in `allowOrigins` therefore
+    cannot work; it only hides the mistake until someone tries to install.
+    """
+    return urllib.parse.urlsplit(value).scheme.lower() != 'https' and not is_local_origin(value)
+
+
 def csp_allowed(catalog_origins: Sequence[str] = (), extra_origins: Sequence[str] = ()) -> Dict[str, Tuple[str, ...]]:
     """CSP_ALLOWED widened by exactly the origins a host has declared, and nowhere else."""
     allowed = {}
@@ -441,9 +460,14 @@ def check_sums(source: Source, sums_path: str) -> List[Finding]:
     return findings
 
 
-def check_part(source: Source, manifest_ref: Any, part: Any,
-               board: str) -> Tuple[List[Finding], Dict[str, Any]]:
-    """Fetch one part and compare it with what the manifest declares about it."""
+def check_part(source: Source, manifest_ref: Any, part: Any, board: str,
+               allow_unhashed: bool = False) -> Tuple[List[Finding], Dict[str, Any]]:
+    """Fetch one part and compare it with what the manifest declares about it.
+
+    A part with no `sha256` is a FAIL: the page will write it anyway, so the only thing standing
+    between the device and a damaged or swapped file is TLS and the host. `allow_unhashed` (the
+    --allow-unhashed flag) lowers it to a WARN for a pipeline that genuinely cannot hash.
+    """
     findings: List[Finding] = []
     blank = {'offset': None, 'size': None, 'head': b''}
     if not isinstance(part, dict) or not isinstance(part.get('path'), str) or not part['path'].strip():
@@ -483,7 +507,10 @@ def check_part(source: Source, manifest_ref: Any, part: Any,
         else:
             findings.append(Finding(OK, 'sha256', '%s: %s' % (board, path)))
     elif declared_sum is None:
-        findings.append(Finding(WARN, 'checksum', '%s: %s no checksum declared' % (board, path)))
+        findings.append(Finding(WARN if allow_unhashed else FAIL, 'checksum',
+                                '%s: %s declares no sha256, so nothing can tell a damaged or swapped '
+                                'file from the real one; add one, or pass --allow-unhashed to accept it'
+                                % (board, path)))
     else:
         findings.append(Finding(FAIL, 'sha256', '%s: %s declares a malformed checksum' % (board, path)))
 
@@ -558,7 +585,7 @@ def preserve_problems(build: Dict[str, Any], parts: Sequence[Any], board: str) -
 
 
 def check_build(source: Source, manifest_ref: Any, build: Dict[str, Any], board: str,
-                profile: str) -> List[Finding]:
+                profile: str, allow_unhashed: bool = False) -> List[Finding]:
     family = build.get('chipFamily')
     findings: List[Finding] = []
     if family not in CHIPS:
@@ -582,7 +609,7 @@ def check_build(source: Source, manifest_ref: Any, build: Dict[str, Any], board:
 
     measured: List[Dict[str, Any]] = []
     for part in parts:
-        part_findings, info = check_part(source, manifest_ref, part, board)
+        part_findings, info = check_part(source, manifest_ref, part, board, allow_unhashed)
         findings.extend(part_findings)
         if info['offset'] is not None:
             measured.append(info)
@@ -642,7 +669,7 @@ def check_build(source: Source, manifest_ref: Any, build: Dict[str, Any], board:
     return findings
 
 
-def check_manifest(source: Source, ref: Any, subject: str) -> List[Finding]:
+def check_manifest(source: Source, ref: Any, subject: str, allow_unhashed: bool = False) -> List[Finding]:
     fetched, problems = read_or_report(source, ref, subject)
     if fetched is None:
         return problems
@@ -688,7 +715,7 @@ def check_manifest(source: Source, ref: Any, subject: str) -> List[Finding]:
             findings.append(Finding(FAIL, 'manifest', '%s: %s declares profile %r but the manifest is %r; '
                                     'a build may repeat the profile, never change it'
                                     % (subject, board, build_profile, profile)))
-        findings.extend(check_build(source, ref, build, board, profile))
+        findings.extend(check_build(source, ref, build, board, profile, allow_unhashed))
     return findings
 
 
@@ -730,8 +757,9 @@ def read_catalog(source: Source) -> Tuple[Optional[Any], List[Finding]]:
 def allow_origins(catalog: Any) -> Tuple[List[str], List[Finding]]:
     """The origins the catalog lets binaries come from, and what is wrong with the list.
 
-    Only well-formed origins are returned; a malformed entry is a FAIL and is not honoured, so a
-    typo cannot widen the policy the checker accepts.
+    Only well-formed https origins (and http on this machine) are returned; a malformed or
+    insecure entry is a FAIL and is not honoured, so a typo cannot widen the policy the checker
+    accepts.
     """
     if not isinstance(catalog, dict) or 'allowOrigins' not in catalog:
         return [], []
@@ -740,15 +768,20 @@ def allow_origins(catalog: Any) -> Tuple[List[str], List[Finding]]:
         return [], [Finding(FAIL, 'catalog', '%s: allowOrigins must be a list of origins' % CATALOG)]
     origins, findings = [], []
     for entry in raw:
-        if is_origin(entry):
-            origins.append(entry)
-        else:
+        if not is_origin(entry):
             findings.append(Finding(FAIL, 'catalog', '%s: allowOrigins entry %r is not an origin '
                                     '(scheme://host[:port], no path)' % (CATALOG, entry)))
+        elif insecure_origin(entry):
+            findings.append(Finding(FAIL, 'catalog', '%s: allowOrigins entry %r is not https, so the '
+                                    'browser would refuse the download as mixed content on an https '
+                                    'page; http://localhost and http://127.0.0.1 are the exception, '
+                                    'for local testing' % (CATALOG, entry)))
+        else:
+            origins.append(entry)
     return origins, findings
 
 
-def check_catalog(source: Source, catalog: Any) -> List[Finding]:
+def check_catalog(source: Source, catalog: Any, allow_unhashed: bool = False) -> List[Finding]:
     ref = source.join(source.root(), CATALOG)
     systems = catalog.get('systems') if isinstance(catalog, dict) else None
     if not isinstance(systems, list):
@@ -781,11 +814,12 @@ def check_catalog(source: Source, catalog: Any) -> List[Finding]:
             except SourceError as exc:
                 findings.append(Finding(FAIL, exc.what, '%s: %s' % (subject, exc)))
                 continue
-            findings.extend(check_manifest(source, manifest_ref, subject))
+            findings.extend(check_manifest(source, manifest_ref, subject, allow_unhashed))
     return findings
 
 
-def check_site(base: str, extra_origins: Sequence[str] = (), site_root: Optional[str] = None) -> List[Finding]:
+def check_site(base: str, extra_origins: Sequence[str] = (), site_root: Optional[str] = None,
+               allow_unhashed: bool = False) -> List[Finding]:
     """Every check, in the order a reader wants to see them.
 
     `extra_origins` are the --allow-origin values: origins the host has deliberately let into
@@ -807,7 +841,7 @@ def check_site(base: str, extra_origins: Sequence[str] = (), site_root: Optional
     findings.extend(check_vendor(source))
     findings.extend(catalog_problems or origin_problems)
     if catalog is not None:
-        findings.extend(check_catalog(source, catalog))
+        findings.extend(check_catalog(source, catalog, allow_unhashed))
     return findings
 
 
@@ -834,9 +868,13 @@ def main(argv: Optional[Sequence[str]] = None) -> int:
                              'installer is a subdirectory of it and its manifests reach outside (a portal that '
                              'keeps binaries under /os/ next to /install/, say); paths may then resolve anywhere '
                              'under that root and nowhere above it')
+    parser.add_argument('--allow-unhashed', dest='allow_unhashed', action='store_true',
+                        help='accept a part that declares no sha256 (a WARN instead of a FAIL), for a '
+                             'build pipeline that cannot hash its binaries; the page will still write '
+                             'such a part, with nothing but the connection vouching for it')
     args = parser.parse_args(argv)
     try:
-        findings = check_site(args.base, args.allow_origins, args.site_root)
+        findings = check_site(args.base, args.allow_origins, args.site_root, args.allow_unhashed)
     except UsageError as exc:
         print('check.py: %s' % exc, file=sys.stderr)
         return EXIT_USAGE

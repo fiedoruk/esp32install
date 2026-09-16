@@ -193,7 +193,9 @@ stops with a download error that looks like a network problem and is not.
 catalog and accepts exactly those origins in `connect-src`, nothing more. An
 origin in the policy that the catalog does not list is a FAIL; an origin in the
 catalog that the policy does not name is a WARN, because the page would refuse
-to download from it. So after steps 1 and 2:
+to download from it. An entry that is not `https:` is a FAIL and is ignored,
+because the browser blocks a plain-http download on an https page; the only
+exceptions are `http://localhost` and `http://127.0.0.1`. So after steps 1 and 2:
 
 ```
 python3 tools/check.py .

@@ -160,7 +160,8 @@ have passed.
   together above 64 MiB are refused.
 - **Checksum.** A part that declares `sha256` must hash to it. A part that
   declares none is hashed anyway and the hash is written to the log, so a reader
-  can compare it with the release notes.
+  can compare it with the release notes; `tools/check.py` reports a manifest like
+  that as a failure, because nothing on the page can do that comparison for you.
 - **Layout.** No part may reach past the end of the flash the chip reported, and
   no two parts may overlap.
 - **Flash size.** Read from the JEDEC id the chip returns. An id of `0x000000` or

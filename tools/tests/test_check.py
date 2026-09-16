@@ -189,13 +189,33 @@ class SiteTest(SiteFixture):
         self.write_raw_manifest(data)
         self.assertIn(check.FAIL, self.levels(self.findings(), 'size'))
 
-    def test_a_part_without_a_checksum_warns(self):
+    def test_a_part_without_a_checksum_fails(self):
         data = json.loads(self.manifest_path.read_text('utf-8'))
         del data['builds'][0]['parts'][0]['sha256']
         self.write_raw_manifest(data)
         found = self.findings()
-        self.assertIn(check.WARN, self.levels(found, 'checksum'))
-        self.assertEqual(self.fails(found), [])
+        self.assertEqual(self.levels(found, 'checksum'), [check.FAIL])
+        self.assertTrue(any('--allow-unhashed' in detail for what, detail in self.fails(found)))
+        self.assertEqual(self.cli(self.site)[0], 1)
+
+    def test_allow_unhashed_lowers_the_missing_checksum_to_a_warning(self):
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        del data['builds'][0]['parts'][0]['sha256']
+        self.write_raw_manifest(data)
+        found = check.check_site(str(self.site), allow_unhashed=True)
+        self.assertEqual([f.level for f in found if f.what == 'checksum'], [check.WARN])
+        self.assertEqual([(f.what, f.detail) for f in found if f.level == check.FAIL], [])
+        code, text = self.cli(self.site, '--allow-unhashed')
+        self.assertEqual(code, 0, text)
+        self.assertIn('WARN checksum', text)
+
+    def test_the_flag_does_not_excuse_a_checksum_that_is_wrong(self):
+        """Positive control: --allow-unhashed is about an absent hash, not a false one."""
+        data = json.loads(self.manifest_path.read_text('utf-8'))
+        data['builds'][0]['parts'][0]['sha256'] = 'b' * 64
+        self.write_raw_manifest(data)
+        found = check.check_site(str(self.site), allow_unhashed=True)
+        self.assertIn(check.FAIL, [f.level for f in found if f.what == 'sha256'])
 
     def test_overlapping_parts_fail(self):
         other = self.firmware / 'app.bin'
@@ -516,6 +536,31 @@ class ShapeTest(SiteFixture):
                 found = self.findings()
                 self.assertIn(check.FAIL, self.levels(found, 'catalog'))
                 self.assertIn(check.FAIL, self.levels(found, 'csp'))
+
+    def test_a_non_https_allow_origins_entry_fails_and_widens_nothing(self):
+        self.write_catalog([{'version': '1.0.0', 'manifest': 'firmware/demo-1-0-0.json', 'channel': 'stable'}],
+                           allowOrigins=['http://files.example'])
+        self.write_index("default-src 'self'; connect-src 'self' http://files.example")
+        found = self.findings()
+        self.assertIn(check.FAIL, self.levels(found, 'catalog'))
+        self.assertTrue(any('mixed content' in detail for what, detail in self.fails(found) if what == 'catalog'))
+        self.assertIn(check.FAIL, self.levels(found, 'csp'), 'the origin is not honoured, so the policy is too wide')
+
+    def test_a_local_http_origin_is_still_allowed(self):
+        """Positive control: local testing over plain http has to keep working."""
+        for local in ('http://localhost:8731', 'http://127.0.0.1:8731'):
+            with self.subTest(origin=local):
+                self.write_catalog([{'version': '1.0.0', 'manifest': 'firmware/demo-1-0-0.json', 'channel': 'stable'}],
+                                   allowOrigins=[local])
+                self.write_index("default-src 'self'; connect-src 'self' %s" % local)
+                found = self.findings()
+                self.assertEqual(self.fails(found), [])
+
+    def test_insecure_origin(self):
+        for bad in ('http://files.example', 'http://files.example:8080', 'http://localhost.evil.example'):
+            self.assertTrue(check.insecure_origin(bad), bad)
+        for good in ('https://files.example', 'http://localhost', 'http://127.0.0.1:8731', 'http://app.localhost'):
+            self.assertFalse(check.insecure_origin(good), good)
 
     def test_is_origin(self):
         for good in ('https://files.example', 'http://localhost:8731', 'https://a-b.example.org:8443'):

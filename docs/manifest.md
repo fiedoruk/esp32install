@@ -88,7 +88,7 @@ developer has to hand. Both work.
 | `path` | 1 | string | Resolved against the manifest's own URL. |
 | `offset` | 1 | integer ≥ 0 | Where the file goes in flash. `preserve` requires a multiple of 4096: the chip erases whole 4 KiB sectors, so a part that starts mid-sector would blank the user data in front of it. |
 | `size` | 2 | integer > 0 | Exact byte count. Required by `preserve`. |
-| `sha256` | 2 | 64 hex characters | Accepted in either case and compared lower-cased; the generator emits lowercase. Required by `preserve`. Without it the installer hashes the download anyway and writes the hash to the log. |
+| `sha256` | 2 | 64 hex characters | Accepted in either case and compared lower-cased; the generator emits lowercase. Required by `preserve`. Without it the installer hashes the download anyway and writes the hash to the log, but nothing can compare it with anything, so `tools/check.py` reports a part without one as a FAIL (`--allow-unhashed` lowers that to a warning). |
 
 ### `compatibility`, for the `preserve` profile
 
@@ -361,7 +361,10 @@ page refuses the download until all three are done:
    accepts exactly those origins in `connect-src`, and nothing else; an origin in
    the policy that the catalog does not list is a FAIL, and an origin in the
    catalog that the policy does not name is a WARN, because the page would
-   refuse to fetch from it. An analytics host that must appear in `script-src`
+   refuse to fetch from it. An entry that is not `https:` is a FAIL and is not
+   honoured at all: the installer is served over https and the browser blocks an
+   `http:` download as mixed content. `http://localhost` and `http://127.0.0.1`
+   are the exception, so local testing still works. An analytics host that must appear in `script-src`
    is a different case and is passed as `--allow-origin`; see
    [replicate.md](replicate.md#counting-downloads).
 
@@ -417,9 +420,15 @@ size and SHA-256; part ordering and overlap; the ESP image header of whatever
 covers the chip's bootloader offset; and the image id of every other part that
 starts like an image.
 
-Warnings, not failures: a part with no declared `size`, a part with no declared
-`sha256`, parts not listed by rising offset, and releases listed out of order.
-Those are all things the page tolerates but a publisher probably did not mean.
+Warnings, not failures: a part with no declared `size`, parts not listed by
+rising offset, and releases listed out of order. Those are all things the page
+tolerates but a publisher probably did not mean.
+
+A part with no declared `sha256` is a failure, not a warning: the page will write
+it, and with no hash to compare, only the connection stands between the device and
+a damaged or swapped file. `--allow-unhashed` lowers it to a warning for a build
+pipeline that genuinely cannot hash its binaries. The flag says nothing about a
+checksum that is present and wrong — that is a FAIL either way.
 
 A directory is checked as if it were the site's root. When the installer is a
 subdirectory of the site and a manifest names a file outside it (`../../os/…`),

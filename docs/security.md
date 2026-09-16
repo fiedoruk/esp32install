@@ -36,7 +36,10 @@ Against the release:
   requested, even after redirects.
 - Declared `size` and declared `sha256` must both hold. A part with no checksum
   is hashed anyway and the hash is printed in the log, so it can be compared with
-  the release notes by hand.
+  the release notes by hand — but nothing on the page can compare it for you, so
+  `tools/check.py` refuses such a manifest with a FAIL unless the publisher passes
+  `--allow-unhashed`. The checker also refuses an `allowOrigins` entry that is not
+  `https:`, apart from `localhost` and `127.0.0.1`.
 - Size limits: no empty part, 32 MiB per part, 64 MiB in total.
 
 Against the device:
