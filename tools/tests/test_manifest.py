@@ -235,6 +235,14 @@ class GeneratorTest(unittest.TestCase):
 
     # --- usage errors ---------------------------------------------------
 
+    def test_the_esptool_spelling_of_a_chip_family_is_accepted(self):
+        """A publisher arrives with `esp32s3` from their build log, not with `ESP32-S3`."""
+        boot = self.firmware / 'boot-s3.bin'
+        boot.write_bytes(esp_image(9))
+        code, text = self.cli(boot, '--chip', 'esp32s3', '--name', 'D', '--version', '2', '--out', self.out)
+        self.assertEqual(code, 0, text)
+        self.assertEqual(json.loads(self.out.read_text())['builds'][0]['chipFamily'], 'ESP32-S3')
+
     def test_unknown_chip_family_is_a_usage_error(self):
         code, _ = self.cli(self.bin, '--chip', 'ESP42', '--name', 'D', '--version', '1', '--out', self.out)
         self.assertEqual(code, 2)

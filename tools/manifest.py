@@ -73,6 +73,10 @@ CHIPS: Dict[str, Chip] = {
     'ESP32-P4': Chip(0x2000, 18, 'esp32p4'),
 }
 CHIP_FAMILIES: Tuple[str, ...] = tuple(CHIPS)
+# esptool spells the same families in lower case without the dash (`esp32s3`), and that is what a
+# publisher has in front of them when they come here from a build log. Both spellings are accepted
+# and the canonical one is written into the manifest.
+CHIP_ALIASES: Dict[str, str] = {name.lower().replace('-', ''): name for name in CHIPS}
 PROFILES = ('factory', 'preserve')
 
 
@@ -504,6 +508,15 @@ def number_argument(text: str) -> int:
         raise argparse.ArgumentTypeError('%r: %s' % (text, exc))
 
 
+def chip_argument(text: str) -> str:
+    """`ESP32-S3` or `esp32s3`, either case, with or without the dash."""
+    name = CHIP_ALIASES.get(str(text).strip().lower().replace('-', '').replace('_', ''))
+    if name is None:
+        raise argparse.ArgumentTypeError(
+            '%r is not a chip family this installer knows; known: %s' % (text, ', '.join(CHIP_FAMILIES)))
+    return name
+
+
 def board_key_argument(text: str) -> str:
     if not BOARD_KEY.fullmatch(text):
         raise argparse.ArgumentTypeError(
@@ -520,7 +533,8 @@ def make_parser() -> argparse.ArgumentParser:
                '--name "Demo" --version 1.0.0 --out firmware/demo-1-0-0.json')
     parser.add_argument('parts', nargs='+', type=part_argument, metavar='BIN[@OFFSET]',
                         help='binary to flash; without @OFFSET it is written at offset 0')
-    parser.add_argument('--chip', required=True, choices=CHIP_FAMILIES, help='chip family the build is for')
+    parser.add_argument('--chip', required=True, type=chip_argument, metavar='FAMILY',
+                        help='chip family the build is for, as ESP32-S3 or as esptool spells it, esp32s3')
     parser.add_argument('--name', required=True, help='firmware name shown on the page')
     parser.add_argument('--version', required=True, help='firmware version shown on the page')
     parser.add_argument('--out', required=True, type=Path, help='manifest file to write')

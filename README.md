@@ -214,6 +214,9 @@ Two things follow the install and can never fail it:
 ## Supported chips
 
 Taken from the table in `app/verify.js`, measured against esptool-js 0.6.1.
+`tools/manifest.py --chip` takes either spelling: the family name in the first
+column, or the esptool one in the second (`esp32s3` is the same as `ESP32-S3`).
+The manifest always carries the first-column name.
 
 | Chip family | esptool `--chip` | Bootloader offset | Image chip id |
 |---|---|---|---|

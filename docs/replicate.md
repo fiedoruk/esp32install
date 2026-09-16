@@ -330,6 +330,28 @@ same origin or one listed in `allowOrigins`. And if it redirects, the final
 response has to stay on the origin that was requested, or the download is
 rejected.
 
+If the host runs PHP, the whole thing fits in ten lines. One script per binary,
+with the path written into the script — never taken from the query string, which
+is how these counters turn into a way to read any file on the server:
+
+```php
+<?php
+// firmware/demo.php — counts one download, then sends the file. The manifest's
+// "path" for this part says "demo.php" instead of "demo.bin".
+$file = __DIR__ . '/demo.bin';
+$log = __DIR__ . '/downloads.log';
+file_put_contents($log, date('c') . "\t" . basename($file) . "\n", FILE_APPEND | LOCK_EX);
+header('Content-Type: application/octet-stream');
+header('Content-Length: ' . filesize($file));
+readfile($file);
+```
+
+The installer checks the size and the SHA-256 of what arrives, so the script has
+to send the bytes unchanged: no compression the manifest does not know about, no
+HTML error page in place of the file. Count the lines, not the bytes; `wc -l
+downloads.log` is the number. Keep that log where the server does not hand it
+out: outside the served directory, or denied in the host's configuration.
+
 Server access logs answer the same question without any code at all, and a
 privacy-respecting analytics tool can count the page view. The page also calls
 `window.__esp32installAnalytics(name, props)` if the surrounding site defines it,
